@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/rob-webhook/app}"
 SERVICE_NAME="${SERVICE_NAME:-rob-webhook-dev.service}"
-DEPLOY_BRANCH="${DEPLOY_BRANCH:-rebuild/dev-online-services}"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 PYTHON_BIN="${PYTHON_BIN:-${APP_DIR}/.venv/bin/python}"
 PIP_BIN="${PIP_BIN:-${APP_DIR}/.venv/bin/pip}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8080/health}"
