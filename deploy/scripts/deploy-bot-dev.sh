@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/rob-bot/app}"
 SERVICE_NAME="${SERVICE_NAME:-rob-bot-dev.service}"
-DEPLOY_BRANCH="${DEPLOY_BRANCH:-rebuild/dev-online-services}"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 PYTHON_BIN="${PYTHON_BIN:-${APP_DIR}/.venv/bin/python}"
 PIP_BIN="${PIP_BIN:-${APP_DIR}/.venv/bin/pip}"
 
