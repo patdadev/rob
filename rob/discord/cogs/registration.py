@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from rob.ui.cards.errors import error_card
 from rob.ui.cards.registration import domme_registered_card, registration_card, throne_setup_card
+from rob.ui.render import add_action_row
 
 if TYPE_CHECKING:
     from rob.discord.client import RobBot
@@ -36,8 +37,7 @@ def add_setup_buttons(view: discord.ui.LayoutView, *, creator_id: int, webhook_u
                 f"The almighty link:\n```\n{webhook_url}\n```\nDid it work?"
             )
             msg = throne_setup_card(body)
-            msg.view.add_item(YesButton(creator_id, send_track_channel_id))
-            msg.view.add_item(NotYetButton())
+            add_action_row(msg.view, YesButton(creator_id, send_track_channel_id), NotYetButton())
             await interaction.response.edit_message(**msg.edit_kwargs())
 
     class NotNowButton(discord.ui.Button):
@@ -51,8 +51,7 @@ def add_setup_buttons(view: discord.ui.LayoutView, *, creator_id: int, webhook_u
             )
             await interaction.response.edit_message(**msg.edit_kwargs())
 
-    view.add_item(ContinueSetupButton())
-    view.add_item(NotNowButton())
+    add_action_row(view, ContinueSetupButton(), NotNowButton())
 
 
 class YesButton(discord.ui.Button):
@@ -89,8 +88,7 @@ class YesButton(discord.ui.Button):
             "Not seeing it yet.\n\nPlease make sure you clicked Save Settings in Throne, then click Test Webhook again. "
             "Once Throne shows a success message, press Yes here again."
         )
-        msg.view.add_item(YesButton(self.creator_id, self.send_track_channel_id))
-        msg.view.add_item(NotYetButton())
+        add_action_row(msg.view, YesButton(self.creator_id, self.send_track_channel_id), NotYetButton())
         await interaction.response.edit_message(**msg.edit_kwargs())
 
 
@@ -137,6 +135,9 @@ class RegistrationCog(commands.Cog):
             return
         except discord.HTTPException as exc:
             log.exception("Failed to DM Throne setup flow to user_id=%s guild_id=%s status=%s code=%s text=%s", interaction.user.id, interaction.guild.id if interaction.guild else None, getattr(exc, "status", None), getattr(exc, "code", None), getattr(exc, "text", None))
+            if getattr(exc, "status", None) == 400 and getattr(exc, "code", None) == 50035:
+                await interaction.followup.send(**error_card("You're registered, but Rob hit a setup-message error.", "Your profile is linked, but Rob couldn't generate the setup DM correctly. Staff have been given enough detail in the logs to fix it.").send_kwargs(), ephemeral=True)
+                return
             await interaction.followup.send(**error_card("You're registered, but Rob couldn't DM you.", "This usually means Discord blocked the DM. Please check:\n\n- Server Privacy Settings → Allow direct messages from server members\n- You have not blocked this bot\n- Your Discord privacy settings allow bot/member DMs\n\nOnce fixed, run /register domme again.").send_kwargs(), ephemeral=True)
             return
 

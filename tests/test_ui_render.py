@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import pytest
+import discord
 
 from rob.ui.cards.registration import throne_setup_card
-from rob.ui.render import CardSection, RenderedMessage, RobCard, render_card, supports_components_v2
+from rob.ui.render import CardSection, RenderedMessage, RobCard, add_action_row, render_card, supports_components_v2
 
 
 def test_components_v2_support_check_exposes_required_runtime():
@@ -57,3 +58,12 @@ def test_render_card_rejects_prepopulated_layout_to_enforce_container_first_orde
 def test_title_uses_h2_markdown():
     msg = render_card(RobCard(title="Hello", body="Body"))
     assert "## Hello" in str(msg.view.children[0].children[0].content)
+
+
+def test_add_action_row_puts_buttons_in_top_level_action_row():
+    msg = throne_setup_card("hello")
+    add_action_row(msg.view, discord.ui.Button(label="Continue"), discord.ui.Button(label="Not Now"))
+    assert type(msg.view.children[0]).__name__ == "Container"
+    assert type(msg.view.children[1]).__name__ == "ActionRow"
+    assert type(msg.view.children[1].children[0]).__name__ == "Button"
+    assert type(msg.view.children[1].children[1]).__name__ == "Button"

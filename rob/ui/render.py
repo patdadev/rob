@@ -60,6 +60,15 @@ def require_components_v2() -> None:
     raise RuntimeError(f"Discord Components V2 is required for Rob card rendering. Missing: {', '.join(missing)}")
 
 
+def add_action_row(view: discord.ui.LayoutView, *buttons: discord.ui.Button) -> None:
+    if not buttons:
+        return
+    if not hasattr(discord.ui, "ActionRow"):
+        raise RuntimeError("discord.ui.ActionRow is required to place buttons in Components V2 layouts.")
+    row = discord.ui.ActionRow(*buttons)
+    view.add_item(row)
+
+
 def render_card(card: RobCard, *, view: discord.ui.LayoutView | None = None) -> RenderedMessage:
     require_components_v2()
     if view is not None and len(view.children) > 0:
