@@ -4,17 +4,18 @@
 |---|---|---|---|---|
 | counting | full legacy restore workflow | basic react-only count checks | still partial; major restore flow remains TODO | Partial |
 | `/add` | manual send logging | available | available with current architecture | Complete |
-| `/sendrequest` | DM approve/ignore buttons | DM with suggested `/add` only | still DM-only suggestion (button parity pending) | Partial |
-| send request approve/ignore buttons | present | missing | missing | Missing |
+| `/sendrequest` | DM approve/ignore buttons | DM with suggested `/add` only | full DM review + accept/deny + modal reason + send pipeline insert | Complete |
+| send request approve/ignore buttons | present | missing | present via Components V2 review sections with button accessories | Complete |
 | Dom/me registration | setup DM flow and webhook guidance | simple registration response with URL | new DM setup flow and hidden URL in command response | Partial |
 | Sub registration | available | available | available | Complete |
 | Throne webhook tracking | tracked webhook events | tracked webhook events | tracked webhook events | Complete |
 | leaderboards | top leaderboard formatting | generic summary format | top-10 Dom/me formatting and cleaner totals | Partial |
-| backend `robctl` / old `throne` commands | broad command set | reduced set | reduced set (expansion pending) | Missing |
-| blacklist commands | command family available | backend support | backend support | Partial |
+| backend `robctl` / old `throne` commands | broad command set | reduced set | expanded status/dommes/subs + inactivity + blacklist + leaderboard repair flows | Partial |
+| blacklist commands | command family available | backend support | prefix mod commands + robctl blacklist add/remove/list | Complete |
 | rule command | legacy text command | not present | not present | Missing |
 | DM audit | partial admin auditing in legacy | not ported | not ported | Missing |
-| Carl-bot warn handling | integration existed | not present | not present | Missing |
+| Carl-bot warn handling | integration existed | not present | warn-log listener + courtesy DM relay restored | Complete |
+| inactivity removal | periodic warning + kick schedule | not present | bot-state-backed inactivity scheduler + notices + auto-kick + list/test commands | Complete |
 | manual send methods | broad method list | reduced methods | reduced methods (parity pending) | Partial |
 | UI/cards | legacy style | mixed embeds | true LayoutView/Container/TextDisplay rendering with no embed fallback | Complete |
 
@@ -44,12 +45,12 @@ This patch intentionally preserves split webhook/bot services and PostgreSQL-onl
 
 
 ## 2026-05 update
-- Added explicit v2 priority calls: inactivity P1, DM audit P2/P3, Carl warn relay P2, local admin endpoints/shell helpers P1/P2.
+- Added explicit v2 priority calls for inactivity, DM audit, Carl warn relay, and shell helper parity.
 - Event runtime remains intentionally not ported unless explicitly requested.
 
-## Phase 1 implementation scope (current branch)
-- Focused on high-impact day-to-day runtime parity only: Components V2 card path, registration setup flow/card copy, send card style parity, and leaderboard main+stats runtime wiring.
-- Explicitly deferred to follow-up PRs: inactivity removal, DM audit forwarding, Carl-bot warn relay, rule helper, and event-window runtime/reporting.
+## Current implementation scope
+- Added inactivity automation, Carl warn relay, expanded robctl command surface, and moderator blacklist command parity.
+- Explicitly excluded by request: DM audit forwarding and `!rule` command.
 - Kept architecture guardrails intact: split bot/webhook services, PostgreSQL runtime, no SQLite reintroduction, no legacy single-process bot merge.
 
 - 2026-05-23: Public send card now uses compact Components V2 layout with real `discord.ui.Separator()`, thumbnails, friendly currency names, and purple accent constants from `rob/ui/theme.py`; public send IDs stay out of the public announcement card.

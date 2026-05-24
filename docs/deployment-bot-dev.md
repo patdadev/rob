@@ -15,6 +15,7 @@ That installer:
 - creates `/opt/rob-bot/deploy-bot-dev.sh`
 - installs the deploy sudoers entry
 - writes a bot `.env` template if one does not already exist
+- runs migrations + DB checks before first service start (when real env values exist)
 
 ## Target
 
@@ -54,4 +55,8 @@ Add these secrets:
 - `BOT_DEV_SSH_KEY`
 - `BOT_DEV_PORT`
 
-Then run the manual workflow `Deploy Bot Dev`.
+`Deploy Bot Dev` is now automated:
+
+- runs on `push` to `main` when bot/shared runtime files change
+- supports manual `workflow_dispatch` with optional `deploy_ref` override
+- deploys the exact commit SHA by default (`DEPLOY_REF=${{ github.sha }}`)

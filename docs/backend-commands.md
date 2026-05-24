@@ -2,6 +2,12 @@
 
 Use [`scripts/robctl`](../scripts/robctl) from the server checkout, or install a shell alias that points to it.
 
+To install `robctl` as a global bash/zsh command:
+
+```bash
+scripts/install-robctl-global.sh
+```
+
 ## Supported commands
 
 ```bash
@@ -27,10 +33,24 @@ scripts/robctl leaderboard diagnose --guild-id 123
 scripts/robctl leaderboard repair-send-dommes --guild-id 123 --dry-run
 scripts/robctl leaderboard repair-send-dommes --guild-id 123
 
-scripts/robctl throne status
-scripts/robctl throne dommes
-scripts/robctl throne subs
+scripts/robctl throne status --guild-id 123
+scripts/robctl throne status --guild-id 123 --handle pat
+scripts/robctl throne refresh
+scripts/robctl throne dommes --guild-id 123
+scripts/robctl throne list --guild-id 123
+scripts/robctl throne search --guild-id 123 <@123456789012345678>
+scripts/robctl throne subs --guild-id 123
+scripts/robctl throne webhook refresh --guild-id 123 <@123456789012345678>
+scripts/robctl throne addsend --guild-id 123 <@123456789012345678> 100 --sub-name marie_123 --method cashapp --note "manual adjustment"
+scripts/robctl throne addsub --guild-id 123 <@123456789012345678> marie_123
+scripts/robctl throne adddomme --guild-id 123 <@123456789012345678> https://throne.com/pat
 scripts/robctl throne invalidate-test-sends
+scripts/robctl inactivity status --guild-id 123
+scripts/robctl inactivity on --guild-id 123
+scripts/robctl inactivity off --guild-id 123
+scripts/robctl blacklist add 123456789012345678 --reason "manual"
+scripts/robctl blacklist remove 123456789012345678
+scripts/robctl blacklist list --limit 50
 scripts/robctl sends backfill-public-ids
 scripts/robctl sends list --status all --guild-id 123 --limit 25
 scripts/robctl sends mark-posted 151
@@ -56,6 +76,8 @@ alias rob-sends-backfill='scripts/robctl sends backfill-public-ids'
 ```
 
 - `maintenance on/off`, `queue status`, `queue flush`, `leaderboard refresh`, and `count` commands talk directly to PostgreSQL through `scripts.ops`.
+- `robctl` is a bash-native global wrapper; it delegates data operations to Python (`python -m scripts.ops`) so ops logic remains versioned and testable in the app codebase.
+- Deploy scripts now run `scripts/run_migrations.py` before `scripts/check_db.py`, and `check_db` validates required schema columns so deploys fail fast on schema drift.
 - `leaderboard adopt` lets you attach existing Discord message IDs to `leaderboard_message` refs (`leaderboard` + `leaderboard_stats`) so refresh/edit paths can resume without reposting.
 - `maintenance on` now requests a leaderboard refresh automatically so the main leaderboard status switches to `🟠 Paused (Maintenance)` on the next bot refresh cycle.
 - `maintenance off` now clears maintenance mode, releases queued maintenance sends back to `pending`, and requests a leaderboard refresh so the main leaderboard can return to `🟢 Live`.
@@ -73,7 +95,6 @@ deployuser ALL=(root) NOPASSWD: ROB_BOT_CTL, ROB_WEBHOOK_CTL
 
 - `queue flush` refuses to run while maintenance mode is still enabled.
 - `robctl` with no arguments now prints friendly usage/help and exits `0`.
-- `throne status|dommes|subs` currently print a clear "planned but not implemented" message rather than failing silently.
 
 - 2026-05-23: Public send card now uses compact Components V2 layout with real `discord.ui.Separator()`, item thumbnails, friendly currency names, and purple accent constants from `rob/ui/theme.py`; rank lines/footer/timestamps removed.
 - 2026-05-23: Added `scripts/robctl throne invalidate-test-sends` so historical known test sends can be backfilled as `is_test_send=true`.

@@ -153,6 +153,35 @@ class ThroneCreatorsRepository:
             )
         return [_build_throne_creator(row) for row in rows]
 
+    async def list_for_guild(self, guild_id: int) -> list[ThroneCreator]:
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT *
+                FROM throne_creators
+                WHERE guild_id = $1
+                ORDER BY lower(throne_handle) ASC, id ASC
+                """,
+                guild_id,
+            )
+        return [_build_throne_creator(row) for row in rows]
+
+    async def remove_by_user_id(self, guild_id: int, discord_user_id: int) -> ThroneCreator | None:
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                DELETE FROM throne_creators
+                WHERE guild_id = $1
+                AND discord_user_id = $2
+                RETURNING *
+                """,
+                guild_id,
+                discord_user_id,
+            )
+        if row is None:
+            return None
+        return _build_throne_creator(row)
+
     async def touch_successful_event(self, creator_row_id: int) -> None:
         async with self.database.acquire() as connection:
             await connection.execute(

@@ -1,7 +1,27 @@
 name: Deploy Webhook Dev
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/webhook/**"
+      - "rob/**"
+      - "scripts/**"
+      - "deploy/scripts/deploy-webhook-dev.sh"
+      - "deploy/systemd/rob-webhook-dev.service"
+      - "requirements.txt"
+      - "requirements-dev.txt"
+      - ".github/workflows/deploy-webhook-dev.yml"
   workflow_dispatch:
+    inputs:
+      deploy_ref:
+        description: "Branch, tag, or commit SHA to deploy"
+        required: false
+        default: "main"
+
+concurrency:
+  group: deploy-webhook-dev
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -14,4 +34,6 @@ jobs:
           username: ${{ secrets.WEBHOOK_DEV_USER }}
           key: ${{ secrets.WEBHOOK_DEV_SSH_KEY }}
           port: ${{ secrets.WEBHOOK_DEV_PORT }}
-          script: /opt/rob-webhook/deploy-webhook-dev.sh
+          script: |
+            set -e
+            DEPLOY_BRANCH=main DEPLOY_REF="${{ github.event_name == 'workflow_dispatch' && inputs.deploy_ref || github.sha }}" /opt/rob-webhook/deploy-webhook-dev.sh

@@ -12,6 +12,8 @@ def test_load_base_settings_only_requires_database(monkeypatch):
 
     assert settings.database_url == "postgresql://example/db"
     assert settings.app_env == "dev"
+    assert settings.inactivity_enabled_default is False
+    assert settings.inactivity_loop_minutes == 60
 
 
 def test_load_bot_settings_requires_discord_token(monkeypatch):

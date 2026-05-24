@@ -20,12 +20,18 @@ from rob.database.repositories import (
     SubsRepository,
     ThroneCreatorsRepository,
 )
+from rob.discord.cogs.admin_tools import AdminToolsCog
+from rob.discord.cogs.broadcast import BroadcastCog
 from rob.discord.cogs.counting import CountingCog
+from rob.discord.cogs.inactivity import InactivityCog
 from rob.discord.cogs.leaderboards import LeaderboardsCog
+from rob.discord.cogs.privacy import PrivacyCog
 from rob.discord.cogs.registration import RegistrationCog
 from rob.discord.cogs.reports import ReportsCog
 from rob.discord.cogs.sends import SendsCog
+from rob.discord.cogs.warn_relay import WarnRelayCog
 from rob.services.counting_service import CountingService
+from rob.services.inactivity_service import InactivityService
 from rob.services.leaderboard_service import LeaderboardService
 from rob.services.maintenance_service import MaintenanceService
 from rob.services.registration_service import RegistrationService
@@ -92,6 +98,15 @@ class RobBot(commands.Bot):
             parse_test_sends_as_real_sends=self.settings.throne_parse_test_sends_as_real_sends,
             test_gifter_usernames=self.settings.throne_test_gifter_usernames,
         )
+        self.inactivity_service = InactivityService(
+            bot_state=self.bot_state_repo,
+            guild_settings=self.guild_settings_repo,
+            enabled_default=self.settings.inactivity_enabled_default,
+            assignment_grace_days=self.settings.inactivity_assignment_grace_days,
+            bootstrap_grace_days=self.settings.inactivity_bootstrap_grace_days,
+            final_notice_days=self.settings.inactivity_final_notice_days,
+            notice_channel_id=self.settings.inactivity_notice_channel_id,
+        )
         self.registration_service = RegistrationService(
             guild_settings=self.guild_settings_repo,
             dommes=self.dommes_repo,
@@ -125,8 +140,13 @@ class RobBot(commands.Bot):
         await self.add_cog(RegistrationCog(self))
         await self.add_cog(SendsCog(self))
         await self.add_cog(LeaderboardsCog(self))
+        await self.add_cog(PrivacyCog(self))
         await self.add_cog(CountingCog(self))
         await self.add_cog(ReportsCog(self))
+        await self.add_cog(InactivityCog(self))
+        await self.add_cog(WarnRelayCog(self))
+        await self.add_cog(AdminToolsCog(self))
+        await self.add_cog(BroadcastCog(self))
 
         self.tree.interaction_check = self._global_blacklist_interaction_check
 

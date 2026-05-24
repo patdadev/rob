@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from rob.database.connection import Database
 
 
@@ -47,3 +49,24 @@ class BlacklistRepository:
                 discord_user_id,
             )
         return value is not None
+
+    async def list_entries(self, *, limit: int = 200) -> list[tuple[int, str | None, int | None, datetime]]:
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT discord_user_id, reason, created_by, created_at
+                FROM blacklist
+                ORDER BY created_at DESC
+                LIMIT $1
+                """,
+                max(1, limit),
+            )
+        return [
+            (
+                int(row["discord_user_id"]),
+                row["reason"],
+                int(row["created_by"]) if row["created_by"] is not None else None,
+                row["created_at"],
+            )
+            for row in rows
+        ]

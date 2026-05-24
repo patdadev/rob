@@ -86,7 +86,7 @@ class LeaderboardService:
         )
         dommes = await self.leaderboards.get_top_dommes(
             guild_id,
-            limit=self.leaderboard_limit,
+            limit=min(self.leaderboard_limit, 10),
             include_test_sends=self.include_test_sends,
             test_gifter_usernames=self.test_gifter_usernames,
             owner_test_user_id=self.owner_test_user_id,
@@ -94,7 +94,7 @@ class LeaderboardService:
         log.info(
             "Leaderboard entries rendered=%s leaderboard_limit=%s guild_id=%s",
             len(dommes),
-            self.leaderboard_limit,
+            min(self.leaderboard_limit, 10),
             guild_id,
         )
         dommes_msg = leaderboard_card(
@@ -105,21 +105,50 @@ class LeaderboardService:
         )
         stats_msg = leaderboard_stats_card(summary, dommes)
 
-        await self._upsert_message(
+        existing_main = await self._get_existing_message(
             guild_id=guild_id,
-            guild=guild,
             channel=channel,
             message_key="leaderboard",
-            leaderboard_type="leaderboard",
-            rendered=dommes_msg,
         )
-        await self._upsert_message(
+        existing_stats = await self._get_existing_message(
             guild_id=guild_id,
-            guild=guild,
             channel=channel,
             message_key="leaderboard_stats",
+        )
+        if existing_main is None or existing_stats is None:
+            log.info(
+                "Leaderboard pair missing for guild_id=%s (main_present=%s stats_present=%s). Creating new leaderboard + stats pair.",
+                guild_id,
+                existing_main is not None,
+                existing_stats is not None,
+            )
+            main_message = await channel.send(**dommes_msg.send_kwargs())
+            stats_message = await channel.send(**stats_msg.send_kwargs())
+        else:
+            log.info(
+                "Updating existing leaderboard pair for guild_id=%s main_message_id=%s stats_message_id=%s",
+                guild_id,
+                existing_main.id,
+                existing_stats.id,
+            )
+            await existing_main.edit(**dommes_msg.edit_kwargs())
+            await existing_stats.edit(**stats_msg.edit_kwargs())
+            main_message = existing_main
+            stats_message = existing_stats
+
+        await self._upsert_ref(
+            guild_id=guild_id,
+            message_key="leaderboard",
+            leaderboard_type="leaderboard",
+            channel_id=channel.id,
+            message_id=main_message.id,
+        )
+        await self._upsert_ref(
+            guild_id=guild_id,
+            message_key="leaderboard_stats",
             leaderboard_type="leaderboard_stats",
-            rendered=stats_msg,
+            channel_id=channel.id,
+            message_id=stats_message.id,
         )
         return True
 
@@ -177,61 +206,57 @@ class LeaderboardService:
         await self.bot_state.set_value(state_key, str(current_leader.user_id))
         return True
 
-    async def _upsert_message(
+    async def _get_existing_message(
         self,
         *,
         guild_id: int,
-        guild: discord.Guild,
         channel: discord.TextChannel,
         message_key: str,
-        leaderboard_type: str,
-        rendered,
-    ) -> None:
+    ) -> discord.Message | None:
         ref = await self.leaderboards.get_message(guild_id, message_key)
-        message: discord.Message | None = None
-        message_channel: discord.TextChannel | None = channel
-        if ref is not None:
-            if ref.channel_id != channel.id:
-                candidate_channel = guild.get_channel(ref.channel_id)
-                if candidate_channel is None:
-                    try:
-                        candidate_channel = await guild.fetch_channel(ref.channel_id)
-                    except (discord.NotFound, discord.HTTPException):
-                        candidate_channel = None
-                if isinstance(candidate_channel, discord.TextChannel):
-                    message_channel = candidate_channel
-            try:
-                if message_channel is not None:
-                    message = await message_channel.fetch_message(ref.message_id)
-            except (discord.NotFound, discord.HTTPException, KeyError):
-                log.info(
-                    "Referenced leaderboard message missing for guild_id=%s key=%s channel_id=%s message_id=%s; creating replacement.",
-                    guild_id,
-                    message_key,
-                    ref.channel_id,
-                    ref.message_id,
-                )
-                message = None
-        if message is None:
-            if ref is None:
-                log.info(
-                    "Creating leaderboard message because no ref exists for guild_id=%s key=%s",
-                    guild_id,
-                    message_key,
-                )
-            message = await channel.send(**rendered.send_kwargs())
-        else:
+        if ref is None:
             log.info(
-                "Updating existing leaderboard message_id=%s guild_id=%s key=%s",
-                message.id,
+                "No leaderboard ref exists for guild_id=%s key=%s",
                 guild_id,
                 message_key,
             )
-            await message.edit(**rendered.edit_kwargs())
+            return None
+
+        if ref.channel_id != channel.id:
+            log.info(
+                "Leaderboard ref channel mismatch for guild_id=%s key=%s ref_channel_id=%s configured_channel_id=%s. Recreating pair in configured channel.",
+                guild_id,
+                message_key,
+                ref.channel_id,
+                channel.id,
+            )
+            return None
+
+        try:
+            return await channel.fetch_message(ref.message_id)
+        except (discord.NotFound, discord.HTTPException, KeyError):
+            log.info(
+                "Referenced leaderboard message missing for guild_id=%s key=%s channel_id=%s message_id=%s; creating replacement.",
+                guild_id,
+                message_key,
+                ref.channel_id,
+                ref.message_id,
+            )
+            return None
+
+    async def _upsert_ref(
+        self,
+        *,
+        guild_id: int,
+        message_key: str,
+        leaderboard_type: str,
+        channel_id: int,
+        message_id: int,
+    ) -> None:
         await self.leaderboards.upsert_message(
             guild_id=guild_id,
             message_key=message_key,
             leaderboard_type=leaderboard_type,
-            channel_id=channel.id,
-            message_id=message.id,
+            channel_id=channel_id,
+            message_id=message_id,
         )

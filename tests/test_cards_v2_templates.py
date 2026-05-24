@@ -7,6 +7,7 @@ from rob.services.leaderboard_status import LeaderboardStatus
 from rob.services.send_display import build_sub_display
 from rob.ui.cards.leader_alert import leader_alert_card
 from rob.ui.cards.leaderboard import leaderboard_card, leaderboard_stats_card
+from rob.ui.cards.privacy import privacy_card
 from rob.ui.cards.send import send_card
 from rob.ui.copy import throne_setup_steps
 from rob.ui.theme import COLOR_LEADER_ALERT, COLOR_SEND
@@ -233,3 +234,20 @@ def test_leader_alert_card_shape_and_color():
     ]
     assert "👑 NEW LEADER ALERT!" in all_text
     assert msg.view.children[0].accent_color == COLOR_LEADER_ALERT
+
+
+def test_privacy_card_uses_multiple_containers_and_policy_language():
+    msg = privacy_card()
+    assert len(msg.view.children) >= 4
+    for container in msg.view.children:
+        assert type(container).__name__ == "Container"
+    all_text = "\n".join(
+        str(getattr(item, "content", ""))
+        for container in msg.view.children
+        for item in getattr(container, "children", [])
+    )
+    assert "Rob Privacy Notice" in all_text
+    assert "What Data Rob Collects" in all_text
+    assert "How That Data Is Used" in all_text
+    assert "Data Minimization Commitment" in all_text
+    assert "Rob and Pat will only use data that is required for Rob features and operations." in all_text

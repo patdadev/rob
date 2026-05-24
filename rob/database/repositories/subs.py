@@ -104,6 +104,19 @@ class SubsRepository:
             return None
         return _build_sub(row)
 
+    async def list_for_guild(self, guild_id: int) -> list[Sub]:
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT *
+                FROM subs
+                WHERE guild_id = $1
+                ORDER BY registered_at ASC, lower(send_name) ASC
+                """,
+                guild_id,
+            )
+        return [_build_sub(row) for row in rows]
+
     async def count(self, guild_id: int) -> int:
         async with self.database.acquire() as connection:
             value = await connection.fetchval(

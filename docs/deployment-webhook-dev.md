@@ -15,6 +15,7 @@ That installer:
 - creates `/opt/rob-webhook/deploy-webhook-dev.sh`
 - installs the deploy sudoers entry
 - writes a webhook-only `.env` template if one does not already exist
+- runs migrations + DB checks before first service start (when real env values exist)
 
 ## Target
 
@@ -63,4 +64,8 @@ Add these secrets:
 - `WEBHOOK_DEV_SSH_KEY`
 - `WEBHOOK_DEV_PORT`
 
-Then run the manual workflow `Deploy Webhook Dev`.
+`Deploy Webhook Dev` is now automated:
+
+- runs on `push` to `main` when webhook/shared runtime files change
+- supports manual `workflow_dispatch` with optional `deploy_ref` override
+- deploys the exact commit SHA by default (`DEPLOY_REF=${{ github.sha }}`)

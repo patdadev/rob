@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/PlainStack2/rob-dev.git}"
-DEPLOY_BRANCH="${DEPLOY_BRANCH:-rebuild/dev-online-services}"
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 APP_ROOT="${APP_ROOT:-/opt/rob-webhook}"
 APP_DIR="${APP_DIR:-${APP_ROOT}/app}"
 SERVICE_NAME="${SERVICE_NAME:-rob-webhook-dev.service}"
@@ -188,7 +188,7 @@ maybe_enable_and_start() {
   fi
 
   log "Running database check"
-  run_as_deploy bash -lc "cd '${APP_DIR}' && set -a && source .env && set +a && PYTHONPATH=. .venv/bin/python -m scripts.check_db"
+  run_as_deploy bash -lc "cd '${APP_DIR}' && set -a && source .env && set +a && PYTHONPATH=. .venv/bin/python scripts/run_migrations.py && PYTHONPATH=. .venv/bin/python -m scripts.check_db"
 
   log "Starting ${SERVICE_NAME}"
   systemctl restart "${SERVICE_NAME}"

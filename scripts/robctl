@@ -27,7 +27,13 @@ Usage:
   robctl maintenance status|on|off
   robctl queue status|flush
   robctl leaderboard refresh|adopt|status|preview|diagnose|repair-send-dommes [--dry-run]
-  robctl throne dommes|subs|status|invalidate-test-sends
+  robctl throne refresh|status|dommes|list|search|subs|invalidate-test-sends
+  robctl throne webhook refresh <user_ref>
+  robctl throne addsend <user_ref> <amount> [--sub-name NAME] [--method METHOD] [--currency CODE] [--note TEXT]
+  robctl throne addsub <user_ref> <name>
+  robctl throne adddomme <user_ref> <throne_url_or_handle>
+  robctl inactivity status|on|off
+  robctl blacklist add|remove|list
   robctl sends list [--status pending|posted|failed|queued_maintenance|all] [--guild-id ID]
   robctl sends backfill-public-ids
   robctl count status [--guild-id ID]
@@ -89,7 +95,7 @@ case "${cmd}" in
         ;;
     esac
     ;;
-  maintenance|queue|leaderboard|count|throne|sends)
+  maintenance|queue|leaderboard|count|throne|sends|inactivity|blacklist)
     run_ops "${cmd}" "$@"
     ;;
   *)

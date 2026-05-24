@@ -1,7 +1,27 @@
 name: Deploy Bot Dev
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/bot/**"
+      - "rob/**"
+      - "scripts/**"
+      - "deploy/scripts/deploy-bot-dev.sh"
+      - "deploy/systemd/rob-bot-dev.service"
+      - "requirements.txt"
+      - "requirements-dev.txt"
+      - ".github/workflows/deploy-bot-dev.yml"
   workflow_dispatch:
+    inputs:
+      deploy_ref:
+        description: "Branch, tag, or commit SHA to deploy"
+        required: false
+        default: "main"
+
+concurrency:
+  group: deploy-bot-dev
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -14,4 +34,6 @@ jobs:
           username: ${{ secrets.BOT_DEV_USER }}
           key: ${{ secrets.BOT_DEV_SSH_KEY }}
           port: ${{ secrets.BOT_DEV_PORT }}
-          script: /opt/rob-bot/deploy-bot-dev.sh
+          script: |
+            set -e
+            DEPLOY_BRANCH=main DEPLOY_REF="${{ github.event_name == 'workflow_dispatch' && inputs.deploy_ref || github.sha }}" /opt/rob-bot/deploy-bot-dev.sh

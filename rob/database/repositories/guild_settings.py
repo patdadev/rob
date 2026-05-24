@@ -17,6 +17,7 @@ def _build_guild_settings(row: Record) -> GuildSettings:
         domme_role_id=row["domme_role_id"],
         sub_role_id=row["sub_role_id"],
         mod_role_id=row["mod_role_id"],
+        inactive_role_id=row["inactive_role_id"] if "inactive_role_id" in row else None,
         warn_log_channel_id=row["warn_log_channel_id"],
         carlbot_user_id=row["carlbot_user_id"],
         created_at=row["created_at"],

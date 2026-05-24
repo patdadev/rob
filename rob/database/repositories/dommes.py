@@ -71,6 +71,35 @@ class DommesRepository:
             return None
         return _build_domme(row)
 
+    async def list_for_guild(self, guild_id: int) -> list[Domme]:
+        async with self.database.acquire() as connection:
+            rows = await connection.fetch(
+                """
+                SELECT *
+                FROM dommes
+                WHERE guild_id = $1
+                ORDER BY registered_at ASC, discord_user_id ASC
+                """,
+                guild_id,
+            )
+        return [_build_domme(row) for row in rows]
+
+    async def remove_by_user_id(self, guild_id: int, discord_user_id: int) -> Domme | None:
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                DELETE FROM dommes
+                WHERE guild_id = $1
+                AND discord_user_id = $2
+                RETURNING *
+                """,
+                guild_id,
+                discord_user_id,
+            )
+        if row is None:
+            return None
+        return _build_domme(row)
+
     async def count(self, guild_id: int) -> int:
         async with self.database.acquire() as connection:
             value = await connection.fetchval(

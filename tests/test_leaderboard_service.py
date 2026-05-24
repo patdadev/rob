@@ -86,12 +86,14 @@ class _FakeLeaderboardsRepo:
     def __init__(self):
         self.refs = {}
         self.upserts = []
+        self.top_domme_limits: list[int] = []
         self.current_leader = LeaderboardEntry(label='@Domme', user_id=1, total_cents=1000, send_count=2)
 
     async def get_summary(self, *_args, **_kwargs):
         return LeaderboardSummary(total_cents=1000, send_count=2, domme_count=1, sub_count=1, unclaimed_send_count=0, unclaimed_total_cents=0)
 
     async def get_top_dommes(self, *_args, **_kwargs):
+        self.top_domme_limits.append(int(_kwargs.get("limit", 0)))
         return [LeaderboardEntry(label='@Domme', user_id=1, total_cents=1000, send_count=2)]
 
     async def get_current_leader(self, *_args, **_kwargs):
@@ -114,6 +116,7 @@ def _service(
     repo: _FakeLeaderboardsRepo | None = None,
     state: _FakeBotStateRepo | None = None,
     maintenance: _FakeMaintenance | None = None,
+    leaderboard_limit: int = 10,
 ) -> LeaderboardService:
     repo = repo or _FakeLeaderboardsRepo()
     state = state or _FakeBotStateRepo()
@@ -124,7 +127,7 @@ def _service(
         leaderboards=repo,
         bot_state=state,
         maintenance=maintenance,
-        leaderboard_limit=10,
+        leaderboard_limit=leaderboard_limit,
         include_test_sends=False,
         test_gifter_usernames=("marie_123",),
         owner_test_user_id=None,
@@ -202,6 +205,49 @@ def test_refresh_posts_new_when_referenced_message_missing(monkeypatch: pytest.M
     assert len(channel.sends) == 2
     keys = [u["message_key"] for u in repo.upserts]
     assert keys == ["leaderboard", "leaderboard_stats"]
+
+
+def test_refresh_recreates_full_pair_when_one_ref_is_missing(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.leaderboard_service.discord.TextChannel", _FakeChannel)
+    channel = _FakeChannel()
+    existing_main = _FakeMessage(101)
+    channel._messages[101] = existing_main
+    repo = _FakeLeaderboardsRepo()
+    repo.refs[(1, "leaderboard")] = SimpleNamespace(message_id=101, channel_id=channel.id)
+    service = _service(channel, repo=repo)
+
+    asyncio.run(service.refresh_guild(1))
+
+    assert existing_main.edits == []
+    assert len(channel.sends) == 2
+    keys = [u["message_key"] for u in repo.upserts]
+    assert keys == ["leaderboard", "leaderboard_stats"]
+
+
+def test_refresh_recreates_full_pair_when_ref_channel_mismatches(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.leaderboard_service.discord.TextChannel", _FakeChannel)
+    channel = _FakeChannel()
+    repo = _FakeLeaderboardsRepo()
+    repo.refs[(1, "leaderboard")] = SimpleNamespace(message_id=101, channel_id=888)
+    repo.refs[(1, "leaderboard_stats")] = SimpleNamespace(message_id=102, channel_id=888)
+    service = _service(channel, repo=repo)
+
+    asyncio.run(service.refresh_guild(1))
+
+    assert len(channel.sends) == 2
+    assert repo.refs[(1, "leaderboard")].channel_id == channel.id
+    assert repo.refs[(1, "leaderboard_stats")].channel_id == channel.id
+
+
+def test_refresh_uses_top_10_limit_for_public_leaderboard(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.leaderboard_service.discord.TextChannel", _FakeChannel)
+    channel = _FakeChannel()
+    repo = _FakeLeaderboardsRepo()
+    service = _service(channel, repo=repo, leaderboard_limit=25)
+
+    asyncio.run(service.refresh_guild(1))
+
+    assert repo.top_domme_limits == [10]
 
 
 def test_leader_alert_posts_when_leader_changes(monkeypatch: pytest.MonkeyPatch):
