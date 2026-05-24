@@ -28,9 +28,9 @@ When maintenance mode is disabled, the bot queue worker:
 ## Commands
 
 ```bash
-scripts/robctl maintenance status
-scripts/robctl maintenance on "reason"
-scripts/robctl maintenance off
-scripts/robctl queue status
-scripts/robctl queue flush
+scripts/rob maintenance status
+scripts/rob maintenance on "reason"
+scripts/rob maintenance off
+scripts/rob queue status
+scripts/rob queue flush
 ```

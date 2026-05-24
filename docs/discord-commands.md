@@ -35,7 +35,7 @@ Rob keeps Discord commands user-facing and narrow.
 
 Rob does not expose broad admin dashboards, event control commands, or deployment actions in Discord.
 
-Maintenance mode, queue management, service restarts, database checks, and leaderboard refresh requests should be handled from the backend with `scripts/robctl`.
+Maintenance mode, queue management, service restarts, database checks, and leaderboard refresh requests should be handled from the backend with `scripts/rob`.
 
 ## Registration Notes
 
@@ -47,7 +47,7 @@ Maintenance mode, queue management, service restarts, database checks, and leade
 
 - `/leaderboard` is now a **non-ephemeral** stats response and supports viewing another member with the optional `user` argument.
 - `/leaderboard` renders Dom/me and/or Sub sections based on the target member's configured server roles (`domme_role_id` and `sub_role_id`).
-- Public leaderboard channel messages are updated by the send queue and `robctl leaderboard refresh`, not by `/leaderboard`.
+- Public leaderboard channel messages are updated by the send queue and `rob leaderboard refresh`, not by `/leaderboard`.
 - `/sendrequest` is restricted to users with the configured `sub_role_id` in `guild_settings`.
 - `/report` opens a modal for Rob issue reports, includes an optional in-form file upload, and requires acknowledgement that the report is about Rob (not member moderation reports).
 - `/privacy` posts a multi-container privacy notice that explains data collection scope, usage, and Rob's data-minimization commitment.

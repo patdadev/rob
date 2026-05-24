@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+ROB_BOT_SERVICE="${ROB_BOT_SERVICE:-rob-bot-dev.service}"
+ROB_WEBHOOK_SERVICE="${ROB_WEBHOOK_SERVICE:-rob-webhook-dev.service}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+
+if [[ -f "${APP_ROOT}/.env" ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "${APP_ROOT}/.env"
+  set +a
+fi
+
+export PYTHONPATH="${PYTHONPATH:-${APP_ROOT}}"
+
+usage() {
+  cat <<'EOF'
+Rob Control
+Usage:
+  rob status
+  rob logs [bot|webhook]
+  rob restart [bot|webhook|all]
+  rob maintenance status|on|off
+  rob queue status|flush
+  rob leaderboard refresh|adopt|status|preview|diagnose|repair-send-dommes [--dry-run]
+  rob throne refresh|status|dommes|list|search|subs|invalidate-test-sends
+  rob throne webhook refresh <user_ref>
+  rob throne addsend <user_ref> <amount> [--sub-name NAME] [--method METHOD] [--currency CODE] [--note TEXT]
+  rob throne addsub <user_ref> <name>
+  rob throne adddomme <user_ref> <throne_url_or_handle>
+  rob inactivity status|on|off
+  rob blacklist add|remove|list
+  rob sends list [--status pending|posted|failed|queued_maintenance|all] [--guild-id ID]
+  rob sends backfill-public-ids
+  rob count status [--guild-id ID]
+  rob count set NUMBER [--guild-id ID]
+
+Legacy compatibility:
+  robctl ...   -> same command surface
+
+Run `rob <command> --help` for details.
+EOF
+}
+
+run_ops() {
+  "${PYTHON_BIN}" -m scripts.ops "$@"
+}
+
+service_name() {
+  case "${1:-bot}" in
+    bot) printf '%s\n' "${ROB_BOT_SERVICE}" ;;
+    webhook) printf '%s\n' "${ROB_WEBHOOK_SERVICE}" ;;
+    *) return 1 ;;
+  esac
+}
+
+cmd="${1:-}"
+if [[ -z "${cmd}" ]]; then
+  usage
+  exit 0
+fi
+shift || true
+
+case "${cmd}" in
+  status)
+    run_ops status
+    if command -v systemctl >/dev/null 2>&1; then
+      echo "bot_service=$(systemctl is-active "${ROB_BOT_SERVICE}" 2>/dev/null || true)"
+      echo "webhook_service=$(systemctl is-active "${ROB_WEBHOOK_SERVICE}" 2>/dev/null || true)"
+    fi
+    ;;
+  logs)
+    target="${1:-bot}"
+    service="$(service_name "${target}")"
+    exec journalctl -u "${service}" -n 100 -f
+    ;;
+  restart)
+    target="${1:-all}"
+    if ! command -v systemctl >/dev/null 2>&1; then
+      echo "systemctl is not available on this machine." >&2
+      exit 1
+    fi
+    case "${target}" in
+      bot|webhook)
+        sudo systemctl restart "$(service_name "${target}")"
+        ;;
+      all)
+        sudo systemctl restart "${ROB_WEBHOOK_SERVICE}"
+        sudo systemctl restart "${ROB_BOT_SERVICE}"
+        ;;
+      *)
+        echo "Unknown restart target: ${target}" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  maintenance|queue|leaderboard|count|throne|sends|inactivity|blacklist)
+    run_ops "${cmd}" "$@"
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

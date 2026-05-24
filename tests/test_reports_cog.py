@@ -120,6 +120,7 @@ def test_report_modal_upload_is_forwarded_when_present():
     class _FakeAttachment:
         url = "https://example.test/screenshot.png"
 
+        async def to_file(self, **_kwargs):
         async def to_file(self):
             return object()
 
@@ -133,3 +134,37 @@ def test_report_modal_upload_is_forwarded_when_present():
     )
 
     assert "files" in bot.destination.messages[0]
+
+
+def test_report_modal_upload_falls_back_to_attachment_read():
+    bot = _FakeBot()
+    cog = ReportsCog(bot)
+    interaction = _FakeInteraction()
+
+    async def _destination(_interaction):
+        return bot.destination
+
+    cog._resolve_destination = _destination  # type: ignore[method-assign]
+
+    class _FakeAttachment:
+        filename = "screenshot.png"
+        description = "Counting bug screenshot"
+        url = "https://example.test/screenshot.png"
+
+        async def to_file(self, **_kwargs):
+            raise TypeError("older attachment path")
+
+        async def read(self, **_kwargs):
+            return b"image-bytes"
+
+    asyncio.run(
+        cog.submit_report(
+            interaction,
+            issue_text="counting issue",
+            acknowledgement="YES",
+            attachment=_FakeAttachment(),
+        )
+    )
+
+    assert "files" in bot.destination.messages[0]
+    assert bot.destination.messages[0]["files"][0].filename == "screenshot.png"

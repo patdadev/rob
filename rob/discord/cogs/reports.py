@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -91,6 +92,43 @@ class ReportsCog(commands.Cog):
         owner = app_info.owner
         return owner
 
+    async def _materialize_attachment(
+        self,
+        attachment: discord.Attachment | None,
+    ) -> discord.File | None:
+        if attachment is None:
+            return None
+
+        try:
+            return await attachment.to_file(use_cached=True)
+        except TypeError:
+            # Some test doubles or alternate attachment implementations may not
+            # accept the newer keyword-only signature.
+            try:
+                return await attachment.to_file()
+            except (AttributeError, TypeError):
+                pass
+            except discord.HTTPException:
+                pass
+        except discord.HTTPException:
+            pass
+
+        filename = getattr(attachment, "filename", "report-upload")
+        description = getattr(attachment, "description", None)
+        for use_cached in (False, True):
+            try:
+                data = await attachment.read(use_cached=use_cached)
+            except TypeError:
+                try:
+                    data = await attachment.read()
+                except (AttributeError, TypeError, discord.HTTPException):
+                    continue
+            except (AttributeError, discord.HTTPException):
+                continue
+            return discord.File(io.BytesIO(data), filename=filename, description=description)
+
+        return None
+
     async def submit_report(
         self,
         interaction: discord.Interaction,
@@ -137,12 +175,7 @@ class ReportsCog(commands.Cog):
             submitted_unix=int(submitted_at.timestamp()),
         )
 
-        file_obj: discord.File | None = None
-        if attachment is not None:
-            try:
-                file_obj = await attachment.to_file()
-            except discord.HTTPException:
-                file_obj = None
+        file_obj = await self._materialize_attachment(attachment)
 
         try:
             send_kwargs = report_card.send_kwargs()
