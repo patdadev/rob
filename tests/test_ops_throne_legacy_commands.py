@@ -118,8 +118,9 @@ def test_throne_addsend_records_manual_send(capsys):
 
     asyncio.run(handle_throne(ctx, args))
     out = capsys.readouterr().out
-    assert "recorded=true" in out
-    assert "public_send_id=ROB-000088-ABCDEF12" in out
+    assert "Throne Add Send" in out
+    assert "Recorded: true" in out
+    assert "Public Send ID: ROB-000088-ABCDEF12" in out
 
 
 def test_throne_webhook_refresh_rotates_secret(capsys, monkeypatch):
@@ -134,9 +135,9 @@ def test_throne_webhook_refresh_rotates_secret(capsys, monkeypatch):
 
     asyncio.run(handle_throne(ctx, args))
     out = capsys.readouterr().out
-    assert "rotated=true" in out
-    assert "creator_id=creator-1" in out
-    assert "webhook_url=https://rob.example.test/throne/webhook/creator-1/" in out
+    assert "Throne Webhook Refresh" in out
+    assert "Rotated: true" in out
+    assert "Webhook URL: https://rob.example.test/throne/webhook/creator-1/" in out
 
 
 def test_throne_adddomme_registers_via_service(capsys):
@@ -150,5 +151,6 @@ def test_throne_adddomme_registers_via_service(capsys):
 
     asyncio.run(handle_throne(ctx, args))
     out = capsys.readouterr().out
-    assert "domme_id=7" in out
-    assert "creator_id=creator-1" in out
+    assert "Throne Add Dom/me" in out
+    assert "Creator ID: creator-1" in out
+    assert "Handle: @pat" in out

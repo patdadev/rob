@@ -69,4 +69,6 @@ def test_leaderboard_adopt_writes_message_refs(capsys):
         },
     ]
     output = capsys.readouterr().out
-    assert "leaderboard_adopted=true" in output
+    assert "Leaderboard Adopt" in output
+    assert "Leaderboard Message ID: 333" in output
+    assert "Stats Message ID: 444" in output

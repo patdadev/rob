@@ -67,7 +67,8 @@ def test_inactivity_parser_and_toggle(capsys):
     asyncio.run(handle_inactivity(ctx, args))
 
     out = capsys.readouterr().out
-    assert "enabled=true" in out
+    assert "Inactivity" in out
+    assert "Enabled: true" in out
 
 
 def test_throne_status_and_dommes_render(capsys):
@@ -81,10 +82,13 @@ def test_throne_status_and_dommes_render(capsys):
     status_args = SimpleNamespace(throne_command="status", guild_id=1, handle="pat")
     asyncio.run(handle_throne(ctx, status_args))
     status_out = capsys.readouterr().out
-    assert "found=true" in status_out
-    assert "creator_id=creator-1" in status_out
+    assert "Throne Status" in status_out
+    assert "Found: true" in status_out
+    assert "Creator ID: creator-1" in status_out
 
     dommes_args = SimpleNamespace(throne_command="dommes", guild_id=1)
     asyncio.run(handle_throne(ctx, dommes_args))
     dommes_out = capsys.readouterr().out
-    assert "handle=@pat" in dommes_out
+    assert "Throne Dom/mes" in dommes_out
+    assert "@pat" in dommes_out
+    assert "Creator ID: creator-1" in dommes_out

@@ -87,7 +87,8 @@ alias rob-sends-backfill='scripts/rob sends backfill-public-ids'
 - `robctl` remains available as a compatibility shim that forwards to `rob`.
 - Deploy scripts now run `scripts/run_migrations.py` before `scripts/check_db.py`, and `check_db` validates required schema columns so deploys fail fast on schema drift.
 - `leaderboard adopt` lets you attach existing Discord message IDs to `leaderboard_message` refs (`leaderboard` + `leaderboard_stats`) so refresh/edit paths can resume without reposting.
-- `guild scan` reads current `guild_settings` channel and role fields, attempts a live Discord guild scan with the bot token, and prints suggested `rob guild set-channel ...` / `rob guild set-role ...` commands for missing fields.
+- `guild scan` reads current `guild_settings` channel and role fields, prefers the already-running bot session for live Discord guild data, and falls back to direct Discord REST only if the local bot-ops endpoint is unavailable.
+- The running bot exposes a local-only ops bridge on `ROB_OPS_HOST` / `ROB_OPS_PORT` (`127.0.0.1:8811` by default). Set `ROB_OPS_SECRET` in `.env` if you want the bridge to require an auth header from `rob`.
 - `guild set-channel` updates one whitelisted `guild_settings` channel field in PostgreSQL and refreshes `updated_at`.
 - `guild set-role` updates one whitelisted `guild_settings` role field in PostgreSQL and refreshes `updated_at`.
 - `maintenance on` now requests a leaderboard refresh automatically so the main leaderboard status switches to `🟠 Paused (Maintenance)` on the next bot refresh cycle.

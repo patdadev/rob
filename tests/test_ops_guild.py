@@ -3,7 +3,14 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from scripts.ops import LiveGuildChannel, LiveGuildRole, LiveGuildScanResult, build_parser, handle_guild
+from scripts.ops import (
+    LiveGuildChannel,
+    LiveGuildRole,
+    LiveGuildScanResult,
+    build_parser,
+    fetch_live_guild_scan,
+    handle_guild,
+)
 
 
 class _FakeGuildSettings:
@@ -94,6 +101,7 @@ def test_guild_scan_reports_suggested_commands(capsys, monkeypatch):
                 LiveGuildRole(role_id=88, name="Dom/me"),
                 LiveGuildRole(role_id=99, name="Sub"),
             ),
+            source="bot-session",
         )
 
     monkeypatch.setattr("scripts.ops.fetch_live_guild_scan", _fake_live_scan)
@@ -104,10 +112,14 @@ def test_guild_scan_reports_suggested_commands(capsys, monkeypatch):
 
     out = capsys.readouterr().out
     assert "Guild Scan" in out
-    assert "leaderboard_channel_id=22" in out
-    assert "send_track_channel_id_suggested=33" in out
+    assert "Live Source" in out
+    assert "Leaderboard Channel:" in out
+    assert "current: #leaderboard (22)" in out
+    assert "Send Tracker Channel:" in out
+    assert "suggested: #send-tracker (33)" in out
     assert "rob guild set-channel --guild-id 1 --field send_track_channel_id --channel-id 33" in out
-    assert "domme_role_id_suggested=88" in out
+    assert "Dom/me Role:" in out
+    assert "suggested: @Dom/me (88)" in out
     assert "rob guild set-role --guild-id 1 --field domme_role_id --role-id 88" in out
 
 
@@ -126,8 +138,8 @@ def test_guild_set_channel_updates_db(capsys):
 
     assert guild_settings.channel_calls == [(1, "leaderboard_channel_id", 222)]
     out = capsys.readouterr().out
-    assert "updated=true" in out
-    assert "field=leaderboard_channel_id" in out
+    assert "Guild Channel Updated" in out
+    assert "Field: leaderboard_channel_id" in out
 
 
 def test_guild_set_role_updates_db(capsys):
@@ -145,5 +157,50 @@ def test_guild_set_role_updates_db(capsys):
 
     assert guild_settings.role_calls == [(1, "domme_role_id", 444)]
     out = capsys.readouterr().out
-    assert "updated=true" in out
-    assert "field=domme_role_id" in out
+    assert "Guild Role Updated" in out
+    assert "Field: domme_role_id" in out
+
+
+def test_live_guild_scan_prefers_running_bot_session(monkeypatch):
+    async def _fake_bot_scan(guild_id: int):
+        assert guild_id == 1
+        return LiveGuildScanResult(
+            guild_id=1,
+            guild_name="Rob Test Server",
+            channels=(),
+            roles=(),
+            source="bot-session",
+        )
+
+    async def _fake_rest_scan(_guild_id: int):
+        raise AssertionError("REST fallback should not run when bot session scan succeeds.")
+
+    monkeypatch.setattr("scripts.ops.fetch_live_guild_scan_from_bot_ops", _fake_bot_scan)
+    monkeypatch.setattr("scripts.ops.fetch_live_guild_scan_from_discord_rest", _fake_rest_scan)
+
+    result = asyncio.run(fetch_live_guild_scan(1))
+
+    assert result.source == "bot-session"
+
+
+def test_live_guild_scan_falls_back_to_rest_when_bot_endpoint_is_unavailable(monkeypatch):
+    async def _fake_bot_scan(guild_id: int):
+        assert guild_id == 1
+        return None
+
+    async def _fake_rest_scan(guild_id: int):
+        assert guild_id == 1
+        return LiveGuildScanResult(
+            guild_id=1,
+            guild_name="Rob Test Server",
+            channels=(),
+            roles=(),
+            source="discord-rest",
+        )
+
+    monkeypatch.setattr("scripts.ops.fetch_live_guild_scan_from_bot_ops", _fake_bot_scan)
+    monkeypatch.setattr("scripts.ops.fetch_live_guild_scan_from_discord_rest", _fake_rest_scan)
+
+    result = asyncio.run(fetch_live_guild_scan(1))
+
+    assert result.source == "discord-rest"

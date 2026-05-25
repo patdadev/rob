@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+resolve_script_path() {
+  local source_path="${BASH_SOURCE[0]}"
+  while [[ -L "${source_path}" ]]; do
+    local source_dir
+    source_dir="$(cd -P "$(dirname "${source_path}")" && pwd)"
+    source_path="$(readlink "${source_path}")"
+    [[ "${source_path}" != /* ]] && source_path="${source_dir}/${source_path}"
+  done
+  printf '%s\n' "${source_path}"
+}
+
+SCRIPT_PATH="$(resolve_script_path)"
+SCRIPT_DIR="$(cd -P "$(dirname "${SCRIPT_PATH}")" && pwd)"
 APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 ROB_BOT_SERVICE="${ROB_BOT_SERVICE:-rob-bot-dev.service}"
@@ -16,6 +28,10 @@ if [[ -f "${APP_ROOT}/.env" ]]; then
 fi
 
 export PYTHONPATH="${PYTHONPATH:-${APP_ROOT}}"
+
+if [[ ":${PYTHONPATH}:" != *":${APP_ROOT}:"* ]]; then
+  export PYTHONPATH="${APP_ROOT}:${PYTHONPATH}"
+fi
 
 usage() {
   cat <<'EOF'
@@ -72,8 +88,11 @@ case "${cmd}" in
   status)
     run_ops status
     if command -v systemctl >/dev/null 2>&1; then
-      echo "bot_service=$(systemctl is-active "${ROB_BOT_SERVICE}" 2>/dev/null || true)"
-      echo "webhook_service=$(systemctl is-active "${ROB_WEBHOOK_SERVICE}" 2>/dev/null || true)"
+      bot_service="$(systemctl is-active "${ROB_BOT_SERVICE}" 2>/dev/null || true)"
+      webhook_service="$(systemctl is-active "${ROB_WEBHOOK_SERVICE}" 2>/dev/null || true)"
+      echo "Services:"
+      echo "- Bot Service: ${bot_service}"
+      echo "- Webhook Service: ${webhook_service}"
     fi
     ;;
   logs)
@@ -90,10 +109,16 @@ case "${cmd}" in
     case "${target}" in
       bot|webhook)
         sudo systemctl restart "$(service_name "${target}")"
+        echo "Rob Control | Restart"
+        echo "- Target: ${target}"
+        echo "- Result: restarted"
         ;;
       all)
         sudo systemctl restart "${ROB_WEBHOOK_SERVICE}"
         sudo systemctl restart "${ROB_BOT_SERVICE}"
+        echo "Rob Control | Restart"
+        echo "- Target: all"
+        echo "- Result: restarted"
         ;;
       *)
         echo "Unknown restart target: ${target}" >&2

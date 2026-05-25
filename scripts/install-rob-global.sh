@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+resolve_script_path() {
+  local source_path="${BASH_SOURCE[0]}"
+  while [[ -L "${source_path}" ]]; do
+    local source_dir
+    source_dir="$(cd -P "$(dirname "${source_path}")" && pwd)"
+    source_path="$(readlink "${source_path}")"
+    [[ "${source_path}" != /* ]] && source_path="${source_dir}/${source_path}"
+  done
+  printf '%s\n' "${source_path}"
+}
+
+SCRIPT_PATH="$(resolve_script_path)"
+SCRIPT_DIR="$(cd -P "$(dirname "${SCRIPT_PATH}")" && pwd)"
 APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SOURCE_ROB="${APP_ROOT}/scripts/rob"
 SOURCE_ROBCTL="${APP_ROOT}/scripts/robctl"

@@ -31,6 +31,7 @@ from rob.discord.cogs.reports import ReportsCog
 from rob.discord.cogs.sends import SendsCog
 from rob.discord.cogs.warn_relay import WarnRelayCog
 from rob.services.counting_service import CountingService
+from rob.services.bot_ops_server import BotOpsServer
 from rob.services.inactivity_service import InactivityService
 from rob.services.leaderboard_service import LeaderboardService
 from rob.services.maintenance_service import MaintenanceService
@@ -136,6 +137,12 @@ class RobBot(commands.Bot):
             counting_service=self.counting_service,
             test_gifter_usernames=self.settings.throne_test_gifter_usernames,
         )
+        self.bot_ops_server = BotOpsServer(
+            bot=self,
+            host=self.settings.rob_ops_host,
+            port=self.settings.rob_ops_port,
+            secret=self.settings.rob_ops_secret,
+        )
 
         await self.add_cog(RegistrationCog(self))
         await self.add_cog(SendsCog(self))
@@ -161,6 +168,7 @@ class RobBot(commands.Bot):
             log.info("Synced %s global command(s).", len(synced))
 
         await self.send_queue_service.start()
+        await self.bot_ops_server.start()
 
     async def _global_blacklist_interaction_check(
         self,
@@ -180,6 +188,8 @@ class RobBot(commands.Bot):
         log.info("%s is online as %s.", self.settings.bot_name, self.user)
 
     async def close(self) -> None:
+        if hasattr(self, "bot_ops_server"):
+            await self.bot_ops_server.stop()
         if hasattr(self, "send_queue_service"):
             await self.send_queue_service.stop()
         if hasattr(self, "throne_service"):
