@@ -247,7 +247,7 @@ def test_privacy_card_uses_multiple_containers_and_policy_language():
         for item in getattr(container, "children", [])
     )
     assert "Rob Privacy Notice" in all_text
-    assert "What Data Rob Collects" in all_text
-    assert "How That Data Is Used" in all_text
-    assert "Data Minimization Commitment" in all_text
-    assert "Rob and Pat will only use data that is required for Rob features and operations." in all_text
+    assert "Information Collected or Received" in all_text
+    assert "Purpose of Processing" in all_text
+    assert "Data Minimisation and Third-Party Services" in all_text
+    assert "Privacy Notice valid as of 25/05/2026" in all_text

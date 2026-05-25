@@ -57,3 +57,5 @@ This patch intentionally preserves split webhook/bot services and PostgreSQL-onl
 - 2026-05-23: NEW LEADER ALERT posting is now wired live with bot-state dedupe and test-send exclusion.
 - 2026-05-23: Leaderboard and stats cards now use explicit separator components, include registered zero-send Dom/mes, and show dynamic maintenance/live status on the main board.
 - 2026-05-23: Public send IDs are stored in PostgreSQL and can be backfilled via `robctl sends backfill-public-ids`; public send cards still omit IDs.
+
+- 2026-05-25: `/privacy` now serves a formal, informational-only privacy notice to all users as an ephemeral Components V2 response with no role restrictions.
