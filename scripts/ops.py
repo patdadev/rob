@@ -380,6 +380,7 @@ async def create_context() -> OperationsContext:
         leaderboards=LeaderboardsRepository(database),
         guild_settings=guild_settings,
         counting=CountingRepository(database),
+        public_leaderboards=PublicLeaderboardsRepository(database),
         throne_service=throne_service,
         registration_service=registration_service,
         send_service=send_service,

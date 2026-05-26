@@ -43,3 +43,26 @@ def test_public_create_and_rotate_outputs_url(capsys):
     asyncio.run(handle_leaderboard(ctx, rotate_args))
     out2 = capsys.readouterr().out
     assert "Public Leaderboard Token Rotated" in out2
+
+
+def test_create_context_sets_public_leaderboards(monkeypatch):
+    from scripts import ops as ops_module
+
+    class _FakeSettings:
+        database_url = "postgresql://example"
+        throne_test_gifter_usernames: tuple[str, ...] = ()
+
+    class _FakeDatabase:
+        def __init__(self, _url: str):
+            self.url = _url
+
+        async def connect(self):
+            return None
+
+    monkeypatch.setattr(ops_module, "load_base_settings", lambda: _FakeSettings())
+    monkeypatch.setattr(ops_module, "configure_logging", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ops_module, "Database", _FakeDatabase)
+
+    ctx = asyncio.run(ops_module.create_context())
+
+    assert ctx.public_leaderboards is not None
