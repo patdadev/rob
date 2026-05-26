@@ -411,7 +411,10 @@ def parse_user_ref(value: str) -> int | None:
 
 
 def print_header(title: str) -> None:
+    divider = "=" * 72
+    print(divider)
     print(f"Rob Control | {title}")
+    print(divider)
 
 
 def print_field(label: str, value: object) -> None:
@@ -419,7 +422,8 @@ def print_field(label: str, value: object) -> None:
 
 
 def print_section(title: str) -> None:
-    print(f"{title}:")
+    print()
+    print(f"[{title}]")
 
 
 def print_line(text: str = "") -> None:

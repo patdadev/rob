@@ -36,32 +36,44 @@ fi
 usage() {
   cat <<'EOF'
 Rob Control
-Usage:
+========================================================================
+Core:
   rob status
   rob logs [bot|webhook]
   rob restart [bot|webhook|all]
+
+Operations:
   rob maintenance status|on|off
   rob queue status|flush
   rob leaderboard refresh|adopt|status|preview|diagnose|repair-send-dommes [--dry-run]
+  rob leaderboard public create|list|disable|enable|rotate-token|refresh-names
+  rob sends list [--status pending|posted|failed|queued_maintenance|all] [--guild-id ID]
+  rob sends backfill-public-ids
+  rob sends mark-posted SEND_ID
+  rob count status [--guild-id ID]
+  rob count set NUMBER [--guild-id ID]
+
+Guild Setup:
+  rob guild scan --guild-id ID
+  rob guild set-channel --guild-id ID --field FIELD --channel-id ID|--clear
+  rob guild set-role --guild-id ID --field FIELD --role-id ID|--clear
+
+Throne:
   rob throne refresh|status|dommes|list|search|subs|invalidate-test-sends
   rob throne webhook refresh <user_ref>
   rob throne addsend <user_ref> <amount> [--sub-name NAME] [--method METHOD] [--currency CODE] [--note TEXT]
   rob throne addsub <user_ref> <name>
   rob throne adddomme <user_ref> <throne_url_or_handle>
+
+Safety:
   rob inactivity status|on|off
   rob blacklist add|remove|list
-  rob sends list [--status pending|posted|failed|queued_maintenance|all] [--guild-id ID]
-  rob sends backfill-public-ids
-  rob guild scan --guild-id ID
-  rob guild set-channel --guild-id ID --field FIELD --channel-id ID|--clear
-  rob guild set-role --guild-id ID --field FIELD --role-id ID|--clear
-  rob count status [--guild-id ID]
-  rob count set NUMBER [--guild-id ID]
 
-Legacy compatibility:
-  robctl ...   -> same command surface
+Compatibility:
+  robctl ...  (same command surface)
 
-Run `rob <command> --help` for details.
+Tip:
+  Run `rob <command> --help` for detailed command options.
 EOF
 }
 
@@ -78,7 +90,7 @@ service_name() {
 }
 
 cmd="${1:-}"
-if [[ -z "${cmd}" ]]; then
+if [[ -z "${cmd}" || "${cmd}" == "help" || "${cmd}" == "--help" || "${cmd}" == "-h" ]]; then
   usage
   exit 0
 fi

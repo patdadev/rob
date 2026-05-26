@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from html import escape
 from typing import Any
 
@@ -116,7 +116,7 @@ async def handle_public_leaderboard(request: web.Request) -> web.Response:
         test_gifter_usernames=settings.throne_test_gifter_usernames,
         owner_test_user_id=settings.throne_test_send_leaderboard_owner_user_id,
     )
-    page_refreshed = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    page_refreshed = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     data_updated = latest.strftime("%Y-%m-%d %H:%M UTC") if latest else "No tracked sends yet"
     html = _public_leaderboard_html(title=row.title, entries=entries, data_updated_at=data_updated, page_refreshed_at=page_refreshed)
     response = web.Response(text=html, content_type="text/html")

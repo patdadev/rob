@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from rob.throne import webhooks
@@ -24,7 +24,7 @@ class _FakeLeaderboards:
         ]
 
     async def get_public_data_freshness(self, *args, **kwargs):
-        return datetime(2026, 5, 20, 12, 30, tzinfo=UTC)
+        return datetime(2026, 5, 20, 12, 30, tzinfo=timezone.utc)
 
 
 class _Req:
