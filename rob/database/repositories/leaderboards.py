@@ -253,7 +253,7 @@ class LeaderboardsRepository:
                 f"""
                 {_valid_sends_cte()}
                 SELECT
-                    MAX(COALESCE(v.discord_posted_at, v.sent_at, v.created_at, v.updated_at)) AS latest_counted_send_at
+                    MAX(COALESCE(v.discord_posted_at, v.sent_at, v.created_at)) AS latest_counted_send_at
                 FROM valid_sends v
                 """,
                 guild_id,

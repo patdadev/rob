@@ -163,3 +163,24 @@ def test_sub_stats_query_counts_by_sub_user_id_without_source_filter():
     assert params == (1, False, ["marie_123"], None, 20)
     assert summary.total_cents == 3300
     assert summary.send_count == 2
+
+
+def test_public_data_freshness_query_does_not_reference_updated_at_and_uses_existing_timestamps():
+    latest = object()
+    connection = _FakeConnection(fetchrow_row={"latest_counted_send_at": latest})
+    repo = LeaderboardsRepository(_FakeDatabase(connection))
+
+    freshness = asyncio.run(
+        repo.get_public_data_freshness(
+            1,
+            include_test_sends=False,
+            test_gifter_usernames=("marie_123",),
+            owner_test_user_id=None,
+        )
+    )
+
+    query, params = connection.fetchrow_calls[0]
+    assert "updated_at" not in query
+    assert "COALESCE(v.discord_posted_at, v.sent_at, v.created_at)" in query
+    assert params == (1, False, ["marie_123"], None)
+    assert freshness is latest
