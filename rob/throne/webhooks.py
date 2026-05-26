@@ -25,25 +25,36 @@ log = logging.getLogger(__name__)
 
 
 def _public_leaderboard_html(*, title: str, entries: list[dict[str, str]], data_updated_at: str, page_refreshed_at: str) -> str:
+    tracked_profiles = len(entries)
+    total_cents = sum(int(entry["total_cents"]) for entry in entries)
+    total_sends = sum(int(entry["send_count"]) for entry in entries)
+    total_amount = f"${(total_cents / 100):,.2f}"
+
     if entries:
-        rows = "\n".join(
+        row_items = "\n".join(
             (
-                '<article class="leaderboard-entry">'
-                f'<div class="entry-rank">#{i}</div>'
-                '<div>'
-                f'<div class="entry-name">{escape(e["name"])}</div>'
-                '<div class="entry-meta">Tracked send total</div>'
+                f'<li class="public-leaderboard-row{" public-leaderboard-row--leader" if i == 1 else ""}" style="--row-index:{i};">'
+                f'<div class="row-rank">#{i}</div>'
+                '<div class="row-copy">'
+                f'<div class="row-name">{escape(entry["name"])}</div>'
+                '<div class="row-caption">Tracked send total</div>'
                 '</div>'
-                '<div>'
-                f'<div class="entry-total">{escape(e["amount"])}</div>'
-                f'<div class="entry-sends">{escape(e["count"])} sends</div>'
-                '</div>'
-                '</article>'
+                '<div class="row-values">'
+                f'<div class="row-amount">{escape(entry["amount"])}</div>'
+                f'<div class="row-sends">{escape(entry["count"])} sends</div>'
+                "</div>"
+                "</li>"
             )
-            for i, e in enumerate(entries, 1)
+            for i, entry in enumerate(entries, 1)
         )
+        rows = f'<ol class="public-leaderboard-list">{row_items}</ol>'
     else:
-        rows = '<div class="empty-state">No tracked sends are available yet.</div>'
+        rows = (
+            '<div class="public-leaderboard-empty">'
+            "No tracked sends are available yet. As soon as sends are posted, this page updates automatically."
+            "</div>"
+        )
+
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -51,22 +62,226 @@ def _public_leaderboard_html(*, title: str, entries: list[dict[str, str]], data_
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
   <title>{escape(title)}</title>
   <style>
-    html, body {{ margin:0; padding:0; background:#000; color:#b40000; font-family:\"Times New Roman\", Times, serif; }}
-    body {{ min-height:100vh; }}
-    .leaderboard-page {{ box-sizing:border-box; min-height:100vh; padding:28px; background:radial-gradient(circle at top, rgba(120,0,0,0.18), transparent 34%), linear-gradient(180deg, #050000 0%, #000 58%, #050000 100%); }}
-    .leaderboard-panel {{ box-sizing:border-box; width:min(900px,100%); margin:0 auto; padding:28px; border:1px solid #640000; background:linear-gradient(180deg, rgba(18,0,0,0.94), rgba(5,0,0,0.96)); box-shadow:0 0 36px rgba(120,0,0,0.22), inset 0 0 24px rgba(80,0,0,0.12); }}
-    .leaderboard-header {{ padding-bottom:18px; border-bottom:1px solid #640000; }} .leaderboard-title {{ margin:0; color:#d00000; font-size:clamp(34px,5vw,52px); line-height:1; font-weight:bold; letter-spacing:0.045em; }} .leaderboard-subtitle {{ margin-top:10px; color:#9a0000; font-size:16px; letter-spacing:0.02em; }} .leaderboard-entries {{ margin-top:6px; }} .leaderboard-entry {{ display:grid; grid-template-columns:82px 1fr auto; gap:18px; align-items:baseline; padding:18px 0; border-bottom:1px solid #360000; }} .leaderboard-entry:last-child {{ border-bottom:none; }} .entry-rank {{ color:#d00000; font-size:28px; font-weight:bold; line-height:1; }} .entry-name {{ color:#c80000; font-size:28px; font-weight:bold; line-height:1.08; word-break:break-word; }} .entry-meta {{ margin-top:7px; color:#980000; font-size:17px; line-height:1.3; }} .entry-total {{ color:#c00000; font-size:20px; font-weight:bold; white-space:nowrap; text-align:right; }} .entry-sends {{ margin-top:7px; color:#870000; font-size:15px; text-align:right; }} .leaderboard-footer {{ margin-top:18px; padding-top:16px; border-top:1px solid #640000; color:#820000; font-size:14px; line-height:1.55; }} .empty-state {{ margin-top:18px; padding:20px 0; color:#980000; border-bottom:1px solid #360000; font-size:18px; }} @media (max-width:680px) {{ .leaderboard-page {{ padding:18px; }} .leaderboard-panel {{ padding:20px; }} .leaderboard-entry {{ grid-template-columns:58px 1fr; gap:12px; }} .entry-total {{ grid-column:2; text-align:left; margin-top:6px; }} .entry-sends {{ text-align:left; }} .entry-rank, .entry-name {{ font-size:24px; }} }}
+    :root {{
+      --ink-950: #1f2230;
+      --ink-700: #4b536b;
+      --ink-500: #6f7a97;
+      --paper-100: #fbfcff;
+      --paper-200: #f3f6fc;
+      --paper-300: #e8eef9;
+      --line: #d8e1f0;
+      --accent-700: #1c5fbe;
+      --accent-500: #2b7df0;
+      --accent-200: #d9e8ff;
+      --leader-bg: #e7f1ff;
+    }}
+    * {{ box-sizing: border-box; }}
+    html, body {{ margin: 0; padding: 0; background: var(--paper-200); color: var(--ink-950); }}
+    body {{
+      font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      min-height: 100vh;
+      background:
+        radial-gradient(1200px 560px at 10% -10%, rgba(43, 125, 240, 0.14), transparent 58%),
+        radial-gradient(920px 620px at 100% 0%, rgba(28, 95, 190, 0.14), transparent 52%),
+        linear-gradient(180deg, #f8fbff 0%, #f2f6fd 100%);
+    }}
+    .public-leaderboard-shell {{ min-height: 100vh; padding: 40px 20px; }}
+    .public-leaderboard-card {{
+      width: min(980px, 100%);
+      margin: 0 auto;
+      border: 1px solid var(--line);
+      background: var(--paper-100);
+      border-radius: 24px;
+      box-shadow: 0 24px 60px rgba(25, 45, 86, 0.12);
+      overflow: hidden;
+    }}
+    .public-leaderboard-hero {{
+      padding: 34px 34px 24px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(130deg, #ffffff 0%, #f4f8ff 100%);
+    }}
+    .hero-kicker {{
+      margin: 0;
+      color: var(--accent-700);
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      font-weight: 700;
+      font-size: 12px;
+    }}
+    .hero-title {{
+      margin: 10px 0 0;
+      font-family: "Georgia", "Times New Roman", serif;
+      font-size: clamp(34px, 6vw, 52px);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+      color: #1d2e53;
+    }}
+    .hero-subtitle {{
+      margin: 12px 0 0;
+      color: var(--ink-700);
+      font-size: 16px;
+      max-width: 70ch;
+      line-height: 1.45;
+    }}
+    .public-leaderboard-metrics {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      padding: 20px 34px;
+      border-bottom: 1px solid var(--line);
+      background: var(--paper-200);
+    }}
+    .metric {{
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }}
+    .metric-label {{
+      display: block;
+      color: var(--ink-500);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }}
+    .metric-value {{
+      display: block;
+      color: var(--ink-950);
+      font-size: 25px;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      font-weight: 700;
+    }}
+    .public-leaderboard-list-wrap {{ padding: 8px 26px 22px; }}
+    .public-leaderboard-list {{
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 10px;
+    }}
+    .public-leaderboard-row {{
+      display: grid;
+      grid-template-columns: 74px 1fr auto;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 16px 16px 12px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: #ffffff;
+      animation: rowReveal 380ms ease both;
+      animation-delay: calc(var(--row-index, 1) * 45ms);
+    }}
+    .public-leaderboard-row--leader {{
+      border-color: #b5d3ff;
+      background: linear-gradient(180deg, #f8fbff 0%, var(--leader-bg) 100%);
+    }}
+    .row-rank {{
+      width: 54px;
+      height: 54px;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 20px;
+      border-radius: 14px;
+      color: #174a9a;
+      background: var(--accent-200);
+    }}
+    .row-name {{
+      font-size: 23px;
+      color: var(--ink-950);
+      font-weight: 700;
+      line-height: 1.15;
+      word-break: break-word;
+    }}
+    .row-caption {{
+      margin-top: 6px;
+      color: var(--ink-700);
+      font-size: 14px;
+    }}
+    .row-values {{ text-align: right; white-space: nowrap; }}
+    .row-amount {{
+      font-size: 22px;
+      color: #153569;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+    }}
+    .row-sends {{
+      margin-top: 7px;
+      font-size: 14px;
+      color: var(--ink-700);
+    }}
+    .public-leaderboard-empty {{
+      margin: 8px;
+      padding: 20px 18px;
+      border-radius: 14px;
+      border: 1px dashed #bdd1ef;
+      background: #f8fbff;
+      color: #33466e;
+      font-size: 16px;
+      line-height: 1.5;
+    }}
+    .public-leaderboard-footer {{
+      border-top: 1px solid var(--line);
+      padding: 16px 34px 24px;
+      color: var(--ink-700);
+      font-size: 14px;
+      line-height: 1.6;
+      background: #fcfdff;
+    }}
+    @keyframes rowReveal {{
+      from {{ opacity: 0; transform: translateY(8px); }}
+      to {{ opacity: 1; transform: translateY(0); }}
+    }}
+    @media (max-width: 760px) {{
+      .public-leaderboard-shell {{ padding: 20px 12px; }}
+      .public-leaderboard-hero {{ padding: 24px 18px 18px; }}
+      .public-leaderboard-metrics {{
+        grid-template-columns: 1fr;
+        padding: 14px 18px;
+      }}
+      .public-leaderboard-list-wrap {{ padding: 8px 12px 16px; }}
+      .public-leaderboard-row {{
+        grid-template-columns: 54px 1fr;
+        align-items: start;
+      }}
+      .row-values {{
+        grid-column: 2;
+        text-align: left;
+        margin-top: 6px;
+      }}
+      .row-name {{ font-size: 20px; }}
+      .public-leaderboard-footer {{ padding: 14px 18px 18px; }}
+    }}
   </style>
 </head>
 <body>
-  <main class=\"leaderboard-page\">
-    <section class=\"leaderboard-panel\">
-      <header class=\"leaderboard-header\">
-        <h1 class=\"leaderboard-title\">{escape(title)}</h1>
-        <div class=\"leaderboard-subtitle\">Tracked send leaderboard</div>
+  <main class="public-leaderboard-shell">
+    <section class="public-leaderboard-card">
+      <header class="public-leaderboard-hero">
+        <p class="hero-kicker">Rob Public Leaderboard</p>
+        <h1 class="hero-title">{escape(title)}</h1>
+        <p class="hero-subtitle">Live send totals for registered Dom/mes. This board updates automatically as sends are posted.</p>
       </header>
-      <section class=\"leaderboard-entries\">{rows}</section>
-      <footer class=\"leaderboard-footer\">
+      <section class="public-leaderboard-metrics">
+        <article class="metric">
+          <span class="metric-label">Tracked Profiles</span>
+          <span class="metric-value">{tracked_profiles}</span>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Total Sends</span>
+          <span class="metric-value">{total_sends}</span>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Total Amount</span>
+          <span class="metric-value">{escape(total_amount)}</span>
+        </article>
+      </section>
+      <section class="public-leaderboard-list-wrap">{rows}</section>
+      <footer class="public-leaderboard-footer">
         <div>Leaderboard data updated: {escape(data_updated_at)}</div>
         <div>Page refreshed: {escape(page_refreshed_at)}</div>
       </footer>
@@ -106,7 +321,13 @@ async def handle_public_leaderboard(request: web.Request) -> web.Response:
         owner_test_user_id=settings.throne_test_send_leaderboard_owner_user_id,
     )
     entries = [
-        {"name": (item.label or "Registered Dom/me"), "amount": f"${(item.total_cents / 100):,.2f}", "count": str(item.send_count)}
+        {
+            "name": (item.label or "Registered Dom/me"),
+            "amount": f"${(item.total_cents / 100):,.2f}",
+            "count": str(item.send_count),
+            "total_cents": str(item.total_cents),
+            "send_count": str(item.send_count),
+        }
         for item in top
     ]
     entries = _dedupe_fallback_labels(entries)

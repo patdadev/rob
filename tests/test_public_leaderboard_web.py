@@ -56,10 +56,10 @@ def test_public_route_renders_polished_html_and_freshness(monkeypatch):
     text = response.text
     assert response.status == 200
     assert response.headers["Cache-Control"] == "public, max-age=60"
-    assert "leaderboard-page" in text
-    assert "leaderboard-panel" in text
-    assert "background:#000" in text
-    assert "Times New Roman" in text
+    assert "public-leaderboard-shell" in text
+    assert "public-leaderboard-card" in text
+    assert "public-leaderboard-list" in text
+    assert "Rob Public Leaderboard" in text
     assert "<img" not in text
     assert "🥇" not in text
     assert "<@" not in text
@@ -68,6 +68,9 @@ def test_public_route_renders_polished_html_and_freshness(monkeypatch):
     assert "Page refreshed:" in text
     assert "2026-05-20 12:30 UTC" in text
     assert "Tracked send total" in text
+    assert "Tracked Profiles" in text
+    assert "Total Sends" in text
+    assert "Total Amount" in text
     assert "$10,424.81" in text
     assert "18 sends" in text
     assert "Registered Dom/me 2" in text
@@ -87,5 +90,5 @@ def test_public_route_no_send_state(monkeypatch):
     monkeypatch.setattr(webhooks, "LeaderboardsRepository", lambda _db: _EmptyLeaderboards())
     response = asyncio.run(webhooks.handle_public_leaderboard(_Req()))
     text = response.text
-    assert "No tracked sends are available yet." in text
+    assert "No tracked sends are available yet. As soon as sends are posted, this page updates automatically." in text
     assert "Leaderboard data updated: No tracked sends yet" in text
