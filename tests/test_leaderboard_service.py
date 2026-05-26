@@ -71,11 +71,6 @@ class _FakeBotStateRepo:
         self.values[key] = value
 
 
-class _FakeDommesRepo:
-    async def list_for_guild(self, guild_id: int):
-        return []
-
-
 class _FakeMaintenance:
     def __init__(self, enabled: bool = False):
         self.enabled = enabled
@@ -132,7 +127,6 @@ def _service(
         leaderboards=repo,
         bot_state=state,
         maintenance=maintenance,
-        dommes=_FakeDommesRepo(),
         leaderboard_limit=leaderboard_limit,
         include_test_sends=False,
         test_gifter_usernames=("marie_123",),

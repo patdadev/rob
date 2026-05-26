@@ -54,9 +54,6 @@ Maintenance mode, queue management, service restarts, database checks, and leade
 - `/broadcast` is owner-only and DM-only; it opens a modal with an in-form style menu, optional upload field, and a target field using `guild_id:channel_id` or `guild_id:all-members`.
 - Warn-log relay is automatic when `guild_settings.warn_log_channel_id` and `guild_settings.carlbot_user_id` are configured.
 
-## Public Embeddable Leaderboards
-Public leaderboard pages are served by the webhook HTTP server at `/public/leaderboard/{token}` for Google Sites embedding. They are read-only and show aggregate Dom/me leaderboard totals only (no Discord IDs, no sub names, no send-level details, no images/emojis).
-
 
 ## Inactivity timing
 - New inactive members now use a 7-day no-warning grace period (`INACTIVITY_NEW_MEMBER_GRACE_DAYS`, default `7`).

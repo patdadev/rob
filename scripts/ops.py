@@ -20,7 +20,6 @@ from rob.database.repositories import (
     DommesRepository,
     GuildSettingsRepository,
     LeaderboardsRepository,
-    PublicLeaderboardsRepository,
     SendsRepository,
     SubsRepository,
     ThroneCreatorsRepository,
@@ -143,21 +142,6 @@ def build_parser() -> argparse.ArgumentParser:
     leaderboard_preview.add_argument("--guild-id", type=int, default=None)
     diagnose = leaderboard_subparsers.add_parser("diagnose", help="Diagnose leaderboard send matching.")
 
-    leaderboard_public = leaderboard_subparsers.add_parser("public", help="Manage public embeddable leaderboard links.")
-    leaderboard_public_subparsers = leaderboard_public.add_subparsers(dest="leaderboard_public_command", required=True)
-    lb_public_create = leaderboard_public_subparsers.add_parser("create", help="Create a public leaderboard URL.")
-    lb_public_create.add_argument("--guild-id", type=int, required=True)
-    lb_public_create.add_argument("--title", type=str, default="Send Leaderboard")
-    lb_public_list = leaderboard_public_subparsers.add_parser("list", help="List public leaderboard URLs for a guild.")
-    lb_public_list.add_argument("--guild-id", type=int, required=True)
-    lb_public_disable = leaderboard_public_subparsers.add_parser("disable", help="Disable a public leaderboard token.")
-    lb_public_disable.add_argument("--token", type=str, required=True)
-    lb_public_enable = leaderboard_public_subparsers.add_parser("enable", help="Enable a public leaderboard token.")
-    lb_public_enable.add_argument("--token", type=str, required=True)
-    lb_public_rotate = leaderboard_public_subparsers.add_parser("rotate-token", help="Rotate a public leaderboard token.")
-    lb_public_rotate.add_argument("--token", type=str, required=True)
-    lb_public_refresh_names = leaderboard_public_subparsers.add_parser("refresh-names", help="Refresh cached public Discord display names.")
-    lb_public_refresh_names.add_argument("--guild-id", type=int, required=True)
     diagnose.add_argument("--guild-id", type=int, default=None)
     repair = leaderboard_subparsers.add_parser(
         "repair-send-dommes",
@@ -335,7 +319,6 @@ class OperationsContext:
     leaderboards: LeaderboardsRepository
     guild_settings: GuildSettingsRepository
     counting: CountingRepository
-    public_leaderboards: PublicLeaderboardsRepository
     throne_service: ThroneService
     registration_service: RegistrationService
     send_service: SendService
@@ -382,7 +365,6 @@ async def create_context() -> OperationsContext:
         leaderboards=LeaderboardsRepository(database),
         guild_settings=guild_settings,
         counting=CountingRepository(database),
-        public_leaderboards=PublicLeaderboardsRepository(database),
         throne_service=throne_service,
         registration_service=registration_service,
         send_service=send_service,
@@ -547,27 +529,6 @@ async def fetch_live_guild_scan_from_bot_ops(guild_id: int) -> LiveGuildScanResu
         source=str(payload.get("source") or "bot-session"),
         error=payload.get("error"),
     )
-
-
-async def request_public_name_refresh_from_bot_ops(guild_id: int) -> bool:
-    host = (os.getenv("ROB_OPS_HOST") or "127.0.0.1").strip()
-    raw_port = (os.getenv("ROB_OPS_PORT") or "8811").strip()
-    secret = (os.getenv("ROB_OPS_SECRET") or "").strip()
-    try:
-        port = int(raw_port)
-    except ValueError:
-        return False
-    headers = {"User-Agent": "RobOps/1.0 (+https://github.com/PlainStack2/rob-dev)"}
-    if secret:
-        headers["X-Rob-Ops-Secret"] = secret
-    url = f"http://{host}:{port}/guilds/{guild_id}/leaderboard/public/refresh-names"
-    try:
-        timeout = aiohttp.ClientTimeout(total=5)
-        async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
-            async with session.post(url) as response:
-                return response.status < 400
-    except (aiohttp.ClientError, TimeoutError):
-        return False
 
 
 async def fetch_live_guild_scan_from_discord_rest(guild_id: int) -> LiveGuildScanResult:
@@ -854,46 +815,6 @@ async def handle_leaderboard(ctx: OperationsContext, args: argparse.Namespace) -
         print_kv("counted_sends", report.counted_sends)
         print_kv("excluded_sends", report.excluded_sends)
         return
-    if args.leaderboard_command == "public":
-        base_url = (ctx.settings.rob_public_base_url or "").strip().rstrip("/")
-        if not base_url or not (base_url.startswith("http://") or base_url.startswith("https://")):
-            raise RuntimeError("ROB_PUBLIC_BASE_URL is missing or invalid. Set it to an absolute http(s) URL.")
-        if args.leaderboard_public_command == "create":
-            token = secrets.token_urlsafe(32)
-            row = await ctx.public_leaderboards.create(guild_id=args.guild_id, public_token=token, title=args.title)
-            print_header("Public Leaderboard Created")
-            print_line("URL:")
-            print_line(f"{base_url}/public/leaderboard/{row.public_token}")
-            return
-        if args.leaderboard_public_command == "list":
-            rows = await ctx.public_leaderboards.list_for_guild(args.guild_id)
-            print_header("Public Leaderboards")
-            for row in rows:
-                print_line(f"Token: {row.public_token} | Guild ID: {row.guild_id} | Title: {row.title} | Enabled: {row.enabled} | URL: {base_url}/public/leaderboard/{row.public_token} | Created: {row.created_at} | Updated: {row.updated_at}")
-            return
-        if args.leaderboard_public_command == "disable":
-            await ctx.public_leaderboards.set_enabled(token=args.token, enabled=False)
-            print_header("Public Leaderboard Disabled")
-            return
-        if args.leaderboard_public_command == "enable":
-            await ctx.public_leaderboards.set_enabled(token=args.token, enabled=True)
-            print_header("Public Leaderboard Enabled")
-            return
-        if args.leaderboard_public_command == "rotate-token":
-            row = await ctx.public_leaderboards.rotate_token(token=args.token, new_token=secrets.token_urlsafe(32))
-            if row is None:
-                raise RuntimeError("Public leaderboard token not found.")
-            print_header("Public Leaderboard Token Rotated")
-            print_line("URL:")
-            print_line(f"{base_url}/public/leaderboard/{row.public_token}")
-            return
-        if args.leaderboard_public_command == "refresh-names":
-            if not await request_public_name_refresh_from_bot_ops(args.guild_id):
-                print_line("The running bot is required to refresh Discord display names.")
-                return
-            print_header("Public Display Names Refreshed")
-            print_field("Guild ID", args.guild_id)
-            return
     if args.leaderboard_command == "repair-send-dommes":
         guild_id = await resolve_guild_id(ctx, getattr(args, "guild_id", None))
         candidates, updated = await ctx.sends.repair_send_domme_user_ids(

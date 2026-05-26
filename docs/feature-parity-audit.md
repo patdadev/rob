@@ -60,27 +60,8 @@ This patch intentionally preserves split webhook/bot services and PostgreSQL-onl
 
 - 2026-05-25: `/privacy` now serves a formal, informational-only privacy notice to all users as an ephemeral Components V2 response with no role restrictions.
 
-## Public Embeddable Leaderboards
-- Added tokenized public leaderboard HTTP route (`/public/leaderboard/{public_token}`) on webhook service.
-- Added backend `rob leaderboard public ...` commands for create/list/enable/disable/rotate-token.
-- Public page uses black background, red Times New Roman, no emojis, no images, and aggregate-only data.
-
-
 ## Inactivity timing
 - New inactive members now use a 7-day no-warning grace period (`INACTIVITY_NEW_MEMBER_GRACE_DAYS`, default `7`).
 - First warning sends at ~day 7 and includes Discord relative/full removal timestamps (`<t:...:R> / <t:...:f>`).
 - Final warning sends at ~day 14 (`INACTIVITY_FINAL_NOTICE_DAYS` before removal) and clarifies removal is not a ban.
 - Removal runs at ~day 21 of inactivity by default.
-
-
-## Public leaderboard freshness and embed notes
-- Public leaderboard rows only include valid posted sends (`discord_post_status=posted`), excluding private sends and excluded test sends.
-- Footer shows **Leaderboard data updated** (timestamp of newest counted send) and **Page refreshed** (current page render time).
-- Use `PUBLIC_LEADERBOARD_CACHE_SECONDS` (default `60`) to tune response cache max-age for dev testing (for example `15`).
-- If Google Sites embedding fails, verify reverse-proxy/CDN headers do not inject restrictive iframe headers such as `X-Frame-Options` or `Content-Security-Policy: frame-ancestors`.
-- Send posting latency is governed by `SEND_QUEUE_LOOP_SECONDS` (default `10`) in bot service queue cycles.
-
-
-- Public leaderboard display names are cached in PostgreSQL (`dommes.public_display_name`) and refreshed from the running bot with `rob leaderboard public refresh-names --guild-id <guild_id>`.
-- Public leaderboard embeds use `Cache-Control: public, max-age=PUBLIC_LEADERBOARD_CACHE_SECONDS` (default 60; set 15 for dev testing).
-- Public embed pages show both `Leaderboard data updated` (latest counted send timestamp) and `Page refreshed` (render time).

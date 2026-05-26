@@ -37,43 +37,29 @@ usage() {
   cat <<'EOF'
 Rob Control
 ========================================================================
-Core:
-  rob status
-  rob logs [bot|webhook]
-  rob restart [bot|webhook|all]
+Most used:
+  rob status                     # db + queue + maintenance + service state
+  rob leaderboard refresh        # refresh leaderboard messages
+  rob guild scan --guild-id ID   # scan channels/roles + suggest fixes
+  rob sends list --guild-id ID
+  rob maintenance on|off
 
-Operations:
-  rob maintenance status|on|off
-  rob queue status|flush
-  rob leaderboard refresh|adopt|status|preview|diagnose|repair-send-dommes [--dry-run]
-  rob leaderboard public create|list|disable|enable|rotate-token|refresh-names
-  rob sends list [--status pending|posted|failed|queued_maintenance|all] [--guild-id ID]
-  rob sends backfill-public-ids
-  rob sends mark-posted SEND_ID
-  rob count status [--guild-id ID]
-  rob count set NUMBER [--guild-id ID]
-
-Guild Setup:
-  rob guild scan --guild-id ID
-  rob guild set-channel --guild-id ID --field FIELD --channel-id ID|--clear
-  rob guild set-role --guild-id ID --field FIELD --role-id ID|--clear
-
-Throne:
-  rob throne refresh|status|dommes|list|search|subs|invalidate-test-sends
-  rob throne webhook refresh <user_ref>
-  rob throne addsend <user_ref> <amount> [--sub-name NAME] [--method METHOD] [--currency CODE] [--note TEXT]
-  rob throne addsub <user_ref> <name>
-  rob throne adddomme <user_ref> <throne_url_or_handle>
-
-Safety:
-  rob inactivity status|on|off
-  rob blacklist add|remove|list
+Short aliases:
+  rob lb ...   -> rob leaderboard ...
+  rob q ...    -> rob queue ...
+  rob m ...    -> rob maintenance ...
+  rob g ...    -> rob guild ...
+  rob s ...    -> rob sends ...
+  rob t ...    -> rob throne ...
+  rob c ...    -> rob count ...
+  rob i ...    -> rob inactivity ...
+  rob bl ...   -> rob blacklist ...
 
 Compatibility:
   robctl ...  (same command surface)
 
 Tip:
-  Run `rob <command> --help` for detailed command options.
+  Run `rob <command> --help` for full options.
 EOF
 }
 
@@ -89,6 +75,19 @@ service_name() {
   esac
 }
 
+print_header() {
+  local title="$1"
+  echo "========================================================================"
+  echo "Rob Control | ${title}"
+  echo "========================================================================"
+}
+
+print_field() {
+  local label="$1"
+  local value="$2"
+  echo "- ${label}: ${value}"
+}
+
 cmd="${1:-}"
 if [[ -z "${cmd}" || "${cmd}" == "help" || "${cmd}" == "--help" || "${cmd}" == "-h" ]]; then
   usage
@@ -97,14 +96,28 @@ fi
 shift || true
 
 case "${cmd}" in
+  lb|leaderboards) cmd="leaderboard" ;;
+  q) cmd="queue" ;;
+  m) cmd="maintenance" ;;
+  g) cmd="guild" ;;
+  s|send) cmd="sends" ;;
+  t) cmd="throne" ;;
+  c) cmd="count" ;;
+  i|inactive) cmd="inactivity" ;;
+  bl) cmd="blacklist" ;;
+  l) cmd="logs" ;;
+  r) cmd="restart" ;;
+esac
+
+case "${cmd}" in
   status)
     run_ops status
     if command -v systemctl >/dev/null 2>&1; then
       bot_service="$(systemctl is-active "${ROB_BOT_SERVICE}" 2>/dev/null || true)"
       webhook_service="$(systemctl is-active "${ROB_WEBHOOK_SERVICE}" 2>/dev/null || true)"
-      echo "Services:"
-      echo "- Bot Service: ${bot_service}"
-      echo "- Webhook Service: ${webhook_service}"
+      print_header "Services"
+      print_field "Bot Service" "${bot_service}"
+      print_field "Webhook Service" "${webhook_service}"
     fi
     ;;
   logs)
@@ -121,16 +134,16 @@ case "${cmd}" in
     case "${target}" in
       bot|webhook)
         sudo systemctl restart "$(service_name "${target}")"
-        echo "Rob Control | Restart"
-        echo "- Target: ${target}"
-        echo "- Result: restarted"
+        print_header "Restart"
+        print_field "Target" "${target}"
+        print_field "Result" "restarted"
         ;;
       all)
         sudo systemctl restart "${ROB_WEBHOOK_SERVICE}"
         sudo systemctl restart "${ROB_BOT_SERVICE}"
-        echo "Rob Control | Restart"
-        echo "- Target: all"
-        echo "- Result: restarted"
+        print_header "Restart"
+        print_field "Target" "all"
+        print_field "Result" "restarted"
         ;;
       *)
         echo "Unknown restart target: ${target}" >&2

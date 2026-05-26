@@ -84,7 +84,6 @@ class RobBot(commands.Bot):
             bot=self,
             guild_settings=self.guild_settings_repo,
             leaderboards=self.leaderboards_repo,
-            dommes=self.dommes_repo,
             bot_state=self.bot_state_repo,
             maintenance=self.maintenance_service,
             leaderboard_limit=self.settings.leaderboard_limit,
@@ -144,7 +143,6 @@ class RobBot(commands.Bot):
             host=self.settings.rob_ops_host,
             port=self.settings.rob_ops_port,
             secret=self.settings.rob_ops_secret,
-            leaderboard_service=self.leaderboard_service,
         )
 
         await self.add_cog(RegistrationCog(self))

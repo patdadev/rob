@@ -16,13 +16,11 @@ class BotOpsServer:
         host: str,
         port: int,
         secret: str | None = None,
-        leaderboard_service=None,
     ) -> None:
         self.bot = bot
         self.host = host
         self.port = port
         self.secret = secret
-        self.leaderboard_service = leaderboard_service
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
 
@@ -33,7 +31,6 @@ class BotOpsServer:
         app = web.Application()
         app.router.add_get("/health", self._handle_health)
         app.router.add_get("/guilds/{guild_id}/scan", self._handle_guild_scan)
-        app.router.add_post("/guilds/{guild_id}/leaderboard/public/refresh-names", self._handle_refresh_public_names)
 
         self._runner = web.AppRunner(app, access_log=None)
         await self._runner.setup()
@@ -107,15 +104,3 @@ class BotOpsServer:
                 "source": "bot-session",
             }
         )
-
-    async def _handle_refresh_public_names(self, request: web.Request) -> web.Response:
-        if not self._is_authorized(request):
-            return web.json_response({"error": "forbidden"}, status=403)
-        if self.leaderboard_service is None:
-            return web.json_response({"error": "leaderboard_service_unavailable"}, status=503)
-        try:
-            guild_id = int(request.match_info["guild_id"])
-        except (KeyError, ValueError):
-            return web.json_response({"error": "invalid_guild_id"}, status=400)
-        updated = await self.leaderboard_service.refresh_public_display_names(guild_id)
-        return web.json_response({"ok": True, "guild_id": guild_id, "updated": updated})

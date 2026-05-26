@@ -9,7 +9,7 @@ The bot server is the Discord-only side of Rob.
 - Processes `sends.discord_post_status='pending'`.
 - Releases `queued_maintenance` sends after maintenance is disabled.
 - Posts send notifications to the configured tracking channel.
-- Refreshes public leaderboard messages from posted sends.
+- Refreshes leaderboard messages from posted sends.
 - Ignores imported legacy sends that were already marked `posted`.
 - Handles `/register`, `/sendrequest`, `/leaderboard`, `/add`, and `/count set`.
 - Runs the counting listener.

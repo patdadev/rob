@@ -5,7 +5,6 @@ import logging
 import discord
 
 from rob.database.repositories.bot_state import BotStateRepository
-from rob.database.repositories.dommes import DommesRepository
 from rob.database.repositories.guild_settings import GuildSettingsRepository
 from rob.database.repositories.leaderboards import LeaderboardsRepository
 from rob.ui.cards.leader_alert import leader_alert_card
@@ -22,7 +21,6 @@ class LeaderboardService:
         bot: discord.Client,
         guild_settings: GuildSettingsRepository,
         leaderboards: LeaderboardsRepository,
-        dommes: DommesRepository,
         bot_state: BotStateRepository,
         maintenance: MaintenanceService,
         leaderboard_limit: int = 10,
@@ -33,7 +31,6 @@ class LeaderboardService:
         self.bot = bot
         self.guild_settings = guild_settings
         self.leaderboards = leaderboards
-        self.dommes = dommes
         self.bot_state = bot_state
         self.maintenance = maintenance
         self.leaderboard_limit = leaderboard_limit
@@ -75,8 +72,6 @@ class LeaderboardService:
                 settings.leaderboard_channel_id,
             )
             return False
-        await self.refresh_public_display_names(guild_id)
-
         summary = await self.leaderboards.get_summary(
             guild_id,
             include_test_sends=self.include_test_sends,
@@ -155,31 +150,6 @@ class LeaderboardService:
             message_id=stats_message.id,
         )
         return True
-
-    async def refresh_public_display_names(self, guild_id: int) -> int:
-        guild = self.bot.get_guild(guild_id)
-        if guild is None:
-            return 0
-        updated = 0
-        for domme in await self.dommes.list_for_guild(guild_id):
-            member = guild.get_member(domme.discord_user_id)
-            if member is None:
-                try:
-                    member = await guild.fetch_member(domme.discord_user_id)
-                except (discord.NotFound, discord.HTTPException):
-                    log.warning("Could not resolve display name for guild_id=%s user_id=%s", guild_id, domme.discord_user_id)
-                    continue
-            label = (member.display_name or getattr(member, "global_name", None) or member.name or "").strip()
-            if not label:
-                continue
-            await self.dommes.set_public_display_name(
-                guild_id=guild_id,
-                discord_user_id=domme.discord_user_id,
-                label=label,
-            )
-            log.info("Updated public display name for guild_id=%s user_id=%s label=%s", guild_id, domme.discord_user_id, label)
-            updated += 1
-        return updated
 
     async def get_current_leader(self, guild_id: int):
         leader = await self.leaderboards.get_current_leader(
