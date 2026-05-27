@@ -169,16 +169,16 @@
 <body>
 <div class="layout">
   <aside class="sidebar">
-    <div class="brand">Rob Portal <small>Superadmin</small></div>
+    <div class="brand">Rob Portal <small>{{ portal_user_role }}</small></div>
     <nav class="nav">
       <a href="/portal/dashboard/">Dashboard</a>
       <a href="/portal/admin/">Django Admin</a>
-      <a href="/portal/services/">Services</a>
-      <a href="/portal/logs/">Logs</a>
-      <a href="/portal/database/">Database</a>
+      {% if portal_is_superadmin or portal_is_moderator %}<a href="/portal/services/">Services</a>
+      <a href="/portal/logs/">Logs</a>{% endif %}
+      {% if portal_is_superadmin %}<a href="/portal/database/">Database</a>
       <a href="/portal/leaderboards/">Leaderboards</a>
       <a href="/portal/sends/">Sends</a>
-      <a href="/portal/settings/">Settings</a>
+      <a href="/portal/settings/">Settings</a>{% endif %}
       <form method="post" action="/portal/logout/">
         {% csrf_token %}
         <button type="submit" class="logout">Logout</button>

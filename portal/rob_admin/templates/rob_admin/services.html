@@ -2,6 +2,7 @@
 {% block content %}
 <div class="card">
   <h2>Allowlisted Services</h2>
+  <p class="muted">These service checks are local to the server running the portal. For Discord bot status, use Remote Bot Bridge health on the dashboard.</p>
   <table>
     <tr>
       <th>Service</th>
@@ -34,6 +35,14 @@
     </tr>
     {% endfor %}
   </table>
+  {% if non_local_services %}
+  <p class="muted">
+    Warning: The following allowlisted services are not available on this portal host:
+    <code>{{ non_local_services|join:", " }}</code>.
+    If the bot runs on another server, remove <code>rob-bot-dev.service</code> from <code>ROB_PORTAL_ALLOWED_SERVICES</code>
+    and use Bot Ops Bridge health instead.
+  </p>
+  {% endif %}
   {% if not service_actions_enabled %}
   <p class="muted">Service restart actions are disabled by default (ROB_PORTAL_ENABLE_SERVICE_ACTIONS=false).</p>
   {% endif %}

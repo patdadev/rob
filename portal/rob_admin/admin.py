@@ -3,6 +3,9 @@ from __future__ import annotations
 import secrets
 
 from django.contrib import admin
+from django.contrib.auth.admin import GroupAdmin as DjangoGroupAdmin
+from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.contrib.auth.models import Group, User
 from django.utils import timezone
 
 from .models import (
@@ -21,6 +24,67 @@ from .models import (
     ThroneCreator,
 )
 from .services import audit_action
+
+
+admin.site.unregister(User)
+admin.site.unregister(Group)
+
+
+@admin.register(User)
+class PortalUserAdmin(DjangoUserAdmin):
+    list_display = (
+        "username",
+        "email",
+        "first_name",
+        "last_name",
+        "is_staff",
+        "is_superuser",
+        "is_active",
+        "last_login",
+    )
+    list_filter = ("is_staff", "is_superuser", "is_active", "groups")
+    search_fields = ("username", "first_name", "last_name", "email")
+    ordering = ("-is_active", "username")
+
+    add_fieldsets = (
+        (
+            "Create portal user",
+            {
+                "classes": ("wide",),
+                "fields": (
+                    "username",
+                    "email",
+                    "first_name",
+                    "last_name",
+                    "password1",
+                    "password2",
+                    "is_staff",
+                    "is_superuser",
+                    "is_active",
+                    "groups",
+                ),
+                "description": "Use staff + groups for most users. Reserve superuser for trusted administrators.",
+            },
+        ),
+    )
+
+    fieldsets = (
+        (None, {"fields": ("username", "password")}),
+        ("Profile", {"fields": ("first_name", "last_name", "email")}),
+        (
+            "Portal access",
+            {
+                "fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions"),
+                "description": "Staff grants admin access. Assign groups to apply standard permission sets quickly.",
+            },
+        ),
+        ("Security", {"fields": ("last_login", "date_joined")}),
+    )
+
+
+@admin.register(Group)
+class PortalGroupAdmin(DjangoGroupAdmin):
+    search_fields = ("name",)
 
 
 class ReadOnlyAdmin(admin.ModelAdmin):

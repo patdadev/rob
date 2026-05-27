@@ -68,10 +68,23 @@ def _safe_next_path(value: str | None) -> str:
     return value
 
 
+def _user_role(discord_user_id: int | None) -> str:
+    if _is_superadmin(discord_user_id):
+        return "SuperAdmin"
+    if discord_user_id in set(settings.ROB_PORTAL_MODERATOR_USER_IDS):
+        return "Moderator"
+    return "User"
+
+
 def _portal_context(request: HttpRequest, *, title: str) -> dict:
+    discord_id = _discord_id_from_session(request)
+    role = _user_role(discord_id)
     return {
         "title": title,
         "portal_user_display": request.session.get("portal_discord_display_name") or request.user.get_username(),
+        "portal_user_role": role,
+        "portal_is_superadmin": role == "SuperAdmin",
+        "portal_is_moderator": role == "Moderator",
     }
 
 
@@ -260,18 +273,11 @@ def discord_auth_callback(request: HttpRequest) -> HttpResponse:
         or str(identity.get("username") or "").strip()
         or "Unknown User"
     )
-    if not _is_superadmin(discord_id):
-        audit_action(
-            request=None,
-            action="portal_login_denied",
-            target_type="discord_user",
-            target_id=discord_id_raw or "unknown",
-            metadata={"display_name": display_name},
-        )
+    if discord_id is None:
         return render(
             request,
             "rob_admin/forbidden.html",
-            {"title": "Access denied", "message": "This portal is restricted to configured superadmin users only."},
+            {"title": "Access denied", "message": "Discord identity was invalid."},
             status=403,
         )
 
@@ -303,6 +309,33 @@ def _build_bot_ops_client() -> BotOpsClient:
     )
 
 
+def _build_remote_bot_bridge_status() -> dict[str, str]:
+    endpoint = f"{settings.ROB_OPS_HOST}:{settings.ROB_OPS_PORT}"
+    try:
+        health = _build_bot_ops_client().health()
+    except Exception:
+        return {
+            "status": "Unreachable",
+            "reason": "Connection failed",
+            "endpoint": endpoint,
+            "bot_user_id": "unknown",
+        }
+    if health.ok:
+        bot_user_id = str(health.payload.get("bot_user_id", "unknown"))
+        return {
+            "status": "Healthy",
+            "reason": "Connected",
+            "endpoint": endpoint,
+            "bot_user_id": bot_user_id,
+        }
+    return {
+        "status": "Unreachable",
+        "reason": health.error or (f"HTTP {health.status_code}" if health.status_code else "Connection failed"),
+        "endpoint": endpoint,
+        "bot_user_id": "unknown",
+    }
+
+
 @login_required
 @superadmin_required
 @require_GET
@@ -310,16 +343,7 @@ def dashboard_view(request: HttpRequest) -> HttpResponse:
     status_rows = []
     for service_name in settings.ROB_PORTAL_ALLOWED_SERVICES:
         status_rows.append(get_service_status(service_name, allowed_services=settings.ROB_PORTAL_ALLOWED_SERVICES))
-
-    bot_ops_health = {"health": "Unknown", "details": "Unavailable"}
-    try:
-        health = _build_bot_ops_client().health()
-        if health.ok:
-            bot_ops_health = {"health": "Healthy", "details": "Connected"}
-        else:
-            bot_ops_health = {"health": "Warning", "details": f"HTTP {health.status_code}"}
-    except Exception:
-        bot_ops_health = {"health": "Unknown", "details": "Connection failed"}
+    remote_bot_bridge = _build_remote_bot_bridge_status()
 
     try:
         send_status_rows = (
@@ -343,8 +367,8 @@ def dashboard_view(request: HttpRequest) -> HttpResponse:
         "rob_admin/dashboard.html",
         {
             **_portal_context(request, title="Dashboard"),
-            "status_rows": status_rows,
-            "bot_ops_health": bot_ops_health,
+            "local_status_rows": status_rows,
+            "remote_bot_bridge": remote_bot_bridge,
             "metrics": {
                 "dommes": _safe_count(Domme),
                 "subs": _safe_count(Sub),
@@ -369,15 +393,36 @@ def services_view(request: HttpRequest) -> HttpResponse:
         get_service_status(service_name, allowed_services=settings.ROB_PORTAL_ALLOWED_SERVICES)
         for service_name in settings.ROB_PORTAL_ALLOWED_SERVICES
     ]
+    non_local_services = [s.name for s in statuses if not s.fragment_path]
     return render(
         request,
         "rob_admin/services.html",
         {
             **_portal_context(request, title="Services"),
             "statuses": statuses,
+            "non_local_services": non_local_services,
             "service_actions_enabled": settings.ROB_PORTAL_ENABLE_SERVICE_ACTIONS,
         },
     )
+
+
+@login_required
+@superadmin_required
+@require_POST
+def test_bot_bridge_view(request: HttpRequest) -> HttpResponse:
+    result = _build_remote_bot_bridge_status()
+    audit_action(
+        request=request,
+        action="test_bot_ops_bridge",
+        target_type="bot_ops_bridge",
+        target_id=result["endpoint"],
+        metadata={"status": result["status"], "reason": result["reason"]},
+    )
+    if result["status"] == "Healthy":
+        messages.success(request, f"Remote bot bridge healthy (bot_user_id={result['bot_user_id']}).")
+    else:
+        messages.warning(request, f"Remote bot bridge unreachable: {result['reason']}.")
+    return redirect("portal_dashboard")
 
 
 @login_required
@@ -789,7 +834,10 @@ def settings_view(request: HttpRequest) -> HttpResponse:
             "DISCORD_REDIRECT_URI": settings.DISCORD_REDIRECT_URI,
         }
     )
-    guild_settings = list(GuildSettings.objects.order_by("guild_id"))
+    try:
+        guild_settings = list(GuildSettings.objects.order_by("guild_id"))
+    except (DatabaseError, OperationalError, ProgrammingError):
+        guild_settings = []
     return render(
         request,
         "rob_admin/settings.html",

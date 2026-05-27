@@ -1,9 +1,10 @@
 {% extends "rob_admin/base.html" %}
 {% block content %}
 <div class="card">
-  <h2>System Health</h2>
+  <h2>Local Portal Host</h2>
+  <p class="muted">These services are checked via local <code>systemctl</code> on the portal/webhook server.</p>
   <div class="row">
-    {% for status in status_rows %}
+    {% for status in local_status_rows %}
       {% if status.health == "Healthy" %}
       <span class="badge healthy">{{ status.name }} · {{ status.active_state }}</span>
       {% elif status.health == "Warning" %}
@@ -15,7 +16,22 @@
       {% endif %}
     {% endfor %}
   </div>
-  <p class="muted">Bot ops bridge: {{ bot_ops_health.health }} ({{ bot_ops_health.details }})</p>
+</div>
+
+<div class="card">
+  <h2>Remote Bot Bridge</h2>
+  {% if remote_bot_bridge.status == "Healthy" %}
+  <p><span class="badge healthy">Remote bot bridge: Healthy</span></p>
+  <p>Bot user ID: <code>{{ remote_bot_bridge.bot_user_id }}</code></p>
+  {% else %}
+  <p><span class="badge warning">Remote bot bridge: Unreachable</span></p>
+  <p>Reason: {{ remote_bot_bridge.reason }}</p>
+  {% endif %}
+  <p class="muted">Configured endpoint: {{ remote_bot_bridge.endpoint }} (GET /health)</p>
+  <form method="post" action="/portal/dashboard/test-bot-bridge/" style="margin-top: .75rem;">
+    {% csrf_token %}
+    <button type="submit">Test Bot Bridge</button>
+  </form>
 </div>
 
 <div class="card">

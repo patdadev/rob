@@ -38,7 +38,7 @@ def test_django_admin_requires_authentication_redirects_to_portal_login():
     assert "/portal/admin/login/" in response["Location"]
 
 
-def test_discord_oauth_callback_denies_non_superadmin(monkeypatch):
+def test_discord_oauth_callback_allows_non_superadmin_as_user(monkeypatch):
     request = RequestFactory().get("/portal/auth/discord/callback/?code=abc&state=state-1")
     request.user = AnonymousUser()
     _attach_session(request)
@@ -46,10 +46,12 @@ def test_discord_oauth_callback_denies_non_superadmin(monkeypatch):
 
     monkeypatch.setattr(views, "_discord_exchange_code", lambda _code: "token")
     monkeypatch.setattr(views, "_discord_fetch_identity", lambda _token: {"id": "999", "username": "nope"})
+    monkeypatch.setattr(views, "_sync_django_user", lambda _identity: SimpleNamespace(get_username=lambda: "discord_999"))
+    monkeypatch.setattr(views, "auth_login", lambda *_args, **_kwargs: None)
 
     response = views.discord_auth_callback(request)
-    assert response.status_code == 403
-    assert b"restricted" in response.content.lower()
+    assert response.status_code == 302
+    assert response["Location"] == "/portal/dashboard/"
 
 
 def test_discord_oauth_callback_allows_superadmin(monkeypatch):
@@ -223,3 +225,60 @@ def test_settings_page_does_not_expose_raw_secrets(monkeypatch):
     assert "discord-oauth-secret" not in body
     assert "ops-bridge-secret" not in body
     assert "***" in body
+
+
+def test_dashboard_separates_local_services_and_remote_bridge(monkeypatch):
+    request = RequestFactory().get("/portal/dashboard/")
+    request.user = SimpleNamespace(is_authenticated=True, get_username=lambda: "discord_1")
+    _attach_session(request)
+    request.session["portal_discord_user_id"] = 1299308718009356289
+
+    class _HealthyClient:
+        def health(self):
+            return SimpleNamespace(ok=True, status_code=200, payload={"bot_user_id": "42"}, error=None)
+
+    monkeypatch.setattr(views, "_build_bot_ops_client", lambda: _HealthyClient())
+    raw_view = _unwrap_view(views.dashboard_view)
+    response = raw_view(request)
+    body = response.content.decode("utf-8")
+    assert "Local Portal Host" in body
+    assert "Remote Bot Bridge" in body
+    assert "Bot user ID" in body
+
+
+def test_dashboard_remote_bridge_403_shows_secret_warning(monkeypatch):
+    request = RequestFactory().get("/portal/dashboard/")
+    request.user = SimpleNamespace(is_authenticated=True, get_username=lambda: "discord_1")
+    _attach_session(request)
+    request.session["portal_discord_user_id"] = 1299308718009356289
+
+    class _ForbiddenClient:
+        def health(self):
+            return SimpleNamespace(ok=False, status_code=403, payload={}, error="Forbidden - check ROB_OPS_SECRET")
+
+    monkeypatch.setattr(views, "_build_bot_ops_client", lambda: _ForbiddenClient())
+    raw_view = _unwrap_view(views.dashboard_view)
+    response = raw_view(request)
+    body = response.content.decode("utf-8")
+    assert "Remote bot bridge: Unreachable" in body
+    assert "Forbidden - check ROB_OPS_SECRET" in body
+
+
+def test_services_page_explains_local_checks(monkeypatch):
+    request = RequestFactory().get("/portal/services/")
+    request.user = SimpleNamespace(is_authenticated=True, get_username=lambda: "discord_1")
+    _attach_session(request)
+    request.session["portal_discord_user_id"] = 1299308718009356289
+
+    raw_view = _unwrap_view(views.services_view)
+    response = raw_view(request)
+    body = response.content.decode("utf-8")
+    assert "service checks are local" in body.lower()
+    assert "Bot Ops Bridge health" in body
+
+
+def test_docs_include_split_server_bot_ops_guidance():
+    repo_root = Path(__file__).resolve().parents[2]
+    doc = (repo_root / "docs" / "web-portal.md").read_text(encoding="utf-8")
+    assert "Split-server dev" in doc
+    assert "do **not** expose the bot ops bridge publicly" in doc

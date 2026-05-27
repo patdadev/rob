@@ -169,6 +169,30 @@ Portal action endpoints call the private bot ops bridge:
 
 If `ROB_OPS_SECRET` is set, requests include `X-Rob-Ops-Secret`.
 
+### Split-server vs same-server setup
+
+Same-server dev (portal + bot on one machine):
+
+```dotenv
+ROB_OPS_HOST=127.0.0.1
+ROB_OPS_PORT=8811
+ROB_OPS_SECRET=
+```
+
+Split-server dev (portal and bot on different hosts):
+
+```dotenv
+ROB_OPS_HOST=<bot-server-private-ip-or-dns>
+ROB_OPS_PORT=8811
+ROB_OPS_SECRET=<same-secret-as-bot>
+```
+
+Security warning: do **not** expose the bot ops bridge publicly. Use private network routing, firewall allowlists, VPN, private tunnel routing, or an internal-only agent.
+
+Bot-side bind warning: if the portal runs on a different server, the bot ops bridge must bind to a reachable address on the bot host (for example a private NIC IP). `127.0.0.1` on the bot host is not reachable from a remote portal server. If you must use `0.0.0.0`, lock it down with strict firewall rules and allow only the portal host IP.
+
+Recommended: bind to the bot server private IP and allow only the portal server source IP.
+
 ## Local Run
 
 ```bash

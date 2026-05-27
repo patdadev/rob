@@ -8,8 +8,9 @@ import httpx
 @dataclass(frozen=True)
 class BotOpsResponse:
     ok: bool
-    status_code: int
+    status_code: int | None
     payload: dict
+    error: str | None = None
 
 
 class BotOpsClient:
@@ -24,18 +25,40 @@ class BotOpsClient:
         return headers
 
     def _request(self, method: str, path: str, *, json_payload: dict | None = None) -> BotOpsResponse:
-        with httpx.Client(timeout=8.0) as client:
-            response = client.request(
-                method=method,
-                url=f"{self.base_url}{path}",
-                headers=self._headers(),
-                json=json_payload,
-            )
+        try:
+            with httpx.Client(timeout=8.0) as client:
+                response = client.request(
+                    method=method,
+                    url=f"{self.base_url}{path}",
+                    headers=self._headers(),
+                    json=json_payload,
+                )
+        except httpx.ConnectTimeout:
+            return BotOpsResponse(ok=False, status_code=None, payload={}, error="Timed out")
+        except httpx.ConnectError as exc:
+            message = str(exc).lower()
+            if "name or service not known" in message or "nodename nor servname provided" in message:
+                return BotOpsResponse(ok=False, status_code=None, payload={}, error="DNS lookup failed")
+            if "connection refused" in message:
+                return BotOpsResponse(ok=False, status_code=None, payload={}, error="Connection refused")
+            return BotOpsResponse(ok=False, status_code=None, payload={}, error="Connection failed")
         try:
             payload = response.json()
         except ValueError:
-            payload = {"raw": response.text}
-        return BotOpsResponse(ok=response.status_code < 400, status_code=response.status_code, payload=payload)
+            return BotOpsResponse(
+                ok=False,
+                status_code=response.status_code,
+                payload={},
+                error=f"Invalid JSON response (HTTP {response.status_code})",
+            )
+        error: str | None = None
+        if response.status_code == 403:
+            error = "Forbidden - check ROB_OPS_SECRET"
+        elif response.status_code >= 500:
+            error = f"HTTP {response.status_code} - bot ops bridge error"
+        elif response.status_code >= 400:
+            error = f"HTTP {response.status_code}"
+        return BotOpsResponse(ok=response.status_code < 400, status_code=response.status_code, payload=payload, error=error)
 
     def health(self) -> BotOpsResponse:
         return self._request("GET", "/health")
@@ -49,4 +72,3 @@ class BotOpsClient:
     def set_maintenance(self, *, enabled: bool, reason: str | None = None) -> BotOpsResponse:
         payload = {"enabled": enabled, "reason": reason or ""}
         return self._request("POST", "/maintenance", json_payload=payload)
-
