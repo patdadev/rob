@@ -35,12 +35,10 @@ CREATE INDEX IF NOT EXISTS idx_inactive_users_guild_discord_user_id
 ON inactive_users (guild_id, discord_user_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sends_event_id_unique
-ON sends (event_id)
-WHERE event_id IS NOT NULL;
+ON sends (event_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sends_public_send_id_unique
-ON sends (public_send_id)
-WHERE public_send_id IS NOT NULL;
+ON sends (public_send_id);
 
 INSERT INTO db_build_version (version, notes)
 VALUES ('002_indexes', 'Rob v2 indexes and uniqueness helpers')

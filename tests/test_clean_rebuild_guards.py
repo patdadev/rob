@@ -186,6 +186,10 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     assert "CREATE TABLE IF NOT EXISTS bot_users" in core_schema
     assert "CREATE TABLE IF NOT EXISTS sends" in core_schema
     assert "idx_sends_event_id_unique" in indexes
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS idx_sends_event_id_unique\nON sends (event_id);" in indexes
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS idx_sends_public_send_id_unique\nON sends (public_send_id);" in indexes
+    assert "WHERE event_id IS NOT NULL" not in indexes
+    assert "WHERE public_send_id IS NOT NULL" not in indexes
     assert "VALUES ('002_indexes'," in indexes
 
 
