@@ -1,4 +1,81 @@
-{% extends "admin/base_site.html" %}
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{{ title }} | Rob Portal Admin{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  :root {
+    --primary: #7b61ff;
+    --secondary: #9f8cff;
+    --accent: #7b61ff;
+    --primary-fg: #f7f8ff;
+    --body-bg: #0f121a;
+    --body-fg: #e9eeff;
+    --header-color: #f7f8ff;
+    --header-branding-color: #f7f8ff;
+    --header-bg: #161b28;
+    --header-link-color: #c5ceff;
+    --breadcrumbs-bg: #1c2333;
+    --breadcrumbs-fg: #d6dcff;
+    --link-fg: #ae9fff;
+    --link-hover-color: #d4ccff;
+    --link-selected-fg: #ffffff;
+    --hairline-color: #2a344c;
+    --border-color: #2a344c;
+    --darkened-bg: #151b28;
+    --selected-bg: #222b41;
+    --selected-row: #1e273c;
+    --close-button-bg: #4f46e5;
+    --close-button-hover-bg: #7b61ff;
+  }
+
+  #header {
+    background: linear-gradient(180deg, #1c2233, #151b28);
+    border-bottom: 1px solid #2a344c;
+  }
+
+  #branding h1, #site-name a {
+    color: #ffffff;
+    font-weight: 700;
+    letter-spacing: .2px;
+  }
+
+  .module, .inline-group, #changelist-filter, .results, .dashboard .module table {
+    background: #161d2b;
+    border: 1px solid #2a344c;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  #nav-sidebar {
+    background: #121826;
+    border-right: 1px solid #2a344c;
+  }
+
+  .theme-toggle, .theme-toggle-form, button.theme-toggle {
+    display: none !important;
+  }
+
+  div.breadcrumbs {
+    border-bottom: 1px solid #2a344c;
+  }
+
+  .button, input[type=submit], input[type=button], .submit-row input, a.button {
+    background: linear-gradient(180deg, #8f7cff, #7b61ff);
+    border: none;
+  }
+</style>
+{% endblock %}
+
 {% block branding %}
-<h1 id="site-name">Rob Portal Admin</h1>
+<h1 id="site-name"><a href="/portal/dashboard/">Rob Portal Admin</a></h1>
+{% endblock %}
+
+{% block nav-global %}
+<div style="display:flex; gap:10px; align-items:center; margin-right: 8px;">
+  <a href="/portal/dashboard/" style="color:#c5ceff; text-decoration:none;">Portal Dashboard</a>
+  <a href="/portal/services/" style="color:#c5ceff; text-decoration:none;">Services</a>
+</div>
 {% endblock %}

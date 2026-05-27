@@ -59,12 +59,12 @@ def _is_superadmin(discord_user_id: int | None) -> bool:
 
 def _safe_next_path(value: str | None) -> str:
     if not value:
-        return "/portal/admin/"
+        return "/portal/dashboard/"
     parsed = urlparse(value)
     if parsed.netloc:
-        return "/portal/admin/"
+        return "/portal/dashboard/"
     if not value.startswith("/portal/"):
-        return "/portal/admin/"
+        return "/portal/dashboard/"
     return value
 
 
@@ -285,7 +285,7 @@ def discord_auth_callback(request: HttpRequest) -> HttpResponse:
         target_type="discord_user",
         target_id=str(discord_id),
     )
-    return redirect(_safe_next_path(request.session.pop("portal_oauth_next", "/portal/admin/")))
+    return redirect(_safe_next_path(request.session.pop("portal_oauth_next", "/portal/dashboard/")))
 
 
 def _safe_count(model) -> int:

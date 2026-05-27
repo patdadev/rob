@@ -139,7 +139,7 @@ STATIC_ROOT = str(PORTAL_DIR / "staticfiles")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_URL = "/portal/login/"
-LOGIN_REDIRECT_URL = "/portal/admin/"
+LOGIN_REDIRECT_URL = "/portal/dashboard/"
 LOGOUT_REDIRECT_URL = "/portal/login/"
 
 SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"
