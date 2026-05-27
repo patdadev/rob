@@ -1,89 +1,76 @@
-# Production Rollout Checklist
+# Production Rollout Checklist (Rob v2 Rebuild)
 
-## 1) Create production roles
+## 1) Build schema manually as `doadmin`
 
-- Run `scripts/db/01_create_roles.sql` as provider admin role.
-- Confirm `rob_prod_migrator`, `rob_prod_bot`, `rob_prod_webhook`, and `rob_prod_portal` exist and can login.
+Run in order, against `rob_prod`:
 
-## 2) Create `rob_prod`
+1. `scripts/db/build/001_core_schema.sql`
+2. `scripts/db/build/002_indexes.sql`
+3. `scripts/db/build/003_runtime_grants_template.sql` (optional reference template)
+4. `scripts/db/grants/prod_rob_bot.sql`
+5. `scripts/db/grants/prod_rob_webhook.sql`
 
-- Run `scripts/db/02_create_databases.sql`.
-- Confirm `rob_prod` exists and owner is `rob_prod_migrator`.
+These are DB build scripts, not app migrations.
 
-## 3) Run migrations on `rob_prod`
+## 2) Confirm runtime users
 
-- Export:
-  - `MIGRATION_DATABASE_URL=postgresql://rob_prod_migrator:.../rob_prod?...`
-- Execute:
-  - `PYTHONPATH=. python -m scripts.run_migrations`
+- `prod_rob_bot` connects and has runtime table/sequence access.
+- `prod_rob_webhook` connects with narrower runtime grants.
+- Neither runtime user has schema `CREATE`.
 
-## 4) Apply prod grants
+## 3) Seed minimum configuration
 
-- Run `scripts/db/04_grant_prod_permissions.sql`.
-- Ensure runtime users do not have schema-creation privileges.
+Insert only required production rows:
 
-## 5) Seed minimum production configuration
+- `vib_settings` for production guild(s)
+- optional `bot_settings` defaults (maintenance/features/inactivity)
 
-- Seed only required production values:
-  - `guild_settings` rows for production guild(s)
-  - required `bot_state` defaults (if applicable)
-- Do **not** import dev/test sends by default.
+Do not copy dev send history by default.
 
-## 6) Configure production env files
+## 4) Configure runtime environment
 
-- Bot runtime `DATABASE_URL` must use `rob_prod_bot`.
-- Webhook runtime `DATABASE_URL` must use `rob_prod_webhook`.
-- Portal runtime `PORTAL_DATABASE_URL` must use `rob_prod_portal`.
-- Migration tasks must use `MIGRATION_DATABASE_URL` with `rob_prod_migrator`.
+Bot:
+- `DATABASE_URL=postgresql://prod_rob_bot:.../rob_prod?...`
 
-## 7) Run DB verification
+Webhook:
+- `DATABASE_URL=postgresql://prod_rob_webhook:.../rob_prod?...`
 
-- Run:
-  - `PYTHONPATH=. python -m scripts.check_db`
-- Address any migration/column/permission warnings before service start.
+No admin DB credential is required in runtime `.env`.
 
-## 8) Start webhook service
+## 5) Validate DB with runtime credentials
 
-- Start/restart webhook process with prod env.
-- Confirm webhook health and DB connectivity.
+Run:
 
-## 9) Start bot service
+```bash
+PYTHONPATH=. python3 -m scripts.check_db
+```
 
-- Start/restart bot process with prod env.
-- Confirm slash command sync and DB connectivity.
+If this fails, apply missing DB build SQL manually and rerun.
 
-## 10) Start portal service
+## 6) Deploy webhook and bot services
 
-- Start/restart `rob-portal-prod.service` (or the environment-specific portal service name).
-- Confirm `/portal/login/` and Discord OAuth callback are reachable.
+Deploy scripts intentionally run:
 
-## 11) Verify Discord commands
+1. dependency install
+2. compile checks
+3. `scripts.check_db`
+4. service restart
 
-- Registration commands
-- Send request flow
-- Leaderboard stats flow
-- Counting flow
+Deploy scripts do **not** create/alter schema.
 
-## 12) Verify Throne webhook ingestion
+## 7) Functional validation
 
-- Send a controlled test event.
-- Confirm event appears in logs and expected tables.
+1. registration works (`/register domme`, `/register sub`)
+2. webhook ingest works on preferred route
+3. send queue posts and marks sends
+4. leaderboard refresh works
+5. `/leaderboard` and counting features behave normally
+6. inactivity loop behaves as expected
 
-## 13) Verify public leaderboard token flow (if enabled)
+## 8) Post-cutover audit
 
-- Confirm `public_leaderboards` rows resolve correctly.
-- Confirm no `leaderboard_messages` legacy table usage remains.
-
-## 14) Verify logs and alerts
-
-- Bot logs clean of DB permission errors.
-- Webhook logs clean of DB permission errors.
-- Queue/maintenance/leaderboard updates behaving as expected.
-
-## Optional automation
-
-For a controlled one-time automation path, use:
-
-- `.github/workflows/db-one-time-bootstrap.yml`
-
-This workflow is manual-only (`workflow_dispatch`), confirmation-gated, and expects DB URL secrets to be configured before execution.
+- runtime logs show no DB permission errors
+- webhook user is still missing schema `CREATE`
+- `db_build_version` includes:
+  - `001_core_schema`
+  - `002_indexes`

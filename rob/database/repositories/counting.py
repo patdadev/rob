@@ -25,7 +25,7 @@ class CountingRepository:
     async def get(self, guild_id: int) -> CountingState | None:
         async with self.database.acquire() as connection:
             row = await connection.fetchrow(
-                "SELECT * FROM counting_state WHERE guild_id = $1",
+                "SELECT * FROM the_count WHERE guild_id = $1",
                 guild_id,
             )
         if row is None:
@@ -45,7 +45,7 @@ class CountingRepository:
         async with self.database.acquire() as connection:
             row = await connection.fetchrow(
                 """
-                INSERT INTO counting_state (
+                INSERT INTO the_count (
                     guild_id,
                     channel_id,
                     current_number,
@@ -72,3 +72,7 @@ class CountingRepository:
             )
         assert row is not None
         return _build_counting_state(row)
+
+
+# Backward-compat alias while services transition to v2 naming.
+TheCountRepository = CountingRepository

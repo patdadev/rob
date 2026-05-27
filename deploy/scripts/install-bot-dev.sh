@@ -115,8 +115,7 @@ write_env_template_if_missing() {
   cat > "${env_file}" <<'EOF'
 APP_ENV=dev
 LOG_LEVEL=INFO
-DATABASE_URL=postgresql://rob_dev_bot:replace@127.0.0.1:5432/rob_dev
-MIGRATION_DATABASE_URL=postgresql://rob_dev_migrator:replace@127.0.0.1:5432/rob_dev
+DATABASE_URL=postgresql://dev_rob_bot:replace@127.0.0.1:5432/rob_dev_v2
 DISCORD_TOKEN=replace
 BOT_NAME=Rob Dev
 EOF
@@ -180,7 +179,7 @@ maybe_enable_and_start() {
   fi
 
   log "Running database check"
-  run_as_deploy bash -lc "cd '${APP_DIR}' && set -a && source .env && set +a && PYTHONPATH=. .venv/bin/python scripts/run_migrations.py && PYTHONPATH=. .venv/bin/python -m scripts.check_db"
+  run_as_deploy bash -lc "cd '${APP_DIR}' && set -a && source .env && set +a && PYTHONPATH=. .venv/bin/python -m scripts.check_db"
 
   log "Starting ${SERVICE_NAME}"
   systemctl restart "${SERVICE_NAME}"

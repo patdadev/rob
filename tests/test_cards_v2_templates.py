@@ -7,7 +7,6 @@ from rob.services.leaderboard_status import LeaderboardStatus
 from rob.services.send_display import build_sub_display
 from rob.ui.cards.leader_alert import leader_alert_card
 from rob.ui.cards.leaderboard import leaderboard_card, leaderboard_stats_card
-from rob.ui.cards.privacy import privacy_card
 from rob.ui.cards.send import send_card
 from rob.ui.copy import throne_setup_steps
 from rob.ui.theme import COLOR_LEADER_ALERT, COLOR_SEND
@@ -234,19 +233,3 @@ def test_leader_alert_card_shape_and_color():
     ]
     assert "👑 NEW LEADER ALERT!" in all_text
     assert msg.view.children[0].accent_color == COLOR_LEADER_ALERT
-
-
-def test_privacy_card_returns_safe_part_under_4000_chars():
-    msg = privacy_card()
-    assert len(msg.view.children) >= 1
-    for container in msg.view.children:
-        assert type(container).__name__ == "Container"
-    all_text = "\n".join(
-        str(getattr(item, "content", ""))
-        for container in msg.view.children
-        for item in getattr(container, "children", [])
-    )
-    assert len(all_text) < 4000
-    assert "Rob Privacy Notice" in all_text
-    assert "Information Collected or Received" in all_text
-    assert "Privacy Notice valid as of 25/05/2026" in all_text

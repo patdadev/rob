@@ -6,90 +6,199 @@ from pathlib import Path
 from rob.config.settings import configure_logging, load_base_settings
 from rob.database.connection import Database
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "rob" / "database" / "migrations"
+DB_BUILD_DIR = Path(__file__).resolve().parent / "db" / "build"
+REQUIRED_DB_BUILD_VERSIONS = (
+    "001_core_schema",
+    "002_indexes",
+)
 
 REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {
-    "guild_settings": {
+    "db_build_version": {"version", "applied_at", "notes"},
+    "bot_settings": {"key", "value", "updated_at", "updated_by"},
+    "bot_users": {
+        "id",
         "guild_id",
-        "domme_role_id",
-        "sub_role_id",
-        "warn_log_channel_id",
-        "carlbot_user_id",
-        "report_channel_id",
-        "inactive_role_id",
+        "discord_user_id",
+        "discord_username",
+        "discord_display_name",
+        "status",
+        "first_seen_at",
+        "last_seen_at",
+        "created_at",
+        "updated_at",
+    },
+    "dommes": {
+        "id",
+        "guild_id",
+        "bot_user_id",
+        "discord_user_id",
+        "throne_url",
+        "throne_handle",
+        "throne_creator_id",
+        "tracking_status",
+        "profile_status",
+        "hide_own_purchases",
+        "webhook_secret",
+        "webhook_secret_hash",
+        "webhook_connected_at",
+        "overlay_detected",
+        "last_overlay_check_at",
+        "last_successful_event_at",
+        "public_display_name",
+        "public_display_name_updated_at",
+        "registered_at",
+        "created_at",
+        "updated_at",
+    },
+    "subs": {
+        "id",
+        "guild_id",
+        "bot_user_id",
+        "discord_user_id",
+        "send_name",
+        "profile_status",
+        "registered_at",
+        "created_at",
+        "updated_at",
     },
     "sends": {
         "id",
+        "guild_id",
+        "domme_id",
         "domme_user_id",
+        "sub_id",
         "sub_user_id",
         "sub_name",
         "amount_cents",
         "currency",
-        "discord_post_status",
-        "is_test_send",
+        "method",
+        "source",
+        "item_name",
+        "item_image_url",
+        "logged_by",
+        "external_id",
+        "event_id",
+        "fallback_event_hash",
         "public_send_id",
+        "is_private",
+        "is_test_send",
+        "seeded",
+        "sent_at",
+        "received_at",
+        "discord_post_status",
+        "discord_posted_at",
+        "discord_message_id",
+        "discord_post_error",
+        "created_at",
     },
-    "send_requests": {
+    "vib_settings": {
+        "guild_id",
+        "registration_channel_id",
+        "leaderboard_channel_id",
+        "send_track_channel_id",
+        "counting_channel_id",
+        "report_channel_id",
+        "warn_log_channel_id",
+        "domme_role_id",
+        "sub_role_id",
+        "mod_role_id",
+        "inactive_role_id",
+        "carlbot_user_id",
+        "created_at",
+        "updated_at",
+    },
+    "vib_leaderboard": {
         "id",
         "guild_id",
-        "sub_user_id",
-        "domme_user_id",
-        "method",
-        "status",
-        "denial_reason",
-        "resolved_by_user_id",
-    },
-    "leaderboard_message": {
-        "guild_id",
-        "message_key",
+        "leaderboard_key",
         "leaderboard_type",
+        "title",
         "channel_id",
         "message_id",
+        "public_token",
+        "public_enabled",
+        "public_theme",
+        "last_refreshed_at",
+        "created_at",
+        "updated_at",
+    },
+    "the_count": {
+        "guild_id",
+        "channel_id",
+        "current_number",
+        "last_user_id",
+        "is_enabled",
+        "pending_restore",
+        "updated_at",
+    },
+    "inactive_users": {
+        "id",
+        "guild_id",
+        "bot_user_id",
+        "discord_user_id",
+        "inactive_role_assigned_at",
+        "remove_at",
+        "initial_notice_sent",
+        "final_notice_sent",
+        "status",
+        "created_at",
+        "updated_at",
     },
 }
 
 BOT_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
-    "blacklist": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "bot_state": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "counting_state": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "db_build_version": ("SELECT",),
+    "bot_settings": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "bot_users": ("SELECT", "INSERT", "UPDATE", "DELETE"),
     "dommes": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "guild_settings": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "leaderboard_message": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "public_leaderboards": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "schema_migrations": ("SELECT",),
-    "send_requests": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "sends": ("SELECT", "INSERT", "UPDATE", "DELETE"),
     "subs": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "throne_creators": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "sends": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "vib_settings": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "vib_leaderboard": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "the_count": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "inactive_users": ("SELECT", "INSERT", "UPDATE", "DELETE"),
 }
 
 WEBHOOK_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
-    "guild_settings": ("SELECT",),
-    "dommes": ("SELECT",),
+    "db_build_version": ("SELECT",),
+    "bot_settings": ("SELECT", "UPDATE"),
+    "bot_users": ("SELECT", "INSERT", "UPDATE"),
+    "dommes": ("SELECT", "UPDATE"),
     "subs": ("SELECT",),
-    "public_leaderboards": ("SELECT",),
-    "leaderboard_message": ("SELECT",),
-    "schema_migrations": ("SELECT",),
-    "throne_creators": ("SELECT", "UPDATE"),
-    "bot_state": ("SELECT", "UPDATE"),
     "sends": ("SELECT", "INSERT", "UPDATE"),
+    "vib_settings": ("SELECT",),
+    "vib_leaderboard": ("SELECT",),
 }
 
-PORTAL_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
-    "schema_migrations": ("SELECT",),
-    "sends": ("SELECT",),
-    "leaderboard_message": ("SELECT",),
-    "counting_state": ("SELECT",),
-    "guild_settings": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "dommes": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "subs": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "send_requests": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "throne_creators": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "public_leaderboards": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "bot_state": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "blacklist": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "portal_audit_log": ("SELECT", "INSERT"),
-}
+BOT_RUNTIME_SEQUENCES = (
+    "public.bot_users_id_seq",
+    "public.dommes_id_seq",
+    "public.subs_id_seq",
+    "public.sends_id_seq",
+    "public.vib_leaderboard_id_seq",
+    "public.inactive_users_id_seq",
+)
+
+WEBHOOK_RUNTIME_SEQUENCES = (
+    "public.bot_users_id_seq",
+    "public.sends_id_seq",
+)
+
+
+def _runtime_profile(current_user: str) -> str:
+    if current_user.endswith("_webhook"):
+        return "webhook"
+    if current_user.endswith("_bot"):
+        return "bot"
+    return "generic"
+
+
+async def _table_exists(connection, table: str) -> bool:
+    value = await connection.fetchval(
+        "SELECT to_regclass($1) IS NOT NULL",
+        f"public.{table}",
+    )
+    return bool(value)
 
 
 async def _assert_table_columns(connection, table: str, required_columns: set[str]) -> None:
@@ -107,45 +216,28 @@ async def _assert_table_columns(connection, table: str, required_columns: set[st
     present = {str(row["column_name"]) for row in rows}
     missing = sorted(required_columns - present)
     if missing:
-        raise RuntimeError(f"Table {table} is missing required columns: {', '.join(missing)}")
+        raise RuntimeError(
+            f"Table {table} is missing required columns: {', '.join(missing)}"
+        )
 
 
-async def _table_exists(connection, table: str) -> bool:
-    value = await connection.fetchval(
-        "SELECT to_regclass($1) IS NOT NULL",
-        f"public.{table}",
+async def _assert_no_schema_create_privilege(connection, *, current_user: str) -> None:
+    has_create = await connection.fetchval(
+        "SELECT has_schema_privilege(current_user, 'public', 'CREATE')",
     )
-    return bool(value)
+    if has_create:
+        raise RuntimeError(
+            f"Runtime user '{current_user}' has CREATE on schema public; "
+            "runtime users must not have schema-changing privileges."
+        )
 
 
-async def _dommes_has_public_display_columns(connection) -> bool:
-    rows = await connection.fetch(
-        """
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'dommes'
-          AND column_name IN ('public_display_name', 'public_display_name_updated_at')
-        """,
-    )
-    columns = {str(row["column_name"]) for row in rows}
-    return {
-        "public_display_name",
-        "public_display_name_updated_at",
-    }.issubset(columns)
-
-
-def _runtime_profile(current_user: str) -> str:
-    if current_user.endswith("_webhook"):
-        return "webhook"
-    if current_user.endswith("_portal"):
-        return "portal"
-    if current_user.endswith("_bot"):
-        return "bot"
-    return "generic"
-
-
-async def _assert_runtime_permissions(connection, *, current_user: str, current_database: str) -> None:
+async def _assert_runtime_permissions(
+    connection,
+    *,
+    current_user: str,
+    current_database: str,
+) -> None:
     if not await connection.fetchval(
         "SELECT has_database_privilege(current_user, current_database(), 'CONNECT')",
     ):
@@ -154,14 +246,19 @@ async def _assert_runtime_permissions(connection, *, current_user: str, current_
         )
 
     profile = _runtime_profile(current_user)
-    if profile in {"bot", "generic"}:
-        required = BOT_TABLE_PERMISSIONS
-    elif profile == "webhook":
-        required = WEBHOOK_TABLE_PERMISSIONS
-    else:
-        required = PORTAL_TABLE_PERMISSIONS
-    missing: list[str] = []
+    if profile == "generic":
+        return
 
+    await _assert_no_schema_create_privilege(connection, current_user=current_user)
+
+    if profile == "bot":
+        required = BOT_TABLE_PERMISSIONS
+        sequence_names = BOT_RUNTIME_SEQUENCES
+    else:
+        required = WEBHOOK_TABLE_PERMISSIONS
+        sequence_names = WEBHOOK_RUNTIME_SEQUENCES
+
+    missing: list[str] = []
     for table_name, privileges in required.items():
         for privilege in privileges:
             has_privilege = await connection.fetchval(
@@ -172,22 +269,12 @@ async def _assert_runtime_permissions(connection, *, current_user: str, current_
             if not has_privilege:
                 missing.append(f"{table_name}:{privilege}")
 
-    sequence_checks = ("USAGE", "SELECT", "UPDATE")
-    sequence_names = (
-        ("public.sends_id_seq",)
-        if profile == "webhook"
-        else (
-            "public.sends_id_seq",
-            "public.dommes_id_seq",
-            "public.subs_id_seq",
-            "public.send_requests_id_seq",
-            "public.public_leaderboards_id_seq",
-            "public.throne_creators_id_seq",
-            "public.portal_audit_log_id_seq",
-        )
-    )
     for sequence_name in sequence_names:
-        for privilege in sequence_checks:
+        exists = await connection.fetchval("SELECT to_regclass($1) IS NOT NULL", sequence_name)
+        if not exists:
+            missing.append(f"{sequence_name}:missing")
+            continue
+        for privilege in ("USAGE", "SELECT", "UPDATE"):
             has_privilege = await connection.fetchval(
                 "SELECT has_sequence_privilege(current_user, $1, $2)",
                 sequence_name,
@@ -196,20 +283,20 @@ async def _assert_runtime_permissions(connection, *, current_user: str, current_
             if not has_privilege:
                 missing.append(f"{sequence_name}:{privilege}")
 
+    if profile == "webhook":
+        for table_name in ("sends", "bot_users"):
+            has_delete = await connection.fetchval(
+                "SELECT has_table_privilege(current_user, $1, 'DELETE')",
+                f"public.{table_name}",
+            )
+            if has_delete:
+                missing.append(f"{table_name}:DELETE_not_allowed")
+
     if missing:
         raise RuntimeError(
             "Runtime permission check failed for user "
-            f"'{current_user}'. Missing privileges: {', '.join(missing)}"
+            f"'{current_user}'. Missing or invalid privileges: {', '.join(missing)}"
         )
-
-    if profile in {"webhook", "portal"}:
-        has_delete = await connection.fetchval(
-            "SELECT has_table_privilege(current_user, 'public.sends', 'DELETE')",
-        )
-        if has_delete:
-            raise RuntimeError(
-                f"{profile} runtime user has DELETE on public.sends, which is broader than intended."
-            )
 
 
 async def main() -> None:
@@ -217,51 +304,49 @@ async def main() -> None:
     configure_logging(settings.log_level)
 
     database = Database(settings.database_url)
-
     await database.connect()
 
     try:
-        healthy = await database.health_check()
-        if not healthy:
+        if not await database.health_check():
             raise RuntimeError("Database check failed.")
+
         async with database.acquire() as connection:
             current_user = str(await connection.fetchval("SELECT current_user"))
             current_database = str(await connection.fetchval("SELECT current_database()"))
 
-            if not await _table_exists(connection, "schema_migrations"):
-                raise RuntimeError("Missing required table: schema_migrations")
+            if not await _table_exists(connection, "db_build_version"):
+                raise RuntimeError("Missing required table: db_build_version")
 
-            rows = await connection.fetch("SELECT version FROM schema_migrations")
+            rows = await connection.fetch("SELECT version FROM db_build_version")
             applied = {str(row["version"]) for row in rows}
+            required_scripts = {
+                version: DB_BUILD_DIR / f"{version}.sql"
+                for version in REQUIRED_DB_BUILD_VERSIONS
+            }
+            missing_script_files = [
+                version
+                for version, script_path in required_scripts.items()
+                if not script_path.exists()
+            ]
+            if missing_script_files:
+                raise RuntimeError(
+                    "Required DB build script file is missing: "
+                    + ", ".join(missing_script_files)
+                )
 
-            migration_files = sorted(MIGRATIONS_DIR.glob("*.sql"))
-            expected = {migration_file.stem for migration_file in migration_files}
-            missing_migrations = sorted(expected - applied)
-            if missing_migrations:
-                if (
-                    "009_domme_public_display_names" in missing_migrations
-                    and await _dommes_has_public_display_columns(connection)
-                ):
+            missing_versions = sorted(set(REQUIRED_DB_BUILD_VERSIONS) - applied)
+            if missing_versions:
+                if len(missing_versions) == 1:
                     raise RuntimeError(
-                        "Migration 009_domme_public_display_names is missing from "
-                        "schema_migrations, but dommes columns already exist. "
-                        "Repair with: "
-                        "INSERT INTO schema_migrations (version, applied_at) "
-                        "VALUES ('009_domme_public_display_names', now()) "
-                        "ON CONFLICT (version) DO NOTHING;"
+                        f"Database is missing required DB build version: {missing_versions[0]}"
                     )
                 raise RuntimeError(
-                    "Database is missing applied migrations: " + ", ".join(missing_migrations)
+                    "Database is missing required DB build versions: "
+                    + ", ".join(missing_versions)
                 )
 
             for table_name, required_columns in REQUIRED_TABLE_COLUMNS.items():
                 await _assert_table_columns(connection, table_name, required_columns)
-
-            if await _table_exists(connection, "leaderboard_messages"):
-                raise RuntimeError(
-                    "Legacy table leaderboard_messages detected. "
-                    "Run scripts/db/06_cleanup_legacy_tables.sql and migrate rows before dropping it."
-                )
 
             await _assert_runtime_permissions(
                 connection,
@@ -272,6 +357,7 @@ async def main() -> None:
         print("Database check passed.")
     finally:
         await database.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

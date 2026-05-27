@@ -6,7 +6,7 @@ from typing import Any, Literal
 import discord
 
 _REQUIRED_V2 = ("LayoutView", "Container", "Section", "TextDisplay", "Separator", "MediaGallery", "Thumbnail", "Button")
-CardVariant = Literal["default", "success", "error", "warning", "setup", "privacy", "leaderboard", "send", "counting", "status"]
+CardVariant = Literal["default", "success", "error", "warning", "setup", "leaderboard", "send", "counting", "status"]
 
 
 @dataclass(frozen=True)

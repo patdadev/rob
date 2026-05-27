@@ -51,10 +51,11 @@ def _valid_sends_cte() -> str:
 
 
 def _build_message_ref(row: Record) -> LeaderboardMessageRef:
+    message_key = row["leaderboard_key"] if "leaderboard_key" in row else row["message_key"]
     return LeaderboardMessageRef(
         id=int(row["id"]),
         guild_id=int(row["guild_id"]),
-        message_key=str(row["message_key"]),
+        message_key=str(message_key),
         leaderboard_type=row["leaderboard_type"],
         channel_id=int(row["channel_id"]),
         message_id=int(row["message_id"]),
@@ -208,21 +209,18 @@ class LeaderboardsRepository:
                 SELECT
                     COALESCE(
                         NULLIF(TRIM(d.public_display_name), ''),
-                        NULLIF(TRIM(tc.throne_handle), ''),
+                        NULLIF(TRIM(d.throne_handle), ''),
                         'Registered Dom/me'
                     ) AS public_label,
                     d.discord_user_id AS user_id,
                     COALESCE(SUM(v.amount_cents), 0) AS total_cents,
                     COUNT(v.id) AS send_count
                 FROM dommes d
-                LEFT JOIN throne_creators tc
-                    ON tc.guild_id = d.guild_id
-                    AND tc.discord_user_id = d.discord_user_id
                 LEFT JOIN valid_sends v
                     ON v.guild_id = d.guild_id
                     AND v.recipient_user_id = d.discord_user_id
                 WHERE d.guild_id = $1
-                GROUP BY d.discord_user_id, d.public_display_name, tc.throne_handle
+                GROUP BY d.discord_user_id, d.public_display_name, d.throne_handle
                 ORDER BY total_cents DESC, send_count DESC, d.discord_user_id ASC
                 LIMIT $5
                 """,
@@ -753,9 +751,9 @@ class LeaderboardsRepository:
             row = await connection.fetchrow(
                 """
                 SELECT *
-                FROM leaderboard_message
+                FROM vib_leaderboard
                 WHERE guild_id = $1
-                AND message_key = $2
+                AND leaderboard_key = $2
                 """,
                 guild_id,
                 message_key,
@@ -776,15 +774,16 @@ class LeaderboardsRepository:
         async with self.database.acquire() as connection:
             row = await connection.fetchrow(
                 """
-                INSERT INTO leaderboard_message (
+                INSERT INTO vib_leaderboard (
                     guild_id,
-                    message_key,
+                    leaderboard_key,
                     leaderboard_type,
                     channel_id,
-                    message_id
+                    message_id,
+                    title
                 )
-                VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT (guild_id, message_key) DO UPDATE SET
+                VALUES ($1, $2, $3, $4, $5, 'Send Leaderboard')
+                ON CONFLICT (guild_id, leaderboard_key) DO UPDATE SET
                     leaderboard_type = EXCLUDED.leaderboard_type,
                     channel_id = EXCLUDED.channel_id,
                     message_id = EXCLUDED.message_id,
@@ -799,3 +798,7 @@ class LeaderboardsRepository:
             )
         assert row is not None
         return _build_message_ref(row)
+
+
+# v2 naming alias
+VibLeaderboardRepository = LeaderboardsRepository

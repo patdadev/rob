@@ -9,8 +9,8 @@ from aiohttp import web
 from rob.config.settings import WebhookSettings
 from rob.database.connection import Database
 from rob.database.repositories.bot_state import BotStateRepository
+from rob.database.repositories.dommes import DommesRepository
 from rob.database.repositories.sends import SendsRepository
-from rob.database.repositories.throne_creators import ThroneCreatorsRepository
 from rob.services.maintenance_service import MaintenanceService
 from rob.services.send_service import SendService
 from rob.services.throne_service import ThroneService
@@ -65,8 +65,8 @@ async def handle_throne_webhook(request: web.Request) -> web.Response:
     if settings.throne_webhook_debug_log_payload:
         log.info("Throne webhook payload for %s: %s", creator_id, payload)
 
-    creators = ThroneCreatorsRepository(database)
-    matching_creators = await creators.get_by_creator_id(creator_id)
+    dommes = DommesRepository(database)
+    matching_creators = await dommes.get_by_creator_id(creator_id)
 
     matched_creator = None
     for creator in matching_creators:
@@ -88,15 +88,15 @@ async def handle_throne_webhook(request: web.Request) -> web.Response:
     explicit_test = is_explicit_test_webhook_payload(payload, parsed)
     known_test_sender = is_known_test_sender(parsed.gifter_username, test_gifter_usernames=set(settings.throne_test_gifter_usernames))
     if explicit_test:
-        await creators.mark_setup_verified(matched_creator.id)
+        await dommes.mark_setup_verified(matched_creator.id)
         return web.json_response({"ok": True, "setup_verified": True})
     if known_test_sender and not settings.throne_parse_test_sends_as_real_sends:
-        await creators.mark_setup_verified(matched_creator.id)
+        await dommes.mark_setup_verified(matched_creator.id)
     if known_test_sender and settings.throne_parse_test_sends_as_real_sends:
         log.warning("Known Throne test sender accepted as real send due to THRONE_PARSE_TEST_SENDS_AS_REAL_SENDS=true. creator_id=%s gifter_username=%s", creator_id, parsed.gifter_username)
 
     if not is_supported_event_type(parsed.event_type):
-        await creators.touch_successful_event(matched_creator.id)
+        await dommes.touch_successful_event(matched_creator.id)
         return web.json_response(
             {
                 "ok": True,
@@ -117,7 +117,7 @@ async def handle_throne_webhook(request: web.Request) -> web.Response:
         creator=matched_creator,
         payload=parsed,
     )
-    await creators.touch_successful_event(matched_creator.id)
+    await dommes.touch_successful_event(matched_creator.id)
 
     if send is None:
         return web.json_response({"ok": True, "duplicate": True})
@@ -142,6 +142,7 @@ def create_webhook_app(
     app["subs_repository"] = SubsRepository(database)
     app.router.add_get("/health", handle_health)
     app.router.add_post("/throne/webhook/{creator_id}/{secret}", handle_throne_webhook)
+    app.router.add_post("/webhook/{creator_id}/{secret}", handle_throne_webhook)
 
     async def close_throne_service(_app: web.Application) -> None:
         await _app["throne_service"].close()

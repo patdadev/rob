@@ -5,10 +5,9 @@ from dataclasses import dataclass
 
 from rob.database.repositories.blacklist import BlacklistRepository
 from rob.database.repositories.dommes import DommesRepository
-from rob.database.repositories.guild_settings import GuildSettingsRepository
-from rob.database.repositories.models import Domme, Sub, ThroneCreator
+from rob.database.repositories.models import Domme, Sub
+from rob.database.repositories.vib_settings import VibSettingsRepository
 from rob.database.repositories.subs import SubsRepository
-from rob.database.repositories.throne_creators import ThroneCreatorsRepository
 from rob.services.throne_service import ThroneService
 from rob.throne.scraper import normalize_throne_registration_input
 from rob.throne.security import hash_webhook_secret
@@ -30,7 +29,6 @@ def sanitize_webhook_base_url(value: str | None) -> str | None:
 @dataclass(frozen=True)
 class DommeRegistrationResult:
     domme: Domme
-    creator: ThroneCreator
     webhook_url: str | None
 
 
@@ -43,10 +41,9 @@ class RegistrationService:
     def __init__(
         self,
         *,
-        guild_settings: GuildSettingsRepository,
+        guild_settings: VibSettingsRepository,
         dommes: DommesRepository,
         subs: SubsRepository,
-        throne_creators: ThroneCreatorsRepository,
         blacklist: BlacklistRepository,
         throne: ThroneService,
         webhook_base_url: str | None = None,
@@ -54,7 +51,6 @@ class RegistrationService:
         self.guild_settings = guild_settings
         self.dommes = dommes
         self.subs = subs
-        self.throne_creators = throne_creators
         self.blacklist = blacklist
         self.throne = throne
         self.webhook_base_url = sanitize_webhook_base_url(webhook_base_url)
@@ -79,13 +75,13 @@ class RegistrationService:
 
         await self.guild_settings.ensure_guild(guild_id)
 
-        existing_by_handle = await self.throne_creators.get_by_handle(
+        existing_by_handle = await self.dommes.get_by_handle(
             guild_id,
             creator_info.throne_handle,
         )
         if existing_by_handle is not None and existing_by_handle.discord_user_id != discord_user_id:
             raise ValueError("That Throne account is already linked to another Dom/me.")
-        existing_by_creator_id = await self.throne_creators.get_by_creator_id(
+        existing_by_creator_id = await self.dommes.get_by_creator_id(
             creator_info.creator_id
         )
         for existing_creator in existing_by_creator_id:
@@ -95,35 +91,22 @@ class RegistrationService:
             ):
                 raise ValueError("That Throne creator is already linked to another Dom/me.")
 
-        domme = await self.dommes.upsert(
-            guild_id=guild_id,
-            discord_user_id=discord_user_id,
-            throne_url=normalized,
-        )
-
-        existing_for_user = await self.throne_creators.get_by_user_id(
-            guild_id,
-            discord_user_id,
-        )
+        existing_for_user = await self.dommes.get_by_user_id(guild_id, discord_user_id)
         webhook_secret = (
             existing_for_user.webhook_secret
             if existing_for_user is not None and existing_for_user.webhook_secret
             else secrets.token_urlsafe(32)
         )
-        tracking_mode = (
-            "webhook"
-            if existing_for_user is not None and existing_for_user.tracking_mode == "webhook"
-            else "disabled"
-        )
 
-        creator = await self.throne_creators.upsert_for_user(
+        domme = await self.dommes.upsert(
             guild_id=guild_id,
-            domme_id=domme.id,
             discord_user_id=discord_user_id,
+            throne_url=normalized,
             throne_handle=creator_info.throne_handle,
             throne_creator_id=creator_info.creator_id,
             hide_own_purchases=creator_info.hide_own_purchases,
-            tracking_mode=tracking_mode,
+            tracking_status="disabled",
+            profile_status="active",
             webhook_secret=webhook_secret,
             webhook_secret_hash=hash_webhook_secret(webhook_secret),
         )
@@ -131,13 +114,12 @@ class RegistrationService:
         webhook_url = None
         if self.webhook_base_url:
             webhook_url = (
-                f"{self.webhook_base_url}/throne/webhook/"
+                f"{self.webhook_base_url}/webhook/"
                 f"{creator_info.creator_id}/{webhook_secret}"
             )
 
         return DommeRegistrationResult(
             domme=domme,
-            creator=creator,
             webhook_url=webhook_url,
         )
 

@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 @dataclass(frozen=True)
-class GuildSettings:
+class VibSettings:
     guild_id: int
     registration_channel_id: int | None
     leaderboard_channel_id: int | None
@@ -22,12 +22,28 @@ class GuildSettings:
     updated_at: datetime
 
 
+# Backward-compat alias during v2 transition.
+GuildSettings = VibSettings
+
+
 @dataclass(frozen=True)
 class Domme:
     id: int
+    bot_user_id: int | None
     guild_id: int
     discord_user_id: int
-    throne_url: str
+    throne_url: str | None
+    throne_handle: str | None
+    throne_creator_id: str | None
+    tracking_status: str
+    profile_status: str
+    hide_own_purchases: bool | None
+    webhook_secret: str | None
+    webhook_secret_hash: str | None
+    webhook_connected_at: datetime | None
+    overlay_detected: bool
+    last_overlay_check_at: datetime | None
+    last_successful_event_at: datetime | None
     public_display_name: str | None
     public_display_name_updated_at: datetime | None
     registered_at: datetime
@@ -131,23 +147,6 @@ class NewSend:
     sent_at: datetime
     discord_post_status: str
     is_test_send: bool = False
-
-
-@dataclass(frozen=True)
-class SendRequestRecord:
-    id: int
-    guild_id: int
-    sub_user_id: int
-    domme_user_id: int
-    amount_cents: int
-    currency: str
-    method: str
-    note: str | None
-    status: str
-    created_at: datetime
-    resolved_at: datetime | None
-    denial_reason: str | None = None
-    resolved_by_user_id: int | None = None
 
 
 @dataclass(frozen=True)

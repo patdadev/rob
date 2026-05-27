@@ -10,22 +10,18 @@ from rob.config.settings import BotSettings
 from rob.database.connection import Database
 from rob.database.repositories import (
     BlacklistRepository,
-    BotStateRepository,
+    BotSettingsRepository,
     CountingRepository,
     DommesRepository,
-    GuildSettingsRepository,
+    VibSettingsRepository,
     LeaderboardsRepository,
-    SendRequestsRepository,
     SendsRepository,
     SubsRepository,
-    ThroneCreatorsRepository,
 )
 from rob.discord.cogs.admin_tools import AdminToolsCog
-from rob.discord.cogs.broadcast import BroadcastCog
 from rob.discord.cogs.counting import CountingCog
 from rob.discord.cogs.inactivity import InactivityCog
 from rob.discord.cogs.leaderboards import LeaderboardsCog
-from rob.discord.cogs.privacy import PrivacyCog
 from rob.discord.cogs.registration import RegistrationCog
 from rob.discord.cogs.reports import ReportsCog
 from rob.discord.cogs.sends import SendsCog
@@ -37,7 +33,6 @@ from rob.services.leaderboard_service import LeaderboardService
 from rob.services.maintenance_service import MaintenanceService
 from rob.services.registration_service import RegistrationService
 from rob.services.send_queue_service import SendQueueService
-from rob.services.send_request_service import SendRequestService
 from rob.services.send_service import SendService
 from rob.services.throne_service import ThroneService
 
@@ -67,24 +62,24 @@ class RobBot(commands.Bot):
     async def setup_hook(self) -> None:
         await self.database.connect()
 
-        self.guild_settings_repo = GuildSettingsRepository(self.database)
-        self.bot_state_repo = BotStateRepository(self.database)
+        self.vib_settings_repo = VibSettingsRepository(self.database)
+        self.guild_settings_repo = self.vib_settings_repo
+        self.bot_settings_repo = BotSettingsRepository(self.database)
+        self.bot_state_repo = self.bot_settings_repo
         self.blacklist_repo = BlacklistRepository(self.database)
         self.dommes_repo = DommesRepository(self.database)
         self.subs_repo = SubsRepository(self.database)
         self.sends_repo = SendsRepository(self.database)
-        self.send_requests_repo = SendRequestsRepository(self.database)
-        self.throne_creators_repo = ThroneCreatorsRepository(self.database)
         self.leaderboards_repo = LeaderboardsRepository(self.database)
         self.counting_repo = CountingRepository(self.database)
 
         self.throne_service = ThroneService()
-        self.maintenance_service = MaintenanceService(self.bot_state_repo)
+        self.maintenance_service = MaintenanceService(self.bot_settings_repo)
         self.leaderboard_service = LeaderboardService(
             bot=self,
-            guild_settings=self.guild_settings_repo,
+            guild_settings=self.vib_settings_repo,
             leaderboards=self.leaderboards_repo,
-            bot_state=self.bot_state_repo,
+            bot_state=self.bot_settings_repo,
             maintenance=self.maintenance_service,
             leaderboard_limit=self.settings.leaderboard_limit,
             include_test_sends=self.settings.throne_parse_test_sends_as_real_sends,
@@ -94,14 +89,14 @@ class RobBot(commands.Bot):
         self.counting_service = CountingService(
             bot=self,
             counting=self.counting_repo,
-            guild_settings=self.guild_settings_repo,
+            guild_settings=self.vib_settings_repo,
             dommes=self.dommes_repo,
             parse_test_sends_as_real_sends=self.settings.throne_parse_test_sends_as_real_sends,
             test_gifter_usernames=self.settings.throne_test_gifter_usernames,
         )
         self.inactivity_service = InactivityService(
-            bot_state=self.bot_state_repo,
-            guild_settings=self.guild_settings_repo,
+            bot_state=self.bot_settings_repo,
+            guild_settings=self.vib_settings_repo,
             enabled_default=self.settings.inactivity_enabled_default,
             new_member_grace_days=self.settings.inactivity_new_member_grace_days,
             assignment_grace_days=self.settings.inactivity_assignment_grace_days,
@@ -110,10 +105,9 @@ class RobBot(commands.Bot):
             notice_channel_id=self.settings.inactivity_notice_channel_id,
         )
         self.registration_service = RegistrationService(
-            guild_settings=self.guild_settings_repo,
+            guild_settings=self.vib_settings_repo,
             dommes=self.dommes_repo,
             subs=self.subs_repo,
-            throne_creators=self.throne_creators_repo,
             blacklist=self.blacklist_repo,
             throne=self.throne_service,
             webhook_base_url=os.getenv("THRONE_WEBHOOK_BASE_URL") or None,
@@ -125,14 +119,10 @@ class RobBot(commands.Bot):
             throne=self.throne_service,
             throne_test_gifter_usernames=self.settings.throne_test_gifter_usernames,
         )
-        self.send_request_service = SendRequestService(
-            send_requests=self.send_requests_repo,
-            send_service=self.send_service,
-        )
         self.send_queue_service = SendQueueService(
             bot=self,
             sends=self.sends_repo,
-            guild_settings=self.guild_settings_repo,
+            guild_settings=self.vib_settings_repo,
             maintenance=self.maintenance_service,
             leaderboard_service=self.leaderboard_service,
             counting_service=self.counting_service,
@@ -148,17 +138,15 @@ class RobBot(commands.Bot):
         await self.add_cog(RegistrationCog(self))
         await self.add_cog(SendsCog(self))
         await self.add_cog(LeaderboardsCog(self))
-        await self.add_cog(PrivacyCog(self))
         await self.add_cog(CountingCog(self))
         await self.add_cog(ReportsCog(self))
         await self.add_cog(InactivityCog(self))
         await self.add_cog(WarnRelayCog(self))
         await self.add_cog(AdminToolsCog(self))
-        await self.add_cog(BroadcastCog(self))
 
         self.tree.interaction_check = self._global_blacklist_interaction_check
 
-        guild_ids = await self.guild_settings_repo.list_guild_ids()
+        guild_ids = await self.vib_settings_repo.list_guild_ids()
         if len(guild_ids) == 1:
             guild = discord.Object(id=guild_ids[0])
             self.tree.copy_global_to(guild=guild)

@@ -44,6 +44,7 @@ class AdminToolsCog(commands.Cog):
             discord_user_id=discord_user_id,
             reason=reason.strip() or "manual",
             created_by=ctx.author.id,
+            guild_id=ctx.guild.id,
         )
         await ctx.reply(f"`{discord_user_id}` has been added to Rob's blacklist.")
 
@@ -69,18 +70,13 @@ class AdminToolsCog(commands.Cog):
             await ctx.reply("Usage: `!throne-blacklist <discord_user_id_or_mention>`")
             return
 
-        removed_creator = await self.bot.throne_creators_repo.remove_by_user_id(ctx.guild.id, discord_user_id)
         await self.bot.dommes_repo.remove_by_user_id(ctx.guild.id, discord_user_id)
         await self.bot.blacklist_repo.add(
             discord_user_id=discord_user_id,
             reason="throne blacklist",
             created_by=ctx.author.id,
+            guild_id=ctx.guild.id,
         )
-        if removed_creator is None:
-            await ctx.reply(
-                f"No Throne registration found for `{discord_user_id}`. Added to global blacklist."
-            )
-            return
         await ctx.reply(
-            f"Removed Throne creator `{removed_creator.throne_creator_id}` for `{discord_user_id}` and added to global blacklist."
+            f"Removed Dom/me registration for `{discord_user_id}` and added to global blacklist."
         )

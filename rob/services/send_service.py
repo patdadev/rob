@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rob.database.repositories.models import NewSend, SendRecord, ThroneCreator
+from rob.database.repositories.models import Domme, NewSend, SendRecord
 from rob.database.repositories.sends import SendsRepository
 from rob.database.repositories.subs import SubsRepository
 from rob.services.maintenance_service import MaintenanceService
@@ -28,7 +28,7 @@ class SendService:
     async def record_throne_send(
         self,
         *,
-        creator: ThroneCreator,
+        creator: Domme,
         payload: ThroneSendPayload,
     ) -> SendRecord | None:
         amount_cents = payload.amount_cents
@@ -68,7 +68,7 @@ class SendService:
         return await self.sends.insert(
             NewSend(
                 guild_id=creator.guild_id,
-                domme_id=creator.domme_id,
+                domme_id=creator.id,
                 domme_user_id=creator.discord_user_id,
                 sub_id=sub_id,
                 sub_user_id=sub_user_id,

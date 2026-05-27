@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 SUCCESS_GIF_URL = "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExMDN5OW9vZTYyODl4MnRmd3A5aGVxeWVkNWF2eTY4ZnhwdXVpeW4wYyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/uLiEXaouJVkuA/giphy.gif"
 
 
-def add_setup_buttons(view: discord.ui.LayoutView, *, creator_id: int, webhook_url: str, send_track_channel_id: int | None) -> None:
+def add_setup_buttons(view: discord.ui.LayoutView, *, domme_id: int, webhook_url: str, send_track_channel_id: int | None) -> None:
 
     class ContinueSetupButton(discord.ui.Button):
         def __init__(self) -> None:
@@ -35,7 +35,7 @@ def add_setup_buttons(view: discord.ui.LayoutView, *, creator_id: int, webhook_u
 
         async def callback(self, interaction: discord.Interaction) -> None:
             msg = throne_setup_card(throne_setup_steps(webhook_url))
-            add_card_actions(msg.view, YesButton(creator_id, send_track_channel_id), NotYetButton())
+            add_card_actions(msg.view, YesButton(domme_id, send_track_channel_id), NotYetButton())
             await interaction.response.edit_message(**msg.edit_kwargs())
 
     class NotNowButton(discord.ui.Button):
@@ -53,15 +53,15 @@ def add_setup_buttons(view: discord.ui.LayoutView, *, creator_id: int, webhook_u
 
 
 class YesButton(discord.ui.Button):
-    def __init__(self, creator_id: int, send_track_channel_id: int | None) -> None:
+    def __init__(self, domme_id: int, send_track_channel_id: int | None) -> None:
         super().__init__(label="Yes", style=discord.ButtonStyle.success)
-        self.creator_id = creator_id
+        self.domme_id = domme_id
         self.send_track_channel_id = send_track_channel_id
 
     async def callback(self, interaction: discord.Interaction) -> None:
         bot = interaction.client
-        creator = await bot.throne_creators_repo.get(self.creator_id)
-        if creator and (creator.setup_verified_at or creator.last_test_webhook_at or creator.last_successful_event_at):
+        domme = await bot.dommes_repo.get(self.domme_id)
+        if domme and (domme.webhook_connected_at or domme.last_successful_event_at):
             destination = f"<#{self.send_track_channel_id}>" if self.send_track_channel_id else "the send tracking channel"
             success_msg = throne_setup_card(
                 "That worked!\n\n"
@@ -86,7 +86,7 @@ class YesButton(discord.ui.Button):
             "Not seeing it yet.\n\nPlease make sure you clicked Save Settings in Throne, then click Test Webhook again. "
             "Once Throne shows a success message, press Yes here again."
         )
-        add_card_actions(msg.view, YesButton(self.creator_id, self.send_track_channel_id), NotYetButton())
+        add_card_actions(msg.view, YesButton(self.domme_id, self.send_track_channel_id), NotYetButton())
         await interaction.response.edit_message(**msg.edit_kwargs())
 
 
@@ -149,9 +149,25 @@ class RegistrationCog(commands.Cog):
             await interaction.followup.send(**error_card("Webhook URL setup is unavailable.", "Ask staff to verify THRONE_WEBHOOK_BASE_URL on the bot server.").send_kwargs(), ephemeral=True)
             return
 
+        domme_result = getattr(result, "domme", None) or getattr(result, "creator", None)
+        if domme_result is None or getattr(domme_result, "id", None) is None:
+            await interaction.followup.send(
+                **error_card(
+                    "Dom/me registration completed, but setup could not continue.",
+                    "Rob could not resolve the registration record needed for setup buttons. Please ask staff to check the logs.",
+                ).send_kwargs(),
+                ephemeral=True,
+            )
+            return
+
         try:
             dm_msg = throne_setup_card(THRONE_SETUP_INTRO)
-            add_setup_buttons(dm_msg.view, creator_id=result.creator.id, webhook_url=result.webhook_url, send_track_channel_id=settings.send_track_channel_id if settings else None)
+            add_setup_buttons(
+                dm_msg.view,
+                domme_id=int(domme_result.id),
+                webhook_url=result.webhook_url,
+                send_track_channel_id=settings.send_track_channel_id if settings else None,
+            )
             await interaction.user.send(**dm_msg.send_kwargs())
         except discord.Forbidden as exc:
             log.warning("Failed to DM Throne setup flow to user_id=%s guild_id=%s reason=Forbidden status=%s code=%s text=%s", interaction.user.id, interaction.guild.id if interaction.guild else None, getattr(exc, "status", None), getattr(exc, "code", None), getattr(exc, "text", None))

@@ -11,7 +11,7 @@ The bot server is the Discord-only side of Rob.
 - Posts send notifications to the configured tracking channel.
 - Refreshes leaderboard messages from posted sends.
 - Ignores imported legacy sends that were already marked `posted`.
-- Handles `/register`, `/sendrequest`, `/leaderboard`, `/add`, and `/count set`.
+- Handles `/register`, `/leaderboard`, `/add`, and `/count set`.
 - Runs the counting listener.
 
 ## Runtime

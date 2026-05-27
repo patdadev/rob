@@ -177,7 +177,9 @@ def test_backfill_public_send_ids_updates_missing_rows():
     assert len(connection.fetchrow_calls) == 2
 
 
-def test_public_send_id_migration_adds_column_and_index():
-    contents = Path("rob/database/migrations/004_public_send_ids.sql").read_text(encoding="utf-8")
-    assert "ADD COLUMN IF NOT EXISTS public_send_id TEXT" in contents
-    assert "CREATE UNIQUE INDEX IF NOT EXISTS idx_sends_public_send_id" in contents
+def test_public_send_id_db_build_scripts_define_column_and_unique_index():
+    core_schema = Path("scripts/db/build/001_core_schema.sql").read_text(encoding="utf-8")
+    indexes = Path("scripts/db/build/002_indexes.sql").read_text(encoding="utf-8")
+
+    assert "public_send_id TEXT" in core_schema
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS idx_sends_public_send_id_unique" in indexes

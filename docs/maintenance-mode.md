@@ -1,6 +1,6 @@
 # Maintenance Mode
 
-Maintenance mode is stored in PostgreSQL `bot_state` using:
+Maintenance mode is stored in PostgreSQL `bot_settings` using:
 
 - `maintenance_mode`
 - `maintenance_reason`
