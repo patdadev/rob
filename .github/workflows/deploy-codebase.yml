@@ -1,0 +1,334 @@
+name: Deploy Rob Codebase
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deploy_ref:
+        description: "Branch, tag, or commit SHA to deploy"
+        required: false
+        default: "main"
+      environment:
+        description: "Deployment environment"
+        required: true
+        default: "dev"
+        type: choice
+        options: [dev, prod]
+      deploy_bot:
+        description: "Deploy bot service"
+        required: true
+        default: true
+        type: boolean
+      deploy_webhook:
+        description: "Deploy webhook service"
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: deploy-rob-codebase-${{ github.event_name == 'push' && 'dev' || inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  resolve_deploy_context:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_env: ${{ steps.resolve.outputs.deploy_env }}
+      deploy_ref: ${{ steps.resolve.outputs.deploy_ref }}
+      deploy_bot: ${{ steps.resolve.outputs.deploy_bot }}
+      deploy_webhook: ${{ steps.resolve.outputs.deploy_webhook }}
+    steps:
+      - id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_SHA: ${{ github.sha }}
+          INPUT_DEPLOY_REF: ${{ inputs.deploy_ref }}
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          INPUT_DEPLOY_BOT: ${{ inputs.deploy_bot }}
+          INPUT_DEPLOY_WEBHOOK: ${{ inputs.deploy_webhook }}
+        run: |
+          set -Eeuo pipefail
+
+          normalize_bool() {
+            local value="${1:-}"
+            value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+            case "$value" in
+              true|1|yes|y|on) echo "true" ;;
+              *) echo "false" ;;
+            esac
+          }
+
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            deploy_env="dev"
+            deploy_ref="$PUSH_SHA"
+            deploy_bot="true"
+            deploy_webhook="true"
+          else
+            deploy_env="${INPUT_ENVIRONMENT:-dev}"
+            deploy_ref="${INPUT_DEPLOY_REF:-main}"
+            if [[ -z "$deploy_ref" ]]; then
+              deploy_ref="main"
+            fi
+            deploy_bot="$(normalize_bool "${INPUT_DEPLOY_BOT:-true}")"
+            deploy_webhook="$(normalize_bool "${INPUT_DEPLOY_WEBHOOK:-true}")"
+          fi
+
+          echo "deploy_env=${deploy_env}" >> "$GITHUB_OUTPUT"
+          echo "deploy_ref=${deploy_ref}" >> "$GITHUB_OUTPUT"
+          echo "deploy_bot=${deploy_bot}" >> "$GITHUB_OUTPUT"
+          echo "deploy_webhook=${deploy_webhook}" >> "$GITHUB_OUTPUT"
+
+  precheck_codebase:
+    needs: [resolve_deploy_context]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve_deploy_context.outputs.deploy_ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - run: PYTHONPATH=. python -m compileall apps rob scripts
+      - run: ruff check .
+      - run: PYTHONPATH=. python -m pytest -q
+      - run: |
+          test -f deploy/scripts/deploy-bot.sh
+          test -f deploy/scripts/deploy-webhook.sh
+          test -f deploy/scripts/deploy-bot-dev.sh
+          test -f deploy/scripts/deploy-webhook-dev.sh
+          test -f deploy/scripts/precheck-bot.sh
+          test -f deploy/scripts/precheck-webhook.sh
+          test -f scripts/check_db.py
+
+  bot_server_precheck:
+    if: ${{ needs.resolve_deploy_context.outputs.deploy_bot == 'true' }}
+    needs: [resolve_deploy_context, precheck_codebase]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve_deploy_context.outputs.deploy_env }}
+    steps:
+      - name: Bot precheck over SSH (prod)
+        if: ${{ needs.resolve_deploy_context.outputs.deploy_env == 'prod' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.ROB_PROD_BOT_HOST }}
+          username: ${{ secrets.ROB_PROD_BOT_USER }}
+          key: ${{ secrets.ROB_PROD_BOT_SSH_KEY }}
+          port: ${{ secrets.ROB_PROD_BOT_SSH_PORT != '' && secrets.ROB_PROD_BOT_SSH_PORT || '22' }}
+          script: |
+            set -Eeuo pipefail
+            cd /opt/rob-bot/app
+            if [[ -x ./deploy/scripts/precheck-bot.sh ]]; then
+              SERVICE_NAME='rob-bot.service' APP_DIR=/opt/rob-bot/app ./deploy/scripts/precheck-bot.sh
+            else
+              echo "precheck-bot.sh is not present yet. Running bootstrap-safe fallback checks."
+              test -d .git
+              test -f .env
+              test -x .venv/bin/python
+              systemctl list-unit-files 'rob-bot.service' >/dev/null 2>&1
+              set -a
+              source .env
+              set +a
+              test -n "${DATABASE_URL:-}"
+              test -n "${DISCORD_TOKEN:-}"
+              test -n "${BOT_NAME:-}"
+              PYTHONPATH=. .venv/bin/python scripts/check_db.py
+              systemctl is-active 'rob-bot.service' || true
+            fi
+
+      - name: Bot precheck over SSH (dev)
+        if: ${{ needs.resolve_deploy_context.outputs.deploy_env != 'prod' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.ROB_DEV_BOT_HOST }}
+          username: ${{ secrets.ROB_DEV_BOT_USER }}
+          key: ${{ secrets.ROB_DEV_BOT_SSH_KEY }}
+          port: ${{ secrets.ROB_DEV_BOT_SSH_PORT != '' && secrets.ROB_DEV_BOT_SSH_PORT || '22' }}
+          script: |
+            set -Eeuo pipefail
+            cd /opt/rob-bot/app
+            if [[ -x ./deploy/scripts/precheck-bot.sh ]]; then
+              SERVICE_NAME='rob-bot-dev.service' APP_DIR=/opt/rob-bot/app ./deploy/scripts/precheck-bot.sh
+            else
+              echo "precheck-bot.sh is not present yet. Running bootstrap-safe fallback checks."
+              test -d .git
+              test -f .env
+              test -x .venv/bin/python
+              systemctl list-unit-files 'rob-bot-dev.service' >/dev/null 2>&1
+              set -a
+              source .env
+              set +a
+              test -n "${DATABASE_URL:-}"
+              test -n "${DISCORD_TOKEN:-}"
+              test -n "${BOT_NAME:-}"
+              PYTHONPATH=. .venv/bin/python scripts/check_db.py
+              systemctl is-active 'rob-bot-dev.service' || true
+            fi
+
+  webhook_server_precheck:
+    if: ${{ needs.resolve_deploy_context.outputs.deploy_webhook == 'true' }}
+    needs: [resolve_deploy_context, precheck_codebase]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve_deploy_context.outputs.deploy_env }}
+    steps:
+      - name: Webhook precheck over SSH (prod)
+        if: ${{ needs.resolve_deploy_context.outputs.deploy_env == 'prod' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.ROB_PROD_WEBHOOK_HOST }}
+          username: ${{ secrets.ROB_PROD_WEBHOOK_USER }}
+          key: ${{ secrets.ROB_PROD_WEBHOOK_SSH_KEY }}
+          port: ${{ secrets.ROB_PROD_WEBHOOK_SSH_PORT != '' && secrets.ROB_PROD_WEBHOOK_SSH_PORT || '22' }}
+          script: |
+            set -Eeuo pipefail
+            cd /opt/rob-webhook/app
+            if [[ -x ./deploy/scripts/precheck-webhook.sh ]]; then
+              SERVICE_NAME='rob-webhook.service' APP_DIR=/opt/rob-webhook/app HEALTH_URL=http://127.0.0.1:8080/health ./deploy/scripts/precheck-webhook.sh
+            else
+              echo "precheck-webhook.sh is not present yet. Running bootstrap-safe fallback checks."
+              test -d .git
+              test -f .env
+              test -x .venv/bin/python
+              systemctl list-unit-files 'rob-webhook.service' >/dev/null 2>&1
+              set -a
+              source .env
+              set +a
+              test -n "${DATABASE_URL:-}"
+              test -n "${THRONE_WEBHOOK_HOST:-}"
+              test -n "${THRONE_WEBHOOK_PORT:-}"
+              PYTHONPATH=. .venv/bin/python scripts/check_db.py
+              state="$(systemctl is-active 'rob-webhook.service' || true)"
+              echo "$state"
+              if [[ "$state" == "active" ]]; then
+                curl -fsS http://127.0.0.1:8080/health >/dev/null
+              fi
+            fi
+
+      - name: Webhook precheck over SSH (dev)
+        if: ${{ needs.resolve_deploy_context.outputs.deploy_env != 'prod' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.ROB_DEV_WEBHOOK_HOST }}
+          username: ${{ secrets.ROB_DEV_WEBHOOK_USER }}
+          key: ${{ secrets.ROB_DEV_WEBHOOK_SSH_KEY }}
+          port: ${{ secrets.ROB_DEV_WEBHOOK_SSH_PORT != '' && secrets.ROB_DEV_WEBHOOK_SSH_PORT || '22' }}
+          script: |
+            set -Eeuo pipefail
+            cd /opt/rob-webhook/app
+            if [[ -x ./deploy/scripts/precheck-webhook.sh ]]; then
+              SERVICE_NAME='rob-webhook-dev.service' APP_DIR=/opt/rob-webhook/app HEALTH_URL=http://127.0.0.1:8080/health ./deploy/scripts/precheck-webhook.sh
+            else
+              echo "precheck-webhook.sh is not present yet. Running bootstrap-safe fallback checks."
+              test -d .git
+              test -f .env
+              test -x .venv/bin/python
+              systemctl list-unit-files 'rob-webhook-dev.service' >/dev/null 2>&1
+              set -a
+              source .env
+              set +a
+              test -n "${DATABASE_URL:-}"
+              test -n "${THRONE_WEBHOOK_HOST:-}"
+              test -n "${THRONE_WEBHOOK_PORT:-}"
+              PYTHONPATH=. .venv/bin/python scripts/check_db.py
+              state="$(systemctl is-active 'rob-webhook-dev.service' || true)"
+              echo "$state"
+              if [[ "$state" == "active" ]]; then
+                curl -fsS http://127.0.0.1:8080/health >/dev/null
+              fi
+            fi
+
+  deploy_bot:
+    if: ${{ needs.resolve_deploy_context.outputs.deploy_bot == 'true' }}
+    needs: [resolve_deploy_context, precheck_codebase, bot_server_precheck]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve_deploy_context.outputs.deploy_env }}
+    steps:
+      - name: Deploy bot over SSH (prod)
+        if: ${{ needs.resolve_deploy_context.outputs.deploy_env == 'prod' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.ROB_PROD_BOT_HOST }}
+          username: ${{ secrets.ROB_PROD_BOT_USER }}
+          key: ${{ secrets.ROB_PROD_BOT_SSH_KEY }}
+          port: ${{ secrets.ROB_PROD_BOT_SSH_PORT != '' && secrets.ROB_PROD_BOT_SSH_PORT || '22' }}
+          script: |
+            set -Eeuo pipefail
+            cd /opt/rob-bot/app
+            if [[ ! -x ./deploy/scripts/deploy-bot.sh ]]; then
+              echo "deploy-bot.sh is not present yet. Bootstrapping script files from deploy ref."
+              git fetch origin --prune main
+              git fetch origin '${{ needs.resolve_deploy_context.outputs.deploy_ref }}' || true
+              git checkout FETCH_HEAD -- deploy/scripts/deploy-bot.sh deploy/scripts/deploy-webhook.sh deploy/scripts/precheck-bot.sh deploy/scripts/precheck-webhook.sh
+              chmod +x deploy/scripts/deploy-bot.sh deploy/scripts/deploy-webhook.sh deploy/scripts/precheck-bot.sh deploy/scripts/precheck-webhook.sh
+            fi
+            DEPLOY_BRANCH=main DEPLOY_REF='${{ needs.resolve_deploy_context.outputs.deploy_ref }}' SERVICE_NAME='rob-bot.service' APP_DIR=/opt/rob-bot/app ./deploy/scripts/deploy-bot.sh
+
+      - name: Deploy bot over SSH (dev)
+        if: ${{ needs.resolve_deploy_context.outputs.deploy_env != 'prod' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.ROB_DEV_BOT_HOST }}
+          username: ${{ secrets.ROB_DEV_BOT_USER }}
+          key: ${{ secrets.ROB_DEV_BOT_SSH_KEY }}
+          port: ${{ secrets.ROB_DEV_BOT_SSH_PORT != '' && secrets.ROB_DEV_BOT_SSH_PORT || '22' }}
+          script: |
+            set -Eeuo pipefail
+            cd /opt/rob-bot/app
+            if [[ ! -x ./deploy/scripts/deploy-bot.sh ]]; then
+              echo "deploy-bot.sh is not present yet. Bootstrapping script files from deploy ref."
+              git fetch origin --prune main
+              git fetch origin '${{ needs.resolve_deploy_context.outputs.deploy_ref }}' || true
+              git checkout FETCH_HEAD -- deploy/scripts/deploy-bot.sh deploy/scripts/deploy-webhook.sh deploy/scripts/precheck-bot.sh deploy/scripts/precheck-webhook.sh
+              chmod +x deploy/scripts/deploy-bot.sh deploy/scripts/deploy-webhook.sh deploy/scripts/precheck-bot.sh deploy/scripts/precheck-webhook.sh
+            fi
+            DEPLOY_BRANCH=main DEPLOY_REF='${{ needs.resolve_deploy_context.outputs.deploy_ref }}' SERVICE_NAME='rob-bot-dev.service' APP_DIR=/opt/rob-bot/app ./deploy/scripts/deploy-bot.sh
+
+  deploy_webhook:
+    if: ${{ needs.resolve_deploy_context.outputs.deploy_webhook == 'true' }}
+    needs: [resolve_deploy_context, precheck_codebase, webhook_server_precheck]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve_deploy_context.outputs.deploy_env }}
+    steps:
+      - name: Deploy webhook over SSH (prod)
+        if: ${{ needs.resolve_deploy_context.outputs.deploy_env == 'prod' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.ROB_PROD_WEBHOOK_HOST }}
+          username: ${{ secrets.ROB_PROD_WEBHOOK_USER }}
+          key: ${{ secrets.ROB_PROD_WEBHOOK_SSH_KEY }}
+          port: ${{ secrets.ROB_PROD_WEBHOOK_SSH_PORT != '' && secrets.ROB_PROD_WEBHOOK_SSH_PORT || '22' }}
+          script: |
+            set -Eeuo pipefail
+            cd /opt/rob-webhook/app
+            if [[ ! -x ./deploy/scripts/deploy-webhook.sh ]]; then
+              echo "deploy-webhook.sh is not present yet. Bootstrapping script files from deploy ref."
+              git fetch origin --prune main
+              git fetch origin '${{ needs.resolve_deploy_context.outputs.deploy_ref }}' || true
+              git checkout FETCH_HEAD -- deploy/scripts/deploy-bot.sh deploy/scripts/deploy-webhook.sh deploy/scripts/precheck-bot.sh deploy/scripts/precheck-webhook.sh
+              chmod +x deploy/scripts/deploy-bot.sh deploy/scripts/deploy-webhook.sh deploy/scripts/precheck-bot.sh deploy/scripts/precheck-webhook.sh
+            fi
+            DEPLOY_BRANCH=main DEPLOY_REF='${{ needs.resolve_deploy_context.outputs.deploy_ref }}' SERVICE_NAME='rob-webhook.service' APP_DIR=/opt/rob-webhook/app HEALTH_URL=http://127.0.0.1:8080/health ./deploy/scripts/deploy-webhook.sh
+
+      - name: Deploy webhook over SSH (dev)
+        if: ${{ needs.resolve_deploy_context.outputs.deploy_env != 'prod' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.ROB_DEV_WEBHOOK_HOST }}
+          username: ${{ secrets.ROB_DEV_WEBHOOK_USER }}
+          key: ${{ secrets.ROB_DEV_WEBHOOK_SSH_KEY }}
+          port: ${{ secrets.ROB_DEV_WEBHOOK_SSH_PORT != '' && secrets.ROB_DEV_WEBHOOK_SSH_PORT || '22' }}
+          script: |
+            set -Eeuo pipefail
+            cd /opt/rob-webhook/app
+            if [[ ! -x ./deploy/scripts/deploy-webhook.sh ]]; then
+              echo "deploy-webhook.sh is not present yet. Bootstrapping script files from deploy ref."
+              git fetch origin --prune main
+              git fetch origin '${{ needs.resolve_deploy_context.outputs.deploy_ref }}' || true
+              git checkout FETCH_HEAD -- deploy/scripts/deploy-bot.sh deploy/scripts/deploy-webhook.sh deploy/scripts/precheck-bot.sh deploy/scripts/precheck-webhook.sh
+              chmod +x deploy/scripts/deploy-bot.sh deploy/scripts/deploy-webhook.sh deploy/scripts/precheck-bot.sh deploy/scripts/precheck-webhook.sh
+            fi
+            DEPLOY_BRANCH=main DEPLOY_REF='${{ needs.resolve_deploy_context.outputs.deploy_ref }}' SERVICE_NAME='rob-webhook-dev.service' APP_DIR=/opt/rob-webhook/app HEALTH_URL=http://127.0.0.1:8080/health ./deploy/scripts/deploy-webhook.sh
