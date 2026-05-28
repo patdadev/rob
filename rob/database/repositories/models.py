@@ -252,3 +252,24 @@ class QueueStatus:
     posted: int
     failed: int
     ignored: int
+
+
+@dataclass(frozen=True)
+class UserAchievement:
+    id: int
+    guild_id: int
+    discord_user_id: int
+    achievement_key: str
+    unlocked_at: datetime
+    source: str | None
+    metadata: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class AchievementSummary:
+    guild_id: int
+    discord_user_id: int
+    unlocked_count: int
+    total_count: int

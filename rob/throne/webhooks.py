@@ -6,8 +6,10 @@ from typing import Any
 
 from aiohttp import web
 
+from rob.achievements.service import AchievementsService
 from rob.config.settings import WebhookSettings
 from rob.database.connection import Database
+from rob.database.repositories.achievements import AchievementsRepository
 from rob.database.repositories.bot_state import BotStateRepository
 from rob.database.repositories.dommes import DommesRepository
 from rob.database.repositories.sends import SendsRepository
@@ -66,6 +68,7 @@ async def handle_throne_webhook(request: web.Request) -> web.Response:
         log.info("Throne webhook payload for %s: %s", creator_id, payload)
 
     dommes = DommesRepository(database)
+    achievements = AchievementsService(AchievementsRepository(database))
     matching_creators = await dommes.get_by_creator_id(creator_id)
 
     matched_creator = None
@@ -89,6 +92,13 @@ async def handle_throne_webhook(request: web.Request) -> web.Response:
     known_test_sender = is_known_test_sender(parsed.gifter_username, test_gifter_usernames=set(settings.throne_test_gifter_usernames))
     if explicit_test:
         await dommes.mark_setup_verified(matched_creator.id)
+        await achievements.unlock_achievement(
+            guild_id=matched_creator.guild_id,
+            discord_user_id=matched_creator.discord_user_id,
+            achievement_key="throne_test_webhook",
+            source="throne:webhook_test",
+            metadata={"creator_id": creator_id},
+        )
         return web.json_response({"ok": True, "setup_verified": True})
     if known_test_sender and not settings.throne_parse_test_sends_as_real_sends:
         await dommes.mark_setup_verified(matched_creator.id)

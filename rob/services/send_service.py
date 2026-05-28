@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rob.achievements.service import AchievementsService
+from rob.database.repositories.leaderboards import LeaderboardsRepository
 from rob.database.repositories.models import Domme, NewSend, SendRecord
 from rob.database.repositories.sends import SendsRepository
 from rob.database.repositories.subs import SubsRepository
@@ -16,14 +18,24 @@ class SendService:
         sends: SendsRepository,
         subs: SubsRepository,
         maintenance: MaintenanceService,
+        achievements: AchievementsService | None = None,
+        leaderboards: LeaderboardsRepository | None = None,
         throne: ThroneService | None = None,
         throne_test_gifter_usernames: tuple[str, ...] = (),
+        include_test_sends: bool = False,
+        test_gifter_usernames: tuple[str, ...] = (),
+        owner_test_user_id: int | None = None,
     ) -> None:
         self.sends = sends
         self.subs = subs
         self.maintenance = maintenance
+        self.achievements = achievements
+        self.leaderboards = leaderboards
         self.throne = throne
         self.throne_test_gifter_usernames = throne_test_gifter_usernames
+        self.include_test_sends = include_test_sends
+        self.test_gifter_usernames = test_gifter_usernames
+        self.owner_test_user_id = owner_test_user_id
 
     async def record_throne_send(
         self,

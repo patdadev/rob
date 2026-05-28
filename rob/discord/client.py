@@ -6,9 +6,11 @@ import os
 import discord
 from discord.ext import commands
 
+from rob.achievements.service import AchievementsService
 from rob.config.settings import BotSettings
 from rob.database.connection import Database
 from rob.database.repositories import (
+    AchievementsRepository,
     BlacklistRepository,
     BotSettingsRepository,
     CountingRepository,
@@ -19,6 +21,7 @@ from rob.database.repositories import (
     SubsRepository,
 )
 from rob.discord.cogs.admin_tools import AdminToolsCog
+from rob.discord.cogs.achievements import AchievementsCog
 from rob.discord.cogs.counting import CountingCog
 from rob.discord.cogs.inactivity import InactivityCog
 from rob.discord.cogs.leaderboards import LeaderboardsCog
@@ -67,6 +70,7 @@ class RobBot(commands.Bot):
         self.bot_settings_repo = BotSettingsRepository(self.database)
         self.bot_state_repo = self.bot_settings_repo
         self.blacklist_repo = BlacklistRepository(self.database)
+        self.achievements_repo = AchievementsRepository(self.database)
         self.dommes_repo = DommesRepository(self.database)
         self.subs_repo = SubsRepository(self.database)
         self.sends_repo = SendsRepository(self.database)
@@ -75,6 +79,7 @@ class RobBot(commands.Bot):
 
         self.throne_service = ThroneService()
         self.maintenance_service = MaintenanceService(self.bot_settings_repo)
+        self.achievements_service = AchievementsService(self.achievements_repo)
         self.leaderboard_service = LeaderboardService(
             bot=self,
             guild_settings=self.vib_settings_repo,
@@ -91,6 +96,7 @@ class RobBot(commands.Bot):
             counting=self.counting_repo,
             guild_settings=self.vib_settings_repo,
             dommes=self.dommes_repo,
+            achievements=self.achievements_service,
             parse_test_sends_as_real_sends=self.settings.throne_parse_test_sends_as_real_sends,
             test_gifter_usernames=self.settings.throne_test_gifter_usernames,
         )
@@ -116,8 +122,13 @@ class RobBot(commands.Bot):
             sends=self.sends_repo,
             subs=self.subs_repo,
             maintenance=self.maintenance_service,
+            achievements=self.achievements_service,
+            leaderboards=self.leaderboards_repo,
             throne=self.throne_service,
             throne_test_gifter_usernames=self.settings.throne_test_gifter_usernames,
+            include_test_sends=self.settings.throne_parse_test_sends_as_real_sends,
+            test_gifter_usernames=self.settings.throne_test_gifter_usernames,
+            owner_test_user_id=self.settings.throne_test_send_leaderboard_owner_user_id,
         )
         self.send_queue_service = SendQueueService(
             bot=self,
@@ -126,6 +137,10 @@ class RobBot(commands.Bot):
             maintenance=self.maintenance_service,
             leaderboard_service=self.leaderboard_service,
             counting_service=self.counting_service,
+            achievements=self.achievements_service,
+            leaderboards=self.leaderboards_repo,
+            include_test_sends=self.settings.throne_parse_test_sends_as_real_sends,
+            owner_test_user_id=self.settings.throne_test_send_leaderboard_owner_user_id,
             test_gifter_usernames=self.settings.throne_test_gifter_usernames,
         )
         self.bot_ops_server = BotOpsServer(
@@ -138,6 +153,7 @@ class RobBot(commands.Bot):
         await self.add_cog(RegistrationCog(self))
         await self.add_cog(SendsCog(self))
         await self.add_cog(LeaderboardsCog(self))
+        await self.add_cog(AchievementsCog(self))
         await self.add_cog(CountingCog(self))
         await self.add_cog(ReportsCog(self))
         await self.add_cog(InactivityCog(self))

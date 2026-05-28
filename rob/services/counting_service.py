@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import discord
 
+from rob.achievements.service import COUNT_NUMBER_TO_ACHIEVEMENT_KEYS, AchievementsService
 from rob.database.repositories.counting import CountingRepository
 from rob.database.repositories.dommes import DommesRepository
 from rob.database.repositories.guild_settings import GuildSettingsRepository
@@ -30,6 +31,7 @@ class _RescueWindow:
     deadline: datetime
     restore_value: int
     failed_user_id: int
+    failed_user_is_sub: bool
     task: asyncio.Task[None] | None = None
 
 
@@ -41,6 +43,7 @@ class CountingService:
         counting: CountingRepository,
         guild_settings: GuildSettingsRepository,
         dommes: DommesRepository,
+        achievements: AchievementsService | None = None,
         rescue_window_seconds: int = 300,
         rescue_tick_seconds: int = 15,
         parse_test_sends_as_real_sends: bool = False,
@@ -50,6 +53,7 @@ class CountingService:
         self.counting = counting
         self.guild_settings = guild_settings
         self.dommes = dommes
+        self.achievements = achievements
         self.rescue_window_seconds = rescue_window_seconds
         self.rescue_tick_seconds = rescue_tick_seconds
         self.parse_test_sends_as_real_sends = parse_test_sends_as_real_sends
@@ -124,6 +128,14 @@ class CountingService:
                 and sub_role_id is not None
                 and any(role.id == sub_role_id for role in message.author.roles)
             )
+            if self.achievements is not None:
+                await self.achievements.unlock_achievement(
+                    guild_id=message.guild.id,
+                    discord_user_id=message.author.id,
+                    achievement_key="count_first_mistake",
+                    source="counting:wrong_number",
+                    metadata={"attempted_number": number, "expected_number": expected},
+                )
             if is_sub and hasattr(message.channel, "send"):
                 deadline = datetime.now(timezone.utc) + timedelta(seconds=self.rescue_window_seconds)
                 await self.counting.upsert(
@@ -138,6 +150,7 @@ class CountingService:
                     guild_id=state.guild_id,
                     channel=message.channel,
                     failed_user_id=message.author.id,
+                    failed_user_is_sub=True,
                     restore_value=state.current_number,
                     deadline=deadline,
                 )
@@ -174,6 +187,23 @@ class CountingService:
             is_enabled=state.is_enabled,
             pending_restore=False,
         )
+        if self.achievements is not None:
+            for achievement_key in COUNT_NUMBER_TO_ACHIEVEMENT_KEYS.get(number, ()):
+                await self.achievements.unlock_achievement(
+                    guild_id=message.guild.id,
+                    discord_user_id=message.author.id,
+                    achievement_key=achievement_key,
+                    source="counting:number",
+                    metadata={"number": number},
+                )
+            if expected == 1:
+                await self.achievements.unlock_many(
+                    guild_id=message.guild.id,
+                    discord_user_id=message.author.id,
+                    achievement_keys=["count_start", "count_after_reset"],
+                    source="counting:restart",
+                    metadata={"number": number},
+                )
         return CountingProcessResult(
             success=True,
             expected_number=expected,
@@ -216,6 +246,33 @@ class CountingService:
             await rescue.message.edit(**count_saved_card(next_number=rescue.restore_value + 1).edit_kwargs())
         except discord.HTTPException:
             pass
+        if self.achievements is not None and send.sub_user_id is not None:
+            now = datetime.now(timezone.utc)
+            remaining_seconds = int((rescue.deadline - now).total_seconds())
+            await self.achievements.unlock_achievement(
+                guild_id=send.guild_id,
+                discord_user_id=send.sub_user_id,
+                achievement_key="sub_save_count",
+                source="counting:rescue",
+                metadata={"remaining_seconds": max(0, remaining_seconds)},
+            )
+            if rescue.failed_user_is_sub and rescue.failed_user_id == send.sub_user_id:
+                await self.achievements.unlock_achievement(
+                    guild_id=send.guild_id,
+                    discord_user_id=send.sub_user_id,
+                    achievement_key="count_sub_recovered_own_mistake",
+                    source="counting:rescue",
+                )
+            if remaining_seconds <= self.rescue_tick_seconds:
+                await self.achievements.unlock_achievement(
+                    guild_id=send.guild_id,
+                    discord_user_id=send.sub_user_id,
+                    achievement_key="count_last_second_save",
+                    source="counting:rescue",
+                    metadata={"remaining_seconds": max(0, remaining_seconds)},
+                )
+            # TODO: Dom/me-specific recovery achievements need a Dom/me recovery window
+            # flow in counting, which is not currently implemented in v2.
         await self._clear_rescue_window(send.guild_id)
         return True
 
@@ -225,6 +282,7 @@ class CountingService:
         guild_id: int,
         channel: discord.abc.Messageable,
         failed_user_id: int,
+        failed_user_is_sub: bool,
         restore_value: int,
         deadline: datetime,
     ) -> None:
@@ -243,6 +301,7 @@ class CountingService:
             deadline=deadline,
             restore_value=restore_value,
             failed_user_id=failed_user_id,
+            failed_user_is_sub=failed_user_is_sub,
         )
         window.task = asyncio.create_task(self._run_rescue_updates(guild_id), name=f"count-rescue-{guild_id}")
         self._rescue_windows[guild_id] = window
@@ -291,6 +350,9 @@ class CountingService:
             await window.message.edit(**count_failed_card().edit_kwargs())
         except discord.HTTPException:
             pass
+        # TODO: `count_sub_blocked` and `count_domme_failed_recovery` are defined,
+        # but current v2 counting does not yet apply a true timed block or Dom/me
+        # rescue branch to map those unlocks accurately.
         await self._clear_rescue_window(guild_id)
 
     async def _clear_rescue_window(self, guild_id: int) -> None:

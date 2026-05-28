@@ -15,7 +15,8 @@ Execute as `doadmin` in pgAdmin4 or `psql`:
 
 1. `scripts/db/build/001_core_schema.sql`
 2. `scripts/db/build/002_indexes.sql`
-3. `scripts/db/build/003_runtime_grants_template.sql` (optional reference template)
+3. `scripts/db/build/003_achievements.sql`
+4. `scripts/db/build/003_runtime_grants_template.sql` (optional reference template)
 
 Then apply runtime grants:
 
@@ -27,6 +28,7 @@ Required `db_build_version` rows are:
 
 - `001_core_schema`
 - `002_indexes`
+- `003_achievements`
 
 Runtime grants are environment-specific and are validated by `scripts/check_db.py` from runtime credentials.
 
@@ -42,6 +44,8 @@ Runtime grants are environment-specific and are validated by `scripts/check_db.p
 - `vib_leaderboard`
 - `the_count`
 - `inactive_users`
+- `user_achievements`
+- `achievement_events`
 
 ## Runtime safety
 

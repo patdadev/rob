@@ -60,12 +60,19 @@ GRANT SELECT ON
   dommes,
   subs,
   vib_settings,
-  vib_leaderboard
+  vib_leaderboard,
+  user_achievements,
+  achievement_events
 TO prod_rob_webhook;
 
 GRANT SELECT, INSERT, UPDATE ON
   sends,
   bot_users
+TO prod_rob_webhook;
+
+GRANT SELECT, INSERT ON
+  user_achievements,
+  achievement_events
 TO prod_rob_webhook;
 
 GRANT SELECT, UPDATE ON
@@ -81,8 +88,15 @@ GRANT USAGE, SELECT, UPDATE
 ON SEQUENCE bot_users_id_seq
 TO prod_rob_webhook;
 
+GRANT USAGE, SELECT, UPDATE
+ON SEQUENCE user_achievements_id_seq
+TO prod_rob_webhook;
+
+GRANT USAGE, SELECT, UPDATE
+ON SEQUENCE achievement_events_id_seq
+TO prod_rob_webhook;
+
 REVOKE CREATE ON SCHEMA public FROM prod_rob_webhook;
 
 -- If webhook code needs more access, add the smallest specific grant required.
 -- Do not grant CREATE/ALTER/DROP to prod_rob_webhook.
-

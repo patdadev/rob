@@ -5,6 +5,7 @@
 - `/register domme`
 - `/register sub`
 - `/leaderboard`
+- `/achievements`
 - `/report`
 
 ## Dom/me commands
@@ -14,6 +15,10 @@
 ## Counting commands
 
 - `/count set {number}`
+
+## Developer test commands
+
+- `/test achievements` (requires owner/mod/manage-guild permissions)
 
 ## Inactivity commands
 

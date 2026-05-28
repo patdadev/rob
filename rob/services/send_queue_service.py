@@ -5,7 +5,9 @@ import logging
 
 import discord
 
+from rob.achievements.service import AchievementsService
 from rob.database.repositories.guild_settings import GuildSettingsRepository
+from rob.database.repositories.leaderboards import LeaderboardsRepository
 from rob.database.repositories.sends import SendsRepository
 from rob.services.counting_service import CountingService
 from rob.services.leaderboard_service import LeaderboardService
@@ -26,6 +28,10 @@ class SendQueueService:
         maintenance: MaintenanceService,
         leaderboard_service: LeaderboardService,
         counting_service: CountingService | None = None,
+        achievements: AchievementsService | None = None,
+        leaderboards: LeaderboardsRepository | None = None,
+        include_test_sends: bool = False,
+        owner_test_user_id: int | None = None,
         test_gifter_usernames: tuple[str, ...] = (),
         poll_interval_seconds: float = 5.0,
     ) -> None:
@@ -35,6 +41,10 @@ class SendQueueService:
         self.maintenance = maintenance
         self.leaderboard_service = leaderboard_service
         self.counting_service = counting_service
+        self.achievements = achievements
+        self.leaderboards = leaderboards
+        self.include_test_sends = include_test_sends
+        self.owner_test_user_id = owner_test_user_id
         self.test_gifter_usernames = test_gifter_usernames
         self.poll_interval_seconds = poll_interval_seconds
         self._task: asyncio.Task[None] | None = None
@@ -146,6 +156,17 @@ class SendQueueService:
 
         await self.sends.mark_posted(send.id, message_id=message.id)
         log.info("Marked send posted id=%s message_id=%s", send.id, message.id)
+        try:
+            await self._unlock_send_achievements(
+                send,
+                previous_leader_user_id=previous_leader.user_id if previous_leader is not None else None,
+            )
+        except Exception:
+            log.exception(
+                "Achievement unlock evaluation failed for send_id=%s guild_id=%s.",
+                send.id,
+                send.guild_id,
+            )
         if self.counting_service is not None:
             try:
                 await self.counting_service.process_send_for_count_rescue(send)
@@ -167,3 +188,185 @@ class SendQueueService:
                 send.guild_id,
             )
         return True
+
+    async def _unlock_send_achievements(self, send, *, previous_leader_user_id: int | None) -> None:
+        if self.achievements is None:
+            return
+
+        guild_id = send.guild_id
+        domme_user_id = send.domme_user_id
+
+        if send.is_test_send:
+            await self.achievements.unlock_achievement(
+                guild_id=guild_id,
+                discord_user_id=domme_user_id,
+                achievement_key="domme_first_test_send",
+                source="send:test",
+            )
+        else:
+            await self.achievements.unlock_achievement(
+                guild_id=guild_id,
+                discord_user_id=domme_user_id,
+                achievement_key="domme_first_tracked_send",
+                source="send:posted",
+            )
+
+        if send.source.startswith("manual:"):
+            await self.achievements.unlock_achievement(
+                guild_id=guild_id,
+                discord_user_id=domme_user_id,
+                achievement_key="domme_manual_send",
+                source="send:manual",
+            )
+
+        if send.source == "throne_webhook" and not send.is_test_send:
+            await self.achievements.unlock_achievement(
+                guild_id=guild_id,
+                discord_user_id=domme_user_id,
+                achievement_key="throne_first_real_auto_send",
+                source="send:throne",
+            )
+
+        if self.leaderboards is None:
+            return
+
+        stats = await self.leaderboards.get_domme_stats(
+            guild_id,
+            domme_user_id=domme_user_id,
+            include_test_sends=self.include_test_sends,
+            test_gifter_usernames=self.test_gifter_usernames,
+            owner_test_user_id=self.owner_test_user_id,
+        )
+        if not send.is_test_send:
+            if stats.total_cents >= 10_000:
+                await self.achievements.unlock_achievement(
+                    guild_id=guild_id,
+                    discord_user_id=domme_user_id,
+                    achievement_key="domme_100_tracked",
+                    source="send:posted",
+                )
+            if stats.total_cents >= 100_000:
+                await self.achievements.unlock_achievement(
+                    guild_id=guild_id,
+                    discord_user_id=domme_user_id,
+                    achievement_key="domme_1000_tracked",
+                    source="send:posted",
+                )
+            if stats.total_cents >= 500_000:
+                await self.achievements.unlock_achievement(
+                    guild_id=guild_id,
+                    discord_user_id=domme_user_id,
+                    achievement_key="domme_5000_tracked",
+                    source="send:posted",
+                )
+
+        for threshold, key in ((10, "domme_10_sends_received"), (50, "domme_50_sends_received"), (100, "domme_100_sends_received")):
+            if stats.send_count >= threshold:
+                await self.achievements.unlock_achievement(
+                    guild_id=guild_id,
+                    discord_user_id=domme_user_id,
+                    achievement_key=key,
+                    source="send:posted",
+                )
+
+        rank = await self.leaderboards.get_domme_rank(
+            guild_id,
+            domme_user_id=domme_user_id,
+            include_test_sends=self.include_test_sends,
+            test_gifter_usernames=self.test_gifter_usernames,
+            owner_test_user_id=self.owner_test_user_id,
+        )
+        if rank is not None and rank <= 10:
+            await self.achievements.unlock_achievement(
+                guild_id=guild_id,
+                discord_user_id=domme_user_id,
+                achievement_key="domme_top_10",
+                source="leaderboard:rank",
+                metadata={"rank": rank},
+            )
+        if rank == 1:
+            already_unlocked = await self.achievements.get_user_achievement_keys(
+                guild_id=guild_id,
+                discord_user_id=domme_user_id,
+            )
+            await self.achievements.unlock_achievement(
+                guild_id=guild_id,
+                discord_user_id=domme_user_id,
+                achievement_key="domme_first_place",
+                source="leaderboard:rank",
+            )
+            if (
+                previous_leader_user_id is not None
+                and previous_leader_user_id != domme_user_id
+                and "domme_first_place" in already_unlocked
+            ):
+                await self.achievements.unlock_achievement(
+                    guild_id=guild_id,
+                    discord_user_id=domme_user_id,
+                    achievement_key="domme_regain_first",
+                    source="leaderboard:rank",
+                )
+
+        sub_user_id = send.sub_user_id
+        if sub_user_id is None:
+            return
+
+        await self.achievements.unlock_achievement(
+            guild_id=guild_id,
+            discord_user_id=sub_user_id,
+            achievement_key="sub_first_send",
+            source="send:posted",
+        )
+
+        sub_stats = await self.leaderboards.get_sub_stats(
+            guild_id,
+            sub_user_id=sub_user_id,
+            include_test_sends=self.include_test_sends,
+            test_gifter_usernames=self.test_gifter_usernames,
+            owner_test_user_id=self.owner_test_user_id,
+        )
+        if sub_stats.total_cents >= 10_000:
+            await self.achievements.unlock_achievement(
+                guild_id=guild_id,
+                discord_user_id=sub_user_id,
+                achievement_key="sub_100_sent",
+                source="send:posted",
+            )
+        if sub_stats.total_cents >= 100_000:
+            await self.achievements.unlock_achievement(
+                guild_id=guild_id,
+                discord_user_id=sub_user_id,
+                achievement_key="sub_1000_sent",
+                source="send:posted",
+            )
+        if sub_stats.total_cents >= 500_000:
+            await self.achievements.unlock_achievement(
+                guild_id=guild_id,
+                discord_user_id=sub_user_id,
+                achievement_key="sub_5000_sent",
+                source="send:posted",
+            )
+
+        for threshold, key in ((10, "sub_10_sends"), (50, "sub_50_sends"), (100, "sub_100_sends")):
+            if sub_stats.send_count >= threshold:
+                await self.achievements.unlock_achievement(
+                    guild_id=guild_id,
+                    discord_user_id=sub_user_id,
+                    achievement_key=key,
+                    source="send:posted",
+                )
+
+        current_leader = await self.leaderboard_service.get_current_leader(guild_id)
+        if (
+            current_leader is not None
+            and current_leader.user_id == domme_user_id
+            and previous_leader_user_id is not None
+            and previous_leader_user_id != domme_user_id
+        ):
+            await self.achievements.unlock_achievement(
+                guild_id=guild_id,
+                discord_user_id=sub_user_id,
+                achievement_key="sub_kingmaker",
+                source="leaderboard:leader_change",
+                metadata={"new_leader_user_id": domme_user_id},
+            )

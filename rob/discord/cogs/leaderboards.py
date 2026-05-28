@@ -50,6 +50,20 @@ class LeaderboardsCog(commands.Cog):
                 return
             target_user = member
 
+        maintenance_service = getattr(self.bot, "maintenance_service", None)
+        achievements_service = getattr(self.bot, "achievements_service", None)
+        if (
+            maintenance_service is not None
+            and achievements_service is not None
+            and await maintenance_service.is_enabled()
+        ):
+            await achievements_service.unlock_many(
+                guild_id=interaction.guild.id,
+                discord_user_id=interaction.user.id,
+                achievement_keys=["maintenance_survivor", "leaderboard_during_maintenance"],
+                source="slash:/leaderboard",
+            )
+
         include_test_sends = self.bot.settings.throne_parse_test_sends_as_real_sends
         usernames = self.bot.settings.throne_test_gifter_usernames
         owner_test_user_id = self.bot.settings.throne_test_send_leaderboard_owner_user_id

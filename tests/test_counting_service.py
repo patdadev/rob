@@ -95,12 +95,33 @@ class _FakeMessageEvent:
         self.stickers = []
 
 
-def _service(*, counting_repo: _FakeCountingRepo, tick_seconds: int = 15, rescue_seconds: int = 300):
+class _FakeAchievements:
+    def __init__(self):
+        self.unlock_calls: list[str] = []
+        self.unlock_many_calls: list[list[str]] = []
+
+    async def unlock_achievement(self, *, achievement_key: str, **_kwargs):
+        self.unlock_calls.append(achievement_key)
+        return True
+
+    async def unlock_many(self, *, achievement_keys, **_kwargs):
+        self.unlock_many_calls.append(list(achievement_keys))
+        return list(achievement_keys)
+
+
+def _service(
+    *,
+    counting_repo: _FakeCountingRepo,
+    tick_seconds: int = 15,
+    rescue_seconds: int = 300,
+    achievements: _FakeAchievements | None = None,
+):
     return CountingService(
         bot=SimpleNamespace(),
         counting=counting_repo,
         guild_settings=_FakeGuildSettingsRepo(),
         dommes=_FakeDommesRepo(),
+        achievements=achievements,
         rescue_tick_seconds=tick_seconds,
         rescue_window_seconds=rescue_seconds,
         parse_test_sends_as_real_sends=False,
@@ -224,3 +245,59 @@ def test_rescue_window_expiry_resets_count(monkeypatch: pytest.MonkeyPatch):
     asyncio.run(_wait())
     assert repo.state.current_number == 0
     assert repo.state.pending_restore is False
+
+
+def test_count_milestone_unlocks_achievement(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.counting_service.discord.Member", _FakeMember)
+    repo = _FakeCountingRepo()
+    repo.state.current_number = 9
+    channel = _FakeChannel()
+    achievements = _FakeAchievements()
+    service = _service(counting_repo=repo, achievements=achievements)
+    message = _FakeMessageEvent(author=_FakeMember(10, [22]), content="10", channel=channel)
+
+    result = asyncio.run(service.process_message(message))
+
+    assert result is not None and result.success is True
+    assert "count_10" in achievements.unlock_calls
+
+
+def test_wrong_number_unlocks_first_mistake(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.counting_service.discord.Member", _FakeMember)
+    repo = _FakeCountingRepo()
+    repo.state.current_number = 4
+    repo.state.last_user_id = 9
+    channel = _FakeChannel()
+    achievements = _FakeAchievements()
+    service = _service(counting_repo=repo, achievements=achievements)
+    message = _FakeMessageEvent(author=_FakeMember(10, [22]), content="6", channel=channel)
+
+    result = asyncio.run(service.process_message(message))
+
+    assert result is not None and result.success is False
+    assert "count_first_mistake" in achievements.unlock_calls
+
+
+def test_rescue_unlocks_sub_save_count_achievement(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.counting_service.discord.Member", _FakeMember)
+    repo = _FakeCountingRepo()
+    repo.state.current_number = 7
+    repo.state.last_user_id = 9
+    channel = _FakeChannel()
+    achievements = _FakeAchievements()
+    service = _service(counting_repo=repo, tick_seconds=1, rescue_seconds=60, achievements=achievements)
+    message = _FakeMessageEvent(author=_FakeMember(10, [22]), content="99", channel=channel)
+    asyncio.run(service.process_message(message))
+
+    send = SimpleNamespace(
+        guild_id=1,
+        domme_user_id=20,
+        sub_user_id=10,
+        sub_name="real",
+        source="manual:paypal",
+        is_private=False,
+        is_test_send=False,
+    )
+    restored = asyncio.run(service.process_send_for_count_rescue(send))
+    assert restored is True
+    assert "sub_save_count" in achievements.unlock_calls

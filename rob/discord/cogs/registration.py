@@ -181,6 +181,14 @@ class RegistrationCog(commands.Cog):
             await interaction.followup.send(**error_card("You're registered, but Rob couldn't DM you.", "This usually means Discord blocked the DM. Please check:\n\n- Server Privacy Settings → Allow direct messages from server members\n- You have not blocked this bot\n- Your Discord privacy settings allow bot/member DMs\n\nOnce fixed, run /register domme again.").send_kwargs(), ephemeral=True)
             return
 
+        achievements_service = getattr(self.bot, "achievements_service", None)
+        if achievements_service is not None:
+            await achievements_service.unlock_achievement(
+                guild_id=interaction.guild.id,
+                discord_user_id=interaction.user.id,
+                achievement_key="throne_tracking_started",
+                source="register:domme",
+            )
         await interaction.followup.send(**domme_registered_card().send_kwargs(), ephemeral=True)
 
     @register_group.command(name="sub", description="Register a sending name to claim sends.")

@@ -121,9 +121,10 @@ def _patch_check_db(
 def test_check_db_detects_missing_db_build_versions(monkeypatch: pytest.MonkeyPatch, tmp_path):
     (tmp_path / "001_core_schema.sql").write_text("SELECT 1;\n", encoding="utf-8")
     (tmp_path / "002_indexes.sql").write_text("SELECT 1;\n", encoding="utf-8")
+    (tmp_path / "003_achievements.sql").write_text("SELECT 1;\n", encoding="utf-8")
     (tmp_path / "003_runtime_grants_template.sql").write_text("SELECT 1;\n", encoding="utf-8")
     connection = _FakeConnection(
-        build_versions=["001_core_schema"],
+        build_versions=["001_core_schema", "003_achievements"],
         table_columns=_required_columns_with_overrides(),
     )
     _patch_check_db(monkeypatch, connection=connection, build_dir=tmp_path)
@@ -132,9 +133,27 @@ def test_check_db_detects_missing_db_build_versions(monkeypatch: pytest.MonkeyPa
         asyncio.run(check_db.main())
 
 
+def test_check_db_reports_missing_achievement_schema_with_manual_sql_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    (tmp_path / "001_core_schema.sql").write_text("SELECT 1;\n", encoding="utf-8")
+    (tmp_path / "002_indexes.sql").write_text("SELECT 1;\n", encoding="utf-8")
+    (tmp_path / "003_achievements.sql").write_text("SELECT 1;\n", encoding="utf-8")
+    connection = _FakeConnection(
+        build_versions=["001_core_schema", "002_indexes"],
+        table_columns=_required_columns_with_overrides(),
+    )
+    _patch_check_db(monkeypatch, connection=connection, build_dir=tmp_path)
+
+    with pytest.raises(RuntimeError, match="Achievement tables are missing"):
+        asyncio.run(check_db.main())
+
+
 def test_check_db_detects_missing_required_columns(monkeypatch: pytest.MonkeyPatch, tmp_path):
     (tmp_path / "001_core_schema.sql").write_text("SELECT 1;\n", encoding="utf-8")
     (tmp_path / "002_indexes.sql").write_text("SELECT 1;\n", encoding="utf-8")
+    (tmp_path / "003_achievements.sql").write_text("SELECT 1;\n", encoding="utf-8")
     columns = _required_columns_with_overrides(
         {
             "sends": {
@@ -149,7 +168,7 @@ def test_check_db_detects_missing_required_columns(monkeypatch: pytest.MonkeyPat
         }
     )
     connection = _FakeConnection(
-        build_versions=["001_core_schema", "002_indexes"],
+        build_versions=["001_core_schema", "002_indexes", "003_achievements"],
         table_columns=columns,
     )
     _patch_check_db(monkeypatch, connection=connection, build_dir=tmp_path)
@@ -179,8 +198,9 @@ def test_check_db_rejects_runtime_schema_create_privilege(
 ):
     (tmp_path / "001_core_schema.sql").write_text("SELECT 1;\n", encoding="utf-8")
     (tmp_path / "002_indexes.sql").write_text("SELECT 1;\n", encoding="utf-8")
+    (tmp_path / "003_achievements.sql").write_text("SELECT 1;\n", encoding="utf-8")
     connection = _FakeConnection(
-        build_versions=["001_core_schema", "002_indexes"],
+        build_versions=["001_core_schema", "002_indexes", "003_achievements"],
         table_columns=_required_columns_with_overrides(),
         has_schema_create=True,
     )
@@ -196,9 +216,10 @@ def test_check_db_allows_grants_template_to_be_unapplied(
 ):
     (tmp_path / "001_core_schema.sql").write_text("SELECT 1;\n", encoding="utf-8")
     (tmp_path / "002_indexes.sql").write_text("SELECT 1;\n", encoding="utf-8")
+    (tmp_path / "003_achievements.sql").write_text("SELECT 1;\n", encoding="utf-8")
     (tmp_path / "003_runtime_grants_template.sql").write_text("SELECT 1;\n", encoding="utf-8")
     connection = _FakeConnection(
-        build_versions=["001_core_schema", "002_indexes"],
+        build_versions=["001_core_schema", "002_indexes", "003_achievements"],
         table_columns=_required_columns_with_overrides(),
     )
     _patch_check_db(monkeypatch, connection=connection, build_dir=tmp_path)
@@ -210,5 +231,6 @@ def test_repo_db_build_scripts_include_core_versions():
     expected = {path.stem for path in check_db.DB_BUILD_DIR.glob("*.sql")}
     assert "001_core_schema" in expected
     assert "002_indexes" in expected
+    assert "003_achievements" in expected
     assert "003_runtime_grants_template" in expected
-    assert set(check_db.REQUIRED_DB_BUILD_VERSIONS) == {"001_core_schema", "002_indexes"}
+    assert set(check_db.REQUIRED_DB_BUILD_VERSIONS) == {"001_core_schema", "002_indexes", "003_achievements"}

@@ -10,6 +10,7 @@ DB_BUILD_DIR = Path(__file__).resolve().parent / "db" / "build"
 REQUIRED_DB_BUILD_VERSIONS = (
     "001_core_schema",
     "002_indexes",
+    "003_achievements",
 )
 
 REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {
@@ -144,6 +145,27 @@ REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {
         "created_at",
         "updated_at",
     },
+    "user_achievements": {
+        "id",
+        "guild_id",
+        "discord_user_id",
+        "achievement_key",
+        "unlocked_at",
+        "source",
+        "metadata",
+        "created_at",
+        "updated_at",
+    },
+    "achievement_events": {
+        "id",
+        "guild_id",
+        "discord_user_id",
+        "achievement_key",
+        "event_type",
+        "source",
+        "metadata",
+        "created_at",
+    },
 }
 
 BOT_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
@@ -157,6 +179,8 @@ BOT_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "vib_leaderboard": ("SELECT", "INSERT", "UPDATE", "DELETE"),
     "the_count": ("SELECT", "INSERT", "UPDATE", "DELETE"),
     "inactive_users": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "user_achievements": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "achievement_events": ("SELECT", "INSERT", "UPDATE", "DELETE"),
 }
 
 WEBHOOK_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
@@ -168,6 +192,8 @@ WEBHOOK_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "sends": ("SELECT", "INSERT", "UPDATE"),
     "vib_settings": ("SELECT",),
     "vib_leaderboard": ("SELECT",),
+    "user_achievements": ("SELECT", "INSERT"),
+    "achievement_events": ("SELECT", "INSERT"),
 }
 
 BOT_RUNTIME_SEQUENCES = (
@@ -177,11 +203,15 @@ BOT_RUNTIME_SEQUENCES = (
     "public.sends_id_seq",
     "public.vib_leaderboard_id_seq",
     "public.inactive_users_id_seq",
+    "public.user_achievements_id_seq",
+    "public.achievement_events_id_seq",
 )
 
 WEBHOOK_RUNTIME_SEQUENCES = (
     "public.bot_users_id_seq",
     "public.sends_id_seq",
+    "public.user_achievements_id_seq",
+    "public.achievement_events_id_seq",
 )
 
 
@@ -284,7 +314,7 @@ async def _assert_runtime_permissions(
                 missing.append(f"{sequence_name}:{privilege}")
 
     if profile == "webhook":
-        for table_name in ("sends", "bot_users"):
+        for table_name in ("sends", "bot_users", "user_achievements", "achievement_events"):
             has_delete = await connection.fetchval(
                 "SELECT has_table_privilege(current_user, $1, 'DELETE')",
                 f"public.{table_name}",
@@ -336,6 +366,12 @@ async def main() -> None:
 
             missing_versions = sorted(set(REQUIRED_DB_BUILD_VERSIONS) - applied)
             if missing_versions:
+                if "003_achievements" in missing_versions:
+                    raise RuntimeError(
+                        "Achievement tables are missing.\n"
+                        "Run scripts/db/build/003_achievements.sql manually as doadmin, "
+                        "then run the relevant grants file."
+                    )
                 if len(missing_versions) == 1:
                     raise RuntimeError(
                         f"Database is missing required DB build version: {missing_versions[0]}"
