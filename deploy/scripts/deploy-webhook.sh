@@ -14,6 +14,22 @@ PYTHON_BIN="${PYTHON_BIN:-${APP_DIR}/.venv/bin/python}"
 
 trap 'echo "Deploy failed. Showing service diagnostics:"; sudo systemctl status "$SERVICE_NAME" --no-pager || true; sudo journalctl -u "$SERVICE_NAME" -n 120 --no-pager || true' ERR
 
+run_git() {
+  if git "$@"; then
+    return 0
+  fi
+
+  local repo_owner=""
+  repo_owner="$(stat -c '%U' .git 2>/dev/null || true)"
+  if [[ -n "${repo_owner}" && "${repo_owner}" != "$(id -un)" ]] && command -v sudo >/dev/null 2>&1; then
+    echo "Git command failed as $(id -un); retrying as repository owner ${repo_owner}."
+    sudo -n -u "${repo_owner}" git "$@"
+    return $?
+  fi
+
+  return 1
+}
+
 load_env_file() {
   local env_file="$1"
   local line=""
@@ -59,20 +75,20 @@ echo "[3/13] Verify repository and .env"
 [[ -f .env ]] || { echo "ERROR: ${APP_DIR}/.env does not exist."; exit 1; }
 
 echo "[4/13] Sync git ref"
-git fetch origin --prune "$DEPLOY_BRANCH"
-git fetch origin "$DEPLOY_REF" || true
+run_git fetch origin --prune "$DEPLOY_BRANCH"
+run_git fetch origin "$DEPLOY_REF" || true
 if [[ "$DEPLOY_REF" == "$DEPLOY_BRANCH" ]]; then
-  git checkout "$DEPLOY_BRANCH" || git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
-  git reset --hard "origin/$DEPLOY_BRANCH"
+  run_git checkout "$DEPLOY_BRANCH" || run_git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+  run_git reset --hard "origin/$DEPLOY_BRANCH"
 else
-  if git rev-parse --verify --quiet "$DEPLOY_REF" >/dev/null; then
-    git checkout --detach "$DEPLOY_REF"
+  if run_git rev-parse --verify --quiet "$DEPLOY_REF" >/dev/null; then
+    run_git checkout --detach "$DEPLOY_REF"
   else
-    git checkout --detach FETCH_HEAD
+    run_git checkout --detach FETCH_HEAD
   fi
 fi
 if [[ "$GIT_CLEAN" == "true" ]]; then
-  git clean -fd --exclude=.env --exclude=.venv
+  run_git clean -fd --exclude=.env --exclude=.venv
 fi
 
 echo "[5/13] Prepare virtual environment"
@@ -104,7 +120,7 @@ if [[ -z "${THRONE_WEBHOOK_BASE_URL:-}" ]]; then
 fi
 
 echo "[10/13] Run database checks"
-if ! PYTHONPATH=. "$PYTHON_BIN" scripts/check_db.py; then
+if ! PYTHON_DOTENV_DISABLED=1 PYTHONPATH=. "$PYTHON_BIN" scripts/check_db.py; then
   echo "Database check failed."
   echo "This database has not been built for Rob v2 yet, or runtime grants are incomplete."
   echo

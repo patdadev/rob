@@ -204,6 +204,20 @@ REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {
     },
 }
 
+WEBHOOK_REQUIRED_TABLES = {
+    "db_build_version",
+    "bot_settings",
+    "bot_users",
+    "dommes",
+    "subs",
+    "sub_send_names",
+    "sends",
+    "vib_settings",
+    "vib_leaderboard",
+    "user_achievements",
+    "achievement_events",
+}
+
 BOT_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "db_build_version": ("SELECT",),
     "bot_settings": ("SELECT", "INSERT", "UPDATE", "DELETE"),
@@ -264,6 +278,15 @@ def _runtime_profile(current_user: str) -> str:
     if current_user.endswith("_bot"):
         return "bot"
     return "generic"
+
+
+def _required_tables_for_profile(profile: str) -> dict[str, set[str]]:
+    if profile == "webhook":
+        return {
+            table_name: REQUIRED_TABLE_COLUMNS[table_name]
+            for table_name in WEBHOOK_REQUIRED_TABLES
+        }
+    return REQUIRED_TABLE_COLUMNS
 
 
 async def _table_exists(connection, table: str) -> bool:
@@ -386,6 +409,7 @@ async def main() -> None:
         async with database.acquire() as connection:
             current_user = str(await connection.fetchval("SELECT current_user"))
             current_database = str(await connection.fetchval("SELECT current_database()"))
+            profile = _runtime_profile(current_user)
 
             if not await _table_exists(connection, "db_build_version"):
                 raise RuntimeError("Missing required table: db_build_version")
@@ -424,7 +448,7 @@ async def main() -> None:
                     + ", ".join(missing_versions)
                 )
 
-            for table_name, required_columns in REQUIRED_TABLE_COLUMNS.items():
+            for table_name, required_columns in _required_tables_for_profile(profile).items():
                 await _assert_table_columns(connection, table_name, required_columns)
 
             await _assert_runtime_permissions(

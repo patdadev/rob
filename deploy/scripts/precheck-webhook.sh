@@ -76,7 +76,7 @@ require_env THRONE_WEBHOOK_HOST
 require_env THRONE_WEBHOOK_PORT
 
 echo "[6/8] Running database check"
-PYTHONPATH=. "$PYTHON_BIN" scripts/check_db.py
+PYTHON_DOTENV_DISABLED=1 PYTHONPATH=. "$PYTHON_BIN" scripts/check_db.py
 
 echo "[7/8] Checking current service state"
 STATE="$(systemctl is-active "$SERVICE_NAME" || true)"

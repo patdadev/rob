@@ -228,6 +228,45 @@ def test_check_db_allows_grants_template_to_be_unapplied(
     asyncio.run(check_db.main())
 
 
+def test_check_db_webhook_profile_allows_missing_bot_only_tables(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+):
+    _write_required_build_scripts(tmp_path)
+    webhook_tables = {
+        "db_build_version",
+        "bot_settings",
+        "bot_users",
+        "dommes",
+        "subs",
+        "sub_send_names",
+        "sends",
+        "vib_settings",
+        "vib_leaderboard",
+        "user_achievements",
+        "achievement_events",
+    }
+    columns = {
+        name: set(values)
+        for name, values in check_db.REQUIRED_TABLE_COLUMNS.items()
+        if name in webhook_tables
+    }
+    connection = _FakeConnection(
+        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery"],
+        table_columns=columns,
+        current_user="prod_rob_webhook",
+        privilege_overrides={
+            ("public.sends", "DELETE"): False,
+            ("public.bot_users", "DELETE"): False,
+            ("public.user_achievements", "DELETE"): False,
+            ("public.achievement_events", "DELETE"): False,
+        },
+    )
+    _patch_check_db(monkeypatch, connection=connection, build_dir=tmp_path)
+
+    asyncio.run(check_db.main())
+
+
 def test_repo_db_build_scripts_include_core_versions():
     expected = {path.stem for path in check_db.DB_BUILD_DIR.glob("*.sql")}
     assert "001_core_schema" in expected
