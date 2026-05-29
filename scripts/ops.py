@@ -340,7 +340,6 @@ async def create_context() -> OperationsContext:
         guild_settings=guild_settings,
         dommes=dommes,
         subs=subs,
-        throne_creators=throne_creators,
         blacklist=BlacklistRepository(database),
         throne=throne_service,
         webhook_base_url=os.getenv("THRONE_WEBHOOK_BASE_URL") or None,
