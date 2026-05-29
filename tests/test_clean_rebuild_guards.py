@@ -166,6 +166,8 @@ def test_db_build_scripts_exist_under_scripts_db_build():
     assert (build_dir / "001_core_schema.sql").exists()
     assert (build_dir / "002_indexes.sql").exists()
     assert (build_dir / "003_achievements.sql").exists()
+    assert (build_dir / "004_sub_send_names.sql").exists()
+    assert (build_dir / "005_count_recovery.sql").exists()
     assert (build_dir / "003_runtime_grants_template.sql").exists()
     assert (build_dir / "README.md").exists()
     grants_dir = REPO_ROOT / "scripts" / "db" / "grants"
@@ -186,6 +188,12 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     achievements_schema = (
         REPO_ROOT / "scripts" / "db" / "build" / "003_achievements.sql"
     ).read_text(encoding="utf-8")
+    sub_send_names_schema = (
+        REPO_ROOT / "scripts" / "db" / "build" / "004_sub_send_names.sql"
+    ).read_text(encoding="utf-8")
+    count_recovery_schema = (
+        REPO_ROOT / "scripts" / "db" / "build" / "005_count_recovery.sql"
+    ).read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS db_build_version" in core_schema
     assert "CREATE TABLE IF NOT EXISTS bot_users" in core_schema
@@ -199,6 +207,11 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     assert "CREATE TABLE IF NOT EXISTS user_achievements" in achievements_schema
     assert "CREATE TABLE IF NOT EXISTS achievement_events" in achievements_schema
     assert "VALUES ('003_achievements'," in achievements_schema
+    assert "CREATE TABLE IF NOT EXISTS sub_send_names" in sub_send_names_schema
+    assert "VALUES ('004_sub_send_names'," in sub_send_names_schema
+    assert "CREATE TABLE IF NOT EXISTS count_recovery_windows" in count_recovery_schema
+    assert "CREATE TABLE IF NOT EXISTS count_blocks" in count_recovery_schema
+    assert "VALUES ('005_count_recovery'," in count_recovery_schema
 
 
 def test_deploy_scripts_do_not_run_schema_builder():
@@ -238,6 +251,7 @@ def test_prod_webhook_grants_are_runtime_only_and_not_schema_changing():
         assert forbidden not in grants
     assert "user_achievements" in grants
     assert "achievement_events" in grants
+    assert "sub_send_names" in grants
 
 
 def test_webhook_supports_new_and_compatibility_routes():

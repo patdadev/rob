@@ -26,9 +26,13 @@ def test_cloudflared_webhook_remains_local_only():
     text = Path("deploy/scripts/install-cloudflared-webhook.sh").read_text(encoding="utf-8")
     assert "throne.robthebot.com" in text
     assert "http://127.0.0.1:8080" in text
+    assert "pkg.cloudflare.com/cloudflared" in text
+    assert "cloudflare-main.gpg" in text
+    assert "lsb_release -cs" in text
     assert "ufw allow 8080" not in text
     assert "firewall-cmd" not in text
     assert "iptables" not in text
+    assert "path: /webhook/*" not in text
 
 
 def test_docs_do_not_reference_old_webhook_domain_or_dev_webhook_user():

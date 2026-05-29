@@ -10,6 +10,16 @@ from rob.services.throne_service import ThroneService
 from rob.throne.payloads import ThroneSendPayload, is_known_test_sender
 from rob.utils.time import utc_now
 
+_UNMATCHABLE_SUB_NAMES = {"anonymous", "anon", "private", "hidden"}
+
+
+def _can_match_sub_name(name: str | None, *, is_private: bool = False) -> bool:
+    if is_private:
+        return False
+    if not name:
+        return False
+    return name.strip().casefold() not in _UNMATCHABLE_SUB_NAMES
+
 
 class SendService:
     def __init__(
@@ -71,8 +81,8 @@ class SendService:
 
         sub_id = None
         sub_user_id = None
-        if payload.gifter_username and payload.gifter_username.lower() != "anonymous":
-            sub = await self.subs.get_by_name(creator.guild_id, payload.gifter_username)
+        if _can_match_sub_name(payload.gifter_username, is_private=payload.is_private):
+            sub = await self.subs.get_by_send_name(creator.guild_id, payload.gifter_username)
             if sub is not None:
                 sub_id = sub.id
                 sub_user_id = sub.discord_user_id
@@ -128,8 +138,8 @@ class SendService:
                 resolved_sub_id = sub.id
                 if not resolved_sub_name:
                     resolved_sub_name = sub.send_name
-        elif resolved_sub_name:
-            sub = await self.subs.get_by_name(guild_id, resolved_sub_name)
+        elif _can_match_sub_name(resolved_sub_name, is_private=False):
+            sub = await self.subs.get_by_send_name(guild_id, resolved_sub_name)
             if sub is not None:
                 resolved_sub_id = sub.id
                 resolved_sub_user_id = sub.discord_user_id

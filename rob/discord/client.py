@@ -96,6 +96,7 @@ class RobBot(commands.Bot):
             counting=self.counting_repo,
             guild_settings=self.vib_settings_repo,
             dommes=self.dommes_repo,
+            bot_settings=self.bot_settings_repo,
             achievements=self.achievements_service,
             parse_test_sends_as_real_sends=self.settings.throne_parse_test_sends_as_real_sends,
             test_gifter_usernames=self.settings.throne_test_gifter_usernames,
@@ -172,6 +173,7 @@ class RobBot(commands.Bot):
             synced = await self.tree.sync()
             log.info("Synced %s global command(s).", len(synced))
 
+        await self.counting_service.start()
         await self.send_queue_service.start()
         await self.bot_ops_server.start()
 
@@ -197,6 +199,8 @@ class RobBot(commands.Bot):
             await self.bot_ops_server.stop()
         if hasattr(self, "send_queue_service"):
             await self.send_queue_service.stop()
+        if hasattr(self, "counting_service"):
+            await self.counting_service.stop()
         if hasattr(self, "throne_service"):
             await self.throne_service.close()
         await self.database.close()

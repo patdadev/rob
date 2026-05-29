@@ -18,6 +18,19 @@ def _required_columns_with_overrides(
     return columns
 
 
+def _write_required_build_scripts(tmp_path, *, include_grants_template: bool = False) -> None:
+    for name in (
+        "001_core_schema.sql",
+        "002_indexes.sql",
+        "003_achievements.sql",
+        "004_sub_send_names.sql",
+        "005_count_recovery.sql",
+    ):
+        (tmp_path / name).write_text("SELECT 1;\n", encoding="utf-8")
+    if include_grants_template:
+        (tmp_path / "003_runtime_grants_template.sql").write_text("SELECT 1;\n", encoding="utf-8")
+
+
 class _FakeConnection:
     def __init__(
         self,
@@ -119,10 +132,7 @@ def _patch_check_db(
 
 
 def test_check_db_detects_missing_db_build_versions(monkeypatch: pytest.MonkeyPatch, tmp_path):
-    (tmp_path / "001_core_schema.sql").write_text("SELECT 1;\n", encoding="utf-8")
-    (tmp_path / "002_indexes.sql").write_text("SELECT 1;\n", encoding="utf-8")
-    (tmp_path / "003_achievements.sql").write_text("SELECT 1;\n", encoding="utf-8")
-    (tmp_path / "003_runtime_grants_template.sql").write_text("SELECT 1;\n", encoding="utf-8")
+    _write_required_build_scripts(tmp_path, include_grants_template=True)
     connection = _FakeConnection(
         build_versions=["001_core_schema", "003_achievements"],
         table_columns=_required_columns_with_overrides(),
@@ -137,9 +147,7 @@ def test_check_db_reports_missing_achievement_schema_with_manual_sql_guidance(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ):
-    (tmp_path / "001_core_schema.sql").write_text("SELECT 1;\n", encoding="utf-8")
-    (tmp_path / "002_indexes.sql").write_text("SELECT 1;\n", encoding="utf-8")
-    (tmp_path / "003_achievements.sql").write_text("SELECT 1;\n", encoding="utf-8")
+    _write_required_build_scripts(tmp_path)
     connection = _FakeConnection(
         build_versions=["001_core_schema", "002_indexes"],
         table_columns=_required_columns_with_overrides(),
@@ -151,9 +159,7 @@ def test_check_db_reports_missing_achievement_schema_with_manual_sql_guidance(
 
 
 def test_check_db_detects_missing_required_columns(monkeypatch: pytest.MonkeyPatch, tmp_path):
-    (tmp_path / "001_core_schema.sql").write_text("SELECT 1;\n", encoding="utf-8")
-    (tmp_path / "002_indexes.sql").write_text("SELECT 1;\n", encoding="utf-8")
-    (tmp_path / "003_achievements.sql").write_text("SELECT 1;\n", encoding="utf-8")
+    _write_required_build_scripts(tmp_path)
     columns = _required_columns_with_overrides(
         {
             "sends": {
@@ -168,7 +174,7 @@ def test_check_db_detects_missing_required_columns(monkeypatch: pytest.MonkeyPat
         }
     )
     connection = _FakeConnection(
-        build_versions=["001_core_schema", "002_indexes", "003_achievements"],
+        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery"],
         table_columns=columns,
     )
     _patch_check_db(monkeypatch, connection=connection, build_dir=tmp_path)
@@ -183,7 +189,7 @@ def test_check_db_detects_missing_required_build_script_file(
 ):
     (tmp_path / "001_core_schema.sql").write_text("SELECT 1;\n", encoding="utf-8")
     connection = _FakeConnection(
-        build_versions=["001_core_schema", "002_indexes"],
+        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery"],
         table_columns=_required_columns_with_overrides(),
     )
     _patch_check_db(monkeypatch, connection=connection, build_dir=tmp_path)
@@ -196,11 +202,9 @@ def test_check_db_rejects_runtime_schema_create_privilege(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ):
-    (tmp_path / "001_core_schema.sql").write_text("SELECT 1;\n", encoding="utf-8")
-    (tmp_path / "002_indexes.sql").write_text("SELECT 1;\n", encoding="utf-8")
-    (tmp_path / "003_achievements.sql").write_text("SELECT 1;\n", encoding="utf-8")
+    _write_required_build_scripts(tmp_path)
     connection = _FakeConnection(
-        build_versions=["001_core_schema", "002_indexes", "003_achievements"],
+        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery"],
         table_columns=_required_columns_with_overrides(),
         has_schema_create=True,
     )
@@ -214,12 +218,9 @@ def test_check_db_allows_grants_template_to_be_unapplied(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ):
-    (tmp_path / "001_core_schema.sql").write_text("SELECT 1;\n", encoding="utf-8")
-    (tmp_path / "002_indexes.sql").write_text("SELECT 1;\n", encoding="utf-8")
-    (tmp_path / "003_achievements.sql").write_text("SELECT 1;\n", encoding="utf-8")
-    (tmp_path / "003_runtime_grants_template.sql").write_text("SELECT 1;\n", encoding="utf-8")
+    _write_required_build_scripts(tmp_path, include_grants_template=True)
     connection = _FakeConnection(
-        build_versions=["001_core_schema", "002_indexes", "003_achievements"],
+        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery"],
         table_columns=_required_columns_with_overrides(),
     )
     _patch_check_db(monkeypatch, connection=connection, build_dir=tmp_path)
@@ -232,5 +233,13 @@ def test_repo_db_build_scripts_include_core_versions():
     assert "001_core_schema" in expected
     assert "002_indexes" in expected
     assert "003_achievements" in expected
+    assert "004_sub_send_names" in expected
+    assert "005_count_recovery" in expected
     assert "003_runtime_grants_template" in expected
-    assert set(check_db.REQUIRED_DB_BUILD_VERSIONS) == {"001_core_schema", "002_indexes", "003_achievements"}
+    assert set(check_db.REQUIRED_DB_BUILD_VERSIONS) == {
+        "001_core_schema",
+        "002_indexes",
+        "003_achievements",
+        "004_sub_send_names",
+        "005_count_recovery",
+    }

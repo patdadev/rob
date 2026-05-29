@@ -28,12 +28,18 @@ Rob achievements are definition-driven in code, with per-user unlock state store
 
 Run manually as `doadmin`:
 
-1. `scripts/db/build/003_achievements.sql`
-2. Re-run the relevant grants file:
+1. Ensure base DB build scripts are already applied:
+   - `scripts/db/build/001_core_schema.sql`
+   - `scripts/db/build/002_indexes.sql`
+2. Apply achievements and current rehearsal extensions:
+   - `scripts/db/build/003_achievements.sql`
+   - `scripts/db/build/004_sub_send_names.sql`
+   - `scripts/db/build/005_count_recovery.sql`
+3. Re-run the relevant grants file:
    - dev rehearsal: `scripts/db/grants/dev_rehearsal_prod_roles.sql`
    - prod bot: `scripts/db/grants/prod_rob_bot.sql`
    - prod webhook: `scripts/db/grants/prod_rob_webhook.sql`
-3. Validate with runtime credentials:
+4. Validate with runtime credentials:
    - `PYTHONPATH=. python3 -m scripts.check_db`
 
 If `scripts.check_db.py` reports achievement tables missing, apply the SQL manually and rerun the check.

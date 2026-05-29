@@ -51,17 +51,46 @@ def counting_same_user_reminder_card() -> RenderedMessage:
 
 
 def count_rescue_needed_card(*, remaining_seconds: int, deadline_unix: int) -> RenderedMessage:
+    return count_rescue_needed_for_role_card(
+        remaining_seconds=remaining_seconds,
+        deadline_unix=deadline_unix,
+        failed_user_role="sub",
+        claimed_restriction=False,
+        claimed_unresolved=False,
+    )
+
+
+def count_rescue_needed_for_role_card(
+    *,
+    remaining_seconds: int,
+    deadline_unix: int,
+    failed_user_role: str,
+    claimed_restriction: bool,
+    claimed_unresolved: bool,
+) -> RenderedMessage:
     require_components_v2()
     view = discord.ui.LayoutView(timeout=1800)
     remaining_seconds = max(0, remaining_seconds)
     minutes, seconds = divmod(remaining_seconds, 60)
+    if failed_user_role == "domme":
+        opener = "A Dom/me fumbled the count. Subs have 5 minutes to send to them and save it."
+    else:
+        opener = "A Sub fumbled the count. They have 5 minutes to send and save themselves."
+    claim_line = ""
+    if failed_user_role == "sub" and claimed_restriction:
+        claim_line = "Because you are claimed, the recovery send must go to your Dom/me.\n\n"
+    if failed_user_role == "sub" and claimed_unresolved:
+        claim_line = (
+            "Because your claimed Dom/me could not be resolved, staff should review your claim role before retrying.\n\n"
+        )
     view.add_item(
         discord.ui.Container(
             discord.ui.TextDisplay("## Count Rescue Needed"),
             discord.ui.Separator(),
             discord.ui.TextDisplay(
                 "The count is wobbling.\n"
-                "A Sub entered the wrong number. To keep the count alive, a qualifying send to a Dom/me needs to happen before time runs out.\n\n"
+                f"{opener}\n\n"
+                f"{claim_line}"
                 "-# Time remaining:\n"
                 f"**{minutes}m {seconds:02d}s**\n\n"
                 "-# Deadline:\n"
@@ -91,6 +120,10 @@ def count_saved_card(*, next_number: int) -> RenderedMessage:
 
 
 def count_failed_card() -> RenderedMessage:
+    return count_failed_reset_card()
+
+
+def count_failed_reset_card() -> RenderedMessage:
     require_components_v2()
     view = discord.ui.LayoutView(timeout=600)
     view.add_item(
@@ -100,6 +133,41 @@ def count_failed_card() -> RenderedMessage:
             discord.ui.TextDisplay(
                 "No qualifying send arrived in time.\n"
                 "Rob has reset the count."
+            ),
+            accent_color=COLOR_INFO,
+        )
+    )
+    return RenderedMessage(view=view)
+
+
+def count_failed_sub_blocked_card(*, blocked_until_unix: int) -> RenderedMessage:
+    require_components_v2()
+    view = discord.ui.LayoutView(timeout=600)
+    view.add_item(
+        discord.ui.Container(
+            discord.ui.TextDisplay("## Count Failed"),
+            discord.ui.Separator(),
+            discord.ui.TextDisplay(
+                "No recovery send was detected.\n"
+                "You fumbled the count and missed the recovery window, so you are blocked from counting for 12 hours.\n\n"
+                f"You can count again <t:{blocked_until_unix}:R>."
+            ),
+            accent_color=COLOR_INFO,
+        )
+    )
+    return RenderedMessage(view=view)
+
+
+def count_blocked_sub_card(*, blocked_until_unix: int) -> RenderedMessage:
+    require_components_v2()
+    view = discord.ui.LayoutView(timeout=120)
+    view.add_item(
+        discord.ui.Container(
+            discord.ui.TextDisplay("## Count Blocked"),
+            discord.ui.Separator(),
+            discord.ui.TextDisplay(
+                "You fumbled the count and missed the recovery window, so you are blocked from counting for 12 hours.\n\n"
+                f"You can count again <t:{blocked_until_unix}:R>."
             ),
             accent_color=COLOR_INFO,
         )

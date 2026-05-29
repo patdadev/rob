@@ -32,8 +32,19 @@ install_cloudflared() {
     die "cloudflared is not installed and apt-get is unavailable. Install cloudflared manually first."
   fi
 
-  log "Installing cloudflared package"
+  log "Installing cloudflared from the official Cloudflare apt repository."
   export DEBIAN_FRONTEND=noninteractive
+  apt-get update -y
+  apt-get install -y curl ca-certificates gnupg lsb-release
+  install -d -m 0755 /usr/share/keyrings
+  curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
+    | gpg --dearmor \
+    | tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+  local codename
+  codename="$(lsb_release -cs)"
+  cat > /etc/apt/sources.list.d/cloudflared.list <<EOF
+deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared ${codename} main
+EOF
   apt-get update -y
   apt-get install -y cloudflared
 }
@@ -78,10 +89,6 @@ tunnel: ${tunnel_id}
 credentials-file: ${CREDENTIALS_FILE}
 ingress:
   - hostname: ${PUBLIC_HOSTNAME}
-    path: /webhook/*
-    service: ${ORIGIN_URL}
-  - hostname: ${PUBLIC_HOSTNAME}
-    path: /throne/webhook/*
     service: ${ORIGIN_URL}
   - service: http_status:404
 EOF
@@ -143,6 +150,7 @@ Notes:
   - Do not expose port 8080 publicly.
   - Do not commit tunnel tokens or credentials into the repository.
   - Named tunnel mode requires ${CREDENTIALS_FILE}; this script will not guess credential files.
+  - Host-level routing keeps /health reachable for validation checks.
 EOF
 }
 

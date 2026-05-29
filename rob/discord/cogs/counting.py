@@ -6,7 +6,12 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from rob.ui.cards.counting import count_failed_card, counting_same_user_reminder_card, counting_updated_card
+from rob.ui.cards.counting import (
+    count_blocked_sub_card,
+    count_failed_card,
+    counting_same_user_reminder_card,
+    counting_updated_card,
+)
 from rob.ui.cards.errors import error_card
 
 if TYPE_CHECKING:
@@ -66,6 +71,30 @@ class CountingCog(commands.Cog):
         if result.reason == "paused_for_rescue":
             try:
                 await message.delete()
+            except discord.HTTPException:
+                pass
+            return
+
+        if result.reason == "blocked_sub":
+            try:
+                await message.delete()
+            except discord.HTTPException:
+                pass
+            if result.blocked_until is not None:
+                await message.channel.send(
+                    **count_blocked_sub_card(
+                        blocked_until_unix=int(result.blocked_until.timestamp())
+                    ).send_kwargs()
+                )
+            return
+
+        if result.reason in {"wrong_number_sub_recovery", "wrong_number_domme_recovery"}:
+            try:
+                await message.delete()
+            except discord.HTTPException:
+                pass
+            try:
+                await message.add_reaction("❌")
             except discord.HTTPException:
                 pass
             return

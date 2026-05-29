@@ -63,6 +63,18 @@ class Sub:
 
 
 @dataclass(frozen=True)
+class SubSendName:
+    id: int
+    guild_id: int
+    sub_id: int
+    discord_user_id: int
+    send_name: str
+    is_primary: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
 class ThroneCreator:
     id: int
     guild_id: int
@@ -170,6 +182,34 @@ class CountingState:
     is_enabled: bool
     pending_restore: bool
     updated_at: datetime
+
+
+@dataclass(frozen=True)
+class CountRecoveryWindow:
+    id: int
+    guild_id: int
+    channel_id: int
+    failed_user_id: int
+    failed_user_role: str
+    required_domme_user_id: int | None
+    required_domme_id: int | None
+    expected_number: int
+    attempted_content: str | None
+    started_at: datetime
+    expires_at: datetime
+    resolved_at: datetime | None
+    resolution: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class CountBlock:
+    id: int
+    guild_id: int
+    discord_user_id: int
+    reason: str
+    blocked_until: datetime
+    created_at: datetime
 
 
 @dataclass(frozen=True)

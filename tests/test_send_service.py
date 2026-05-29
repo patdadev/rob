@@ -55,9 +55,16 @@ class _FakeSendsRepo:
 
 
 class _FakeSubsRepo:
+    def __init__(self, *, returned_sub=None):
+        self.returned_sub = returned_sub
+        self.lookup_calls: list[tuple[int, str]] = []
+
+    async def get_by_send_name(self, guild_id: int, send_name: str):
+        self.lookup_calls.append((guild_id, send_name))
+        return self.returned_sub
+
     async def get_by_name(self, guild_id: int, send_name: str):
-        del guild_id, send_name
-        return None
+        return await self.get_by_send_name(guild_id, send_name)
 
 
 def _creator() -> ThroneCreator:
@@ -103,9 +110,10 @@ def _payload(gifter_username: str | None) -> ThroneSendPayload:
 
 def test_known_test_sender_is_stored_as_test_send():
     sends = _FakeSendsRepo()
+    subs = _FakeSubsRepo()
     service = SendService(
         sends=sends,
-        subs=_FakeSubsRepo(),
+        subs=subs,
         maintenance=_FakeMaintenance(),
         throne_test_gifter_usernames=("marie_123",),
     )
@@ -119,9 +127,10 @@ def test_known_test_sender_is_stored_as_test_send():
 
 def test_real_sender_is_not_stored_as_test_send():
     sends = _FakeSendsRepo()
+    subs = _FakeSubsRepo()
     service = SendService(
         sends=sends,
-        subs=_FakeSubsRepo(),
+        subs=subs,
         maintenance=_FakeMaintenance(),
         throne_test_gifter_usernames=("marie_123",),
     )
@@ -130,3 +139,40 @@ def test_real_sender_is_not_stored_as_test_send():
 
     assert sends.inserted is not None
     assert sends.inserted.is_test_send is False
+
+
+def test_sub_alias_lookup_sets_sub_user_id():
+    sends = _FakeSendsRepo()
+    sub = type("Sub", (), {"id": 7, "discord_user_id": 99, "send_name": "alias"})
+    subs = _FakeSubsRepo(returned_sub=sub)
+    service = SendService(
+        sends=sends,
+        subs=subs,
+        maintenance=_FakeMaintenance(),
+        throne_test_gifter_usernames=("marie_123",),
+    )
+
+    asyncio.run(service.record_throne_send(creator=_creator(), payload=_payload("alias")))
+
+    assert sends.inserted is not None
+    assert sends.inserted.sub_id == 7
+    assert sends.inserted.sub_user_id == 99
+    assert subs.lookup_calls == [(1, "alias")]
+
+
+def test_anonymous_sender_does_not_attempt_sub_alias_lookup():
+    sends = _FakeSendsRepo()
+    subs = _FakeSubsRepo()
+    service = SendService(
+        sends=sends,
+        subs=subs,
+        maintenance=_FakeMaintenance(),
+        throne_test_gifter_usernames=("marie_123",),
+    )
+
+    asyncio.run(service.record_throne_send(creator=_creator(), payload=_payload("anonymous")))
+
+    assert sends.inserted is not None
+    assert sends.inserted.sub_id is None
+    assert sends.inserted.sub_user_id is None
+    assert subs.lookup_calls == []

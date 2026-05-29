@@ -7,6 +7,14 @@ This process imports legacy SQLite data into the v2 PostgreSQL schema.
 - Source SQLite (read-only): `/opt/rob-the-bot/data/rob_the_bot.sqlite3`
 - Dev rehearsal target: `rob_dev_v2`
 
+Before importing data, manually apply DB build SQL (as `doadmin`) in this order:
+
+1. `scripts/db/build/001_core_schema.sql`
+2. `scripts/db/build/002_indexes.sql`
+3. `scripts/db/build/003_achievements.sql`
+4. `scripts/db/build/004_sub_send_names.sql`
+5. `scripts/db/build/005_count_recovery.sql`
+
 ## Safety rules
 
 1. Do not write to live SQLite.

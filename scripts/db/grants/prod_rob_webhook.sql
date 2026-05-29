@@ -13,6 +13,7 @@ GRANT SELECT ON
   bot_users,
   dommes,
   subs,
+  sub_send_names,
   vib_settings,
   vib_leaderboard,
   user_achievements,

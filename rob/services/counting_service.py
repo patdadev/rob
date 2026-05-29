@@ -1,17 +1,34 @@
 from __future__ import annotations
 
+import ast
 import asyncio
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import discord
 
 from rob.achievements.service import COUNT_NUMBER_TO_ACHIEVEMENT_KEYS, AchievementsService
+from rob.database.repositories.bot_settings import BotSettingsRepository
 from rob.database.repositories.counting import CountingRepository
 from rob.database.repositories.dommes import DommesRepository
 from rob.database.repositories.guild_settings import GuildSettingsRepository
+from rob.database.repositories.models import CountRecoveryWindow
 from rob.services.send_display import is_known_test_sender
-from rob.ui.cards.counting import count_failed_card, count_rescue_needed_card, count_saved_card
+from rob.ui.cards.counting import (
+    count_failed_reset_card,
+    count_failed_sub_blocked_card,
+    count_rescue_needed_for_role_card,
+    count_saved_card,
+)
+
+log = logging.getLogger(__name__)
+
+_CLAIMED_ROLE_PREFIX_KEY = "count_claimed_role_prefix"
+_DEFAULT_CLAIMED_ROLE_PREFIX = "Claimed by "
+_CLAIM_UNRESOLVED_SENTINEL = 0
+_MAX_COUNT_EXPRESSION_LENGTH = 80
+_ALLOWED_EXPRESSION_CHARS = set("0123456789+-*/() ")
 
 
 @dataclass(frozen=True)
@@ -21,18 +38,76 @@ class CountingProcessResult:
     current_number: int
     reason: str | None = None
     deadline: datetime | None = None
+    blocked_until: datetime | None = None
 
 
 @dataclass
-class _RescueWindow:
+class _WindowRuntime:
+    window_id: int
     guild_id: int
     channel_id: int
-    message: discord.Message
-    deadline: datetime
-    restore_value: int
-    failed_user_id: int
-    failed_user_is_sub: bool
-    task: asyncio.Task[None] | None = None
+    message: discord.Message | None = None
+
+
+@dataclass(frozen=True)
+class _ClaimResolution:
+    required_domme_user_id: int | None
+    required_domme_id: int | None
+    claimed_restriction: bool
+    claimed_unresolved: bool
+
+
+class _ExpressionEvaluator:
+    @classmethod
+    def evaluate(cls, expression: str) -> int:
+        expr = expression.strip()
+        if not expr:
+            raise ValueError("Expression is empty.")
+        if len(expr) > _MAX_COUNT_EXPRESSION_LENGTH:
+            raise ValueError("Expression is too long.")
+        if any(ch not in _ALLOWED_EXPRESSION_CHARS for ch in expr):
+            raise ValueError("Expression contains unsupported characters.")
+        try:
+            tree = ast.parse(expr, mode="eval")
+        except SyntaxError as exc:
+            raise ValueError("Expression syntax is invalid.") from exc
+        value = cls._eval_node(tree.body)
+        if not isinstance(value, int):
+            raise ValueError("Expression did not evaluate to an integer.")
+        if value < 0:
+            raise ValueError("Negative results are not supported.")
+        return value
+
+    @classmethod
+    def _eval_node(cls, node: ast.AST) -> int:
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, bool) or not isinstance(node.value, int):
+                raise ValueError("Only integer constants are supported.")
+            return int(node.value)
+        if isinstance(node, ast.UnaryOp):
+            operand = cls._eval_node(node.operand)
+            if isinstance(node.op, ast.UAdd):
+                return operand
+            if isinstance(node.op, ast.USub):
+                return -operand
+            raise ValueError("Unsupported unary operator.")
+        if isinstance(node, ast.BinOp):
+            left = cls._eval_node(node.left)
+            right = cls._eval_node(node.right)
+            if isinstance(node.op, ast.Add):
+                return left + right
+            if isinstance(node.op, ast.Sub):
+                return left - right
+            if isinstance(node.op, ast.Mult):
+                return left * right
+            if isinstance(node.op, ast.Div):
+                if right == 0:
+                    raise ValueError("Division by zero is not allowed.")
+                if left % right != 0:
+                    raise ValueError("Non-integer division results are not allowed.")
+                return left // right
+            raise ValueError("Unsupported binary operator.")
+        raise ValueError("Unsupported expression node.")
 
 
 class CountingService:
@@ -43,9 +118,11 @@ class CountingService:
         counting: CountingRepository,
         guild_settings: GuildSettingsRepository,
         dommes: DommesRepository,
+        bot_settings: BotSettingsRepository | None = None,
         achievements: AchievementsService | None = None,
         rescue_window_seconds: int = 300,
         rescue_tick_seconds: int = 15,
+        block_seconds: int = 12 * 60 * 60,
         parse_test_sends_as_real_sends: bool = False,
         test_gifter_usernames: tuple[str, ...] = (),
     ) -> None:
@@ -53,12 +130,41 @@ class CountingService:
         self.counting = counting
         self.guild_settings = guild_settings
         self.dommes = dommes
+        self.bot_settings = bot_settings
         self.achievements = achievements
         self.rescue_window_seconds = rescue_window_seconds
         self.rescue_tick_seconds = rescue_tick_seconds
+        self.block_seconds = block_seconds
         self.parse_test_sends_as_real_sends = parse_test_sends_as_real_sends
         self.test_gifter_usernames = set(test_gifter_usernames)
-        self._rescue_windows: dict[int, _RescueWindow] = {}
+
+        self._runtime_windows: dict[int, _WindowRuntime] = {}
+        self._ticker_task: asyncio.Task[None] | None = None
+
+    async def start(self) -> None:
+        if self._ticker_task is not None:
+            return
+        self._ticker_task = asyncio.create_task(self._ticker_loop(), name="rob-count-recovery")
+        await self._sync_recovery_windows()
+
+    async def stop(self) -> None:
+        if self._ticker_task is not None:
+            self._ticker_task.cancel()
+            try:
+                await self._ticker_task
+            except asyncio.CancelledError:
+                pass
+            self._ticker_task = None
+
+    async def _ticker_loop(self) -> None:
+        try:
+            while True:
+                await self._sync_recovery_windows()
+                await asyncio.sleep(self.rescue_tick_seconds)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            log.exception("Count recovery ticker failed.")
 
     async def get_or_create_state(self, guild_id: int):
         state = await self.counting.get(guild_id)
@@ -77,7 +183,7 @@ class CountingService:
 
     async def set_current_number(self, guild_id: int, number: int):
         state = await self.get_or_create_state(guild_id)
-        await self._clear_rescue_window(guild_id)
+        await self._cancel_active_windows_for_guild(guild_id)
         return await self.counting.upsert(
             guild_id=guild_id,
             channel_id=state.channel_id,
@@ -97,21 +203,42 @@ class CountingService:
         if message.channel.id != state.channel_id:
             return None
 
-        content = message.content.strip()
-        if not content.isdigit():
-            return None
+        await self._sync_recovery_windows()
 
-        if state.pending_restore:
-            expected = state.current_number + 1
+        settings = await self.guild_settings.get(message.guild.id)
+        is_sub = self._has_role(message.author, settings.sub_role_id if settings else None)
+        is_domme = self._has_role(message.author, settings.domme_role_id if settings else None)
+
+        if is_sub:
+            block = await self.counting.get_active_block(message.guild.id, message.author.id)
+            if block is not None:
+                return CountingProcessResult(
+                    success=False,
+                    expected_number=state.current_number + 1,
+                    current_number=state.current_number,
+                    reason="blocked_sub",
+                    blocked_until=block.blocked_until,
+                )
+
+        active_window = await self.counting.get_active_recovery_window(message.guild.id, message.channel.id)
+        now = datetime.now(timezone.utc)
+        if active_window is not None and active_window.expires_at > now:
             return CountingProcessResult(
                 success=False,
-                expected_number=expected,
+                expected_number=state.current_number + 1,
                 current_number=state.current_number,
                 reason="paused_for_rescue",
             )
+        if active_window is not None and active_window.expires_at <= now:
+            await self._expire_window(active_window)
+            state = await self.get_or_create_state(message.guild.id)
+
+        content = message.content.strip()
+        is_attempt, number = self._parse_count_attempt(content)
+        if not is_attempt:
+            return None
 
         expected = state.current_number + 1
-        number = int(content)
         if state.last_user_id == message.author.id:
             return CountingProcessResult(
                 success=False,
@@ -121,48 +248,69 @@ class CountingService:
             )
 
         if number != expected:
-            settings = await self.guild_settings.get(message.guild.id)
-            sub_role_id = settings.sub_role_id if settings is not None else None
-            is_sub = (
-                isinstance(message.author, discord.Member)
-                and sub_role_id is not None
-                and any(role.id == sub_role_id for role in message.author.roles)
-            )
             if self.achievements is not None:
                 await self.achievements.unlock_achievement(
                     guild_id=message.guild.id,
                     discord_user_id=message.author.id,
                     achievement_key="count_first_mistake",
                     source="counting:wrong_number",
-                    metadata={"attempted_number": number, "expected_number": expected},
+                    metadata={"attempted_content": content, "expected_number": expected},
                 )
-            if is_sub and hasattr(message.channel, "send"):
-                deadline = datetime.now(timezone.utc) + timedelta(seconds=self.rescue_window_seconds)
-                await self.counting.upsert(
-                    guild_id=state.guild_id,
-                    channel_id=state.channel_id,
-                    current_number=state.current_number,
-                    last_user_id=state.last_user_id,
-                    is_enabled=state.is_enabled,
-                    pending_restore=True,
-                )
-                await self._start_rescue_window(
-                    guild_id=state.guild_id,
-                    channel=message.channel,
+
+            deadline = now + timedelta(seconds=self.rescue_window_seconds)
+            if is_domme:
+                domme_record = await self.dommes.get_by_user_id(message.guild.id, message.author.id)
+                window = await self._start_recovery_window(
+                    guild_id=message.guild.id,
+                    channel_id=message.channel.id,
                     failed_user_id=message.author.id,
-                    failed_user_is_sub=True,
-                    restore_value=state.current_number,
+                    failed_user_role="domme",
+                    required_domme_user_id=message.author.id,
+                    required_domme_id=domme_record.id if domme_record is not None else None,
+                    expected_number=expected,
+                    attempted_content=content,
                     deadline=deadline,
+                    claimed_restriction=False,
+                    claimed_unresolved=False,
                 )
+                await self._ensure_window_message(window, force_post_if_missing=True)
                 return CountingProcessResult(
                     success=False,
                     expected_number=expected,
                     current_number=state.current_number,
-                    reason="wrong_number_sub_rescue",
+                    reason="wrong_number_domme_recovery",
                     deadline=deadline,
                 )
 
-            await self._clear_rescue_window(state.guild_id)
+            if is_sub:
+                claim = await self._resolve_claim_requirement(
+                    guild=message.guild,
+                    guild_id=message.guild.id,
+                    member=message.author if isinstance(message.author, discord.Member) else None,
+                )
+                window = await self._start_recovery_window(
+                    guild_id=message.guild.id,
+                    channel_id=message.channel.id,
+                    failed_user_id=message.author.id,
+                    failed_user_role="sub",
+                    required_domme_user_id=claim.required_domme_user_id,
+                    required_domme_id=claim.required_domme_id,
+                    expected_number=expected,
+                    attempted_content=content,
+                    deadline=deadline,
+                    claimed_restriction=claim.claimed_restriction,
+                    claimed_unresolved=claim.claimed_unresolved,
+                )
+                await self._ensure_window_message(window, force_post_if_missing=True)
+                return CountingProcessResult(
+                    success=False,
+                    expected_number=expected,
+                    current_number=state.current_number,
+                    reason="wrong_number_sub_recovery",
+                    deadline=deadline,
+                )
+
+            await self._cancel_active_windows_for_guild(message.guild.id)
             await self.counting.upsert(
                 guild_id=state.guild_id,
                 channel_id=state.channel_id,
@@ -178,7 +326,7 @@ class CountingService:
                 reason="wrong_number_reset",
             )
 
-        await self._clear_rescue_window(state.guild_id)
+        await self._cancel_active_windows_for_guild(message.guild.id)
         await self.counting.upsert(
             guild_id=state.guild_id,
             channel_id=state.channel_id,
@@ -211,153 +359,433 @@ class CountingService:
         )
 
     async def process_send_for_count_rescue(self, send) -> bool:
-        rescue = self._rescue_windows.get(send.guild_id)
-        if rescue is None:
+        await self._sync_recovery_windows()
+        windows = [
+            window
+            for window in await self.counting.list_active_recovery_windows()
+            if window.guild_id == send.guild_id
+        ]
+        if not windows:
             return False
-        if datetime.now(timezone.utc) >= rescue.deadline:
-            await self._expire_rescue_window(send.guild_id)
-            return False
+
+        now = datetime.now(timezone.utc)
+        send_time = getattr(send, "sent_at", None) or now
+        for window in windows:
+            if window.expires_at <= now:
+                continue
+            if not self._send_qualifies_for_window(send=send, window=window, send_time=send_time):
+                continue
+            resolved = await self.counting.resolve_recovery_window(window_id=window.id, resolution="recovered")
+            if not resolved:
+                continue
+            state = await self.get_or_create_state(window.guild_id)
+            await self.counting.upsert(
+                guild_id=state.guild_id,
+                channel_id=state.channel_id,
+                current_number=max(0, window.expected_number - 1),
+                last_user_id=None,
+                is_enabled=state.is_enabled,
+                pending_restore=False,
+            )
+            runtime = self._runtime_windows.pop(window.id, None)
+            message = runtime.message if runtime is not None else None
+            if message is not None:
+                try:
+                    await message.edit(**count_saved_card(next_number=window.expected_number).edit_kwargs())
+                except discord.HTTPException:
+                    pass
+            if self.achievements is not None and send.sub_user_id is not None:
+                remaining_seconds = int((window.expires_at - now).total_seconds())
+                await self.achievements.unlock_achievement(
+                    guild_id=send.guild_id,
+                    discord_user_id=send.sub_user_id,
+                    achievement_key="sub_save_count",
+                    source="counting:rescue",
+                    metadata={"remaining_seconds": max(0, remaining_seconds)},
+                )
+                if remaining_seconds <= self.rescue_tick_seconds:
+                    await self.achievements.unlock_achievement(
+                        guild_id=send.guild_id,
+                        discord_user_id=send.sub_user_id,
+                        achievement_key="count_last_second_save",
+                        source="counting:rescue",
+                        metadata={"remaining_seconds": max(0, remaining_seconds)},
+                    )
+                if window.failed_user_role == "sub" and window.failed_user_id == send.sub_user_id:
+                    await self.achievements.unlock_achievement(
+                        guild_id=send.guild_id,
+                        discord_user_id=send.sub_user_id,
+                        achievement_key="count_sub_recovered_own_mistake",
+                        source="counting:rescue",
+                    )
+                if window.failed_user_role == "domme":
+                    await self.achievements.unlock_many(
+                        guild_id=send.guild_id,
+                        discord_user_id=send.sub_user_id,
+                        achievement_keys=["count_sub_recovered_domme_mistake"],
+                        source="counting:rescue",
+                    )
+                    await self.achievements.unlock_achievement(
+                        guild_id=send.guild_id,
+                        discord_user_id=window.failed_user_id,
+                        achievement_key="count_domme_saved_by_sub",
+                        source="counting:rescue",
+                    )
+            return True
+        return False
+
+    async def _start_recovery_window(
+        self,
+        *,
+        guild_id: int,
+        channel_id: int,
+        failed_user_id: int,
+        failed_user_role: str,
+        required_domme_user_id: int | None,
+        required_domme_id: int | None,
+        expected_number: int,
+        attempted_content: str,
+        deadline: datetime,
+        claimed_restriction: bool,
+        claimed_unresolved: bool,
+    ) -> CountRecoveryWindow:
+        await self._cancel_active_windows_for_guild(guild_id)
+        state = await self.get_or_create_state(guild_id)
+        await self.counting.upsert(
+            guild_id=state.guild_id,
+            channel_id=state.channel_id,
+            current_number=state.current_number,
+            last_user_id=state.last_user_id,
+            is_enabled=state.is_enabled,
+            pending_restore=True,
+        )
+        now = datetime.now(timezone.utc)
+        window = await self.counting.create_recovery_window(
+            guild_id=guild_id,
+            channel_id=channel_id,
+            failed_user_id=failed_user_id,
+            failed_user_role=failed_user_role,
+            required_domme_user_id=required_domme_user_id,
+            required_domme_id=required_domme_id,
+            expected_number=expected_number,
+            attempted_content=attempted_content,
+            started_at=now,
+            expires_at=deadline,
+        )
+        runtime = _WindowRuntime(window_id=window.id, guild_id=guild_id, channel_id=channel_id)
+        self._runtime_windows[window.id] = runtime
+        if claimed_restriction and required_domme_user_id is None:
+            # Keep the restriction fail-closed if claim could not be resolved uniquely.
+            await self.counting.resolve_recovery_window(window_id=window.id, resolution="cancelled")
+            expires = now + timedelta(seconds=self.rescue_window_seconds)
+            window = await self.counting.create_recovery_window(
+                guild_id=guild_id,
+                channel_id=channel_id,
+                failed_user_id=failed_user_id,
+                failed_user_role=failed_user_role,
+                required_domme_user_id=_CLAIM_UNRESOLVED_SENTINEL,
+                required_domme_id=None,
+                expected_number=expected_number,
+                attempted_content=attempted_content,
+                started_at=now,
+                expires_at=expires,
+            )
+            self._runtime_windows[window.id] = _WindowRuntime(window_id=window.id, guild_id=guild_id, channel_id=channel_id)
+        if claimed_unresolved and window.required_domme_user_id is None:
+            # Safety fallback; unresolved claim should always fail closed.
+            await self.counting.resolve_recovery_window(window_id=window.id, resolution="cancelled")
+            window = await self.counting.create_recovery_window(
+                guild_id=guild_id,
+                channel_id=channel_id,
+                failed_user_id=failed_user_id,
+                failed_user_role=failed_user_role,
+                required_domme_user_id=_CLAIM_UNRESOLVED_SENTINEL,
+                required_domme_id=None,
+                expected_number=expected_number,
+                attempted_content=attempted_content,
+                started_at=now,
+                expires_at=deadline,
+            )
+            self._runtime_windows[window.id] = _WindowRuntime(window_id=window.id, guild_id=guild_id, channel_id=channel_id)
+        return window
+
+    async def _sync_recovery_windows(self) -> None:
+        active_windows = await self.counting.list_active_recovery_windows()
+        active_ids = {window.id for window in active_windows}
+        for window in list(active_windows):
+            if window.expires_at <= datetime.now(timezone.utc):
+                await self._expire_window(window)
+                continue
+            await self._ensure_pending_restore_flag(window.guild_id)
+            await self._ensure_window_message(window, force_post_if_missing=False)
+        stale_ids = [window_id for window_id in self._runtime_windows.keys() if window_id not in active_ids]
+        for window_id in stale_ids:
+            self._runtime_windows.pop(window_id, None)
+
+    async def _expire_window(self, window: CountRecoveryWindow) -> None:
+        if window.failed_user_role == "domme":
+            resolved = await self.counting.resolve_recovery_window(window_id=window.id, resolution="expired_reset")
+        else:
+            resolved = await self.counting.resolve_recovery_window(window_id=window.id, resolution="expired_blocked")
+        if not resolved:
+            self._runtime_windows.pop(window.id, None)
+            return
+
+        state = await self.get_or_create_state(window.guild_id)
+        runtime = self._runtime_windows.pop(window.id, None)
+        message = runtime.message if runtime is not None else None
+
+        if window.failed_user_role == "domme":
+            await self.counting.upsert(
+                guild_id=state.guild_id,
+                channel_id=state.channel_id,
+                current_number=0,
+                last_user_id=None,
+                is_enabled=state.is_enabled,
+                pending_restore=False,
+            )
+            if message is not None:
+                try:
+                    await message.edit(**count_failed_reset_card().edit_kwargs())
+                except discord.HTTPException:
+                    pass
+            if self.achievements is not None:
+                await self.achievements.unlock_achievement(
+                    guild_id=window.guild_id,
+                    discord_user_id=window.failed_user_id,
+                    achievement_key="count_domme_failed_recovery",
+                    source="counting:rescue_expired",
+                )
+            return
+
+        await self.counting.upsert(
+            guild_id=state.guild_id,
+            channel_id=state.channel_id,
+            current_number=max(0, window.expected_number - 1),
+            last_user_id=None,
+            is_enabled=state.is_enabled,
+            pending_restore=False,
+        )
+        blocked_until = datetime.now(timezone.utc) + timedelta(seconds=self.block_seconds)
+        await self.counting.upsert_block(
+            guild_id=window.guild_id,
+            discord_user_id=window.failed_user_id,
+            reason="count_recovery_missed",
+            blocked_until=blocked_until,
+        )
+        if message is not None:
+            try:
+                await message.edit(**count_failed_sub_blocked_card(blocked_until_unix=int(blocked_until.timestamp())).edit_kwargs())
+            except discord.HTTPException:
+                pass
+        if self.achievements is not None:
+            await self.achievements.unlock_achievement(
+                guild_id=window.guild_id,
+                discord_user_id=window.failed_user_id,
+                achievement_key="count_sub_blocked",
+                source="counting:rescue_expired",
+            )
+
+    async def _cancel_active_windows_for_guild(self, guild_id: int) -> None:
+        windows = await self.counting.list_active_recovery_windows()
+        for window in windows:
+            if window.guild_id != guild_id:
+                continue
+            await self.counting.resolve_recovery_window(window_id=window.id, resolution="cancelled")
+            self._runtime_windows.pop(window.id, None)
+
+    async def _ensure_pending_restore_flag(self, guild_id: int) -> None:
+        state = await self.get_or_create_state(guild_id)
+        if state.pending_restore:
+            return
+        await self.counting.upsert(
+            guild_id=state.guild_id,
+            channel_id=state.channel_id,
+            current_number=state.current_number,
+            last_user_id=state.last_user_id,
+            is_enabled=state.is_enabled,
+            pending_restore=True,
+        )
+
+    async def _ensure_window_message(self, window: CountRecoveryWindow, *, force_post_if_missing: bool) -> None:
+        runtime = self._runtime_windows.get(window.id)
+        if runtime is None:
+            runtime = _WindowRuntime(
+                window_id=window.id,
+                guild_id=window.guild_id,
+                channel_id=window.channel_id,
+            )
+            self._runtime_windows[window.id] = runtime
+
+        remaining = max(0, int((window.expires_at - datetime.now(timezone.utc)).total_seconds()))
+        kwargs = count_rescue_needed_for_role_card(
+            remaining_seconds=remaining,
+            deadline_unix=int(window.expires_at.timestamp()),
+            failed_user_role=window.failed_user_role,
+            claimed_restriction=window.failed_user_role == "sub" and window.required_domme_user_id not in (None, _CLAIM_UNRESOLVED_SENTINEL),
+            claimed_unresolved=window.failed_user_role == "sub" and window.required_domme_user_id == _CLAIM_UNRESOLVED_SENTINEL,
+        )
+
+        if runtime.message is not None:
+            try:
+                await runtime.message.edit(**kwargs.edit_kwargs())
+                return
+            except discord.HTTPException:
+                runtime.message = None
+
+        channel = await self._resolve_channel(window.guild_id, window.channel_id)
+        if channel is None:
+            return
+        try:
+            runtime.message = await channel.send(**kwargs.send_kwargs())
+        except discord.HTTPException:
+            runtime.message = None
+
+    async def _resolve_channel(self, guild_id: int, channel_id: int):
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            return None
+        channel = guild.get_channel(channel_id)
+        if channel is not None:
+            return channel
+        try:
+            fetched = await guild.fetch_channel(channel_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return None
+        return fetched
+
+    def _send_qualifies_for_window(self, *, send, window: CountRecoveryWindow, send_time: datetime) -> bool:
         if send.is_private:
             return False
-        if send.is_test_send:
+        if send.is_test_send and not self.parse_test_sends_as_real_sends:
             return False
         if not self.parse_test_sends_as_real_sends and is_known_test_sender(
             send.sub_name,
             test_gifter_usernames=self.test_gifter_usernames,
         ):
             return False
-        if send.sub_user_id is None:
+        if send_time < window.started_at or send_time > window.expires_at:
             return False
 
-        domme = await self.dommes.get_by_user_id(send.guild_id, send.domme_user_id)
-        if domme is None:
+        if window.failed_user_role == "domme":
+            if send.sub_user_id is None:
+                return False
+            return send.domme_user_id == window.required_domme_user_id
+
+        if send.sub_user_id != window.failed_user_id:
             return False
+        required_domme = window.required_domme_user_id
+        if required_domme is None:
+            return True
+        if required_domme == _CLAIM_UNRESOLVED_SENTINEL:
+            return False
+        return send.domme_user_id == required_domme
 
-        state = await self.get_or_create_state(send.guild_id)
-        await self.counting.upsert(
-            guild_id=state.guild_id,
-            channel_id=state.channel_id,
-            current_number=rescue.restore_value,
-            last_user_id=None,
-            is_enabled=state.is_enabled,
-            pending_restore=False,
-        )
-        try:
-            await rescue.message.edit(**count_saved_card(next_number=rescue.restore_value + 1).edit_kwargs())
-        except discord.HTTPException:
-            pass
-        if self.achievements is not None and send.sub_user_id is not None:
-            now = datetime.now(timezone.utc)
-            remaining_seconds = int((rescue.deadline - now).total_seconds())
-            await self.achievements.unlock_achievement(
-                guild_id=send.guild_id,
-                discord_user_id=send.sub_user_id,
-                achievement_key="sub_save_count",
-                source="counting:rescue",
-                metadata={"remaining_seconds": max(0, remaining_seconds)},
-            )
-            if rescue.failed_user_is_sub and rescue.failed_user_id == send.sub_user_id:
-                await self.achievements.unlock_achievement(
-                    guild_id=send.guild_id,
-                    discord_user_id=send.sub_user_id,
-                    achievement_key="count_sub_recovered_own_mistake",
-                    source="counting:rescue",
-                )
-            if remaining_seconds <= self.rescue_tick_seconds:
-                await self.achievements.unlock_achievement(
-                    guild_id=send.guild_id,
-                    discord_user_id=send.sub_user_id,
-                    achievement_key="count_last_second_save",
-                    source="counting:rescue",
-                    metadata={"remaining_seconds": max(0, remaining_seconds)},
-                )
-            # TODO: Dom/me-specific recovery achievements need a Dom/me recovery window
-            # flow in counting, which is not currently implemented in v2.
-        await self._clear_rescue_window(send.guild_id)
-        return True
-
-    async def _start_rescue_window(
+    async def _resolve_claim_requirement(
         self,
         *,
+        guild: discord.Guild,
         guild_id: int,
-        channel: discord.abc.Messageable,
-        failed_user_id: int,
-        failed_user_is_sub: bool,
-        restore_value: int,
-        deadline: datetime,
-    ) -> None:
-        await self._clear_rescue_window(guild_id)
-        remaining = max(0, int((deadline - datetime.now(timezone.utc)).total_seconds()))
-        message = await channel.send(
-            **count_rescue_needed_card(
-                remaining_seconds=remaining,
-                deadline_unix=int(deadline.timestamp()),
-            ).send_kwargs()
-        )
-        window = _RescueWindow(
-            guild_id=guild_id,
-            channel_id=channel.id,
-            message=message,
-            deadline=deadline,
-            restore_value=restore_value,
-            failed_user_id=failed_user_id,
-            failed_user_is_sub=failed_user_is_sub,
-        )
-        window.task = asyncio.create_task(self._run_rescue_updates(guild_id), name=f"count-rescue-{guild_id}")
-        self._rescue_windows[guild_id] = window
+        member: discord.Member | None,
+    ) -> _ClaimResolution:
+        if member is None:
+            return _ClaimResolution(
+                required_domme_user_id=None,
+                required_domme_id=None,
+                claimed_restriction=False,
+                claimed_unresolved=False,
+            )
 
-    async def _run_rescue_updates(self, guild_id: int) -> None:
+        prefix = _DEFAULT_CLAIMED_ROLE_PREFIX
+        if self.bot_settings is not None:
+            configured = await self.bot_settings.get_text(_CLAIMED_ROLE_PREFIX_KEY)
+            if configured:
+                prefix = configured
+
+        claimed_labels = [
+            role.name[len(prefix) :].strip()
+            for role in getattr(member, "roles", [])
+            if getattr(role, "name", "").lower().startswith(prefix.lower())
+            and len(getattr(role, "name", "")) > len(prefix)
+        ]
+        if not claimed_labels:
+            return _ClaimResolution(
+                required_domme_user_id=None,
+                required_domme_id=None,
+                claimed_restriction=False,
+                claimed_unresolved=False,
+            )
+
+        if len(claimed_labels) > 1:
+            return _ClaimResolution(
+                required_domme_user_id=_CLAIM_UNRESOLVED_SENTINEL,
+                required_domme_id=None,
+                claimed_restriction=True,
+                claimed_unresolved=True,
+            )
+
+        label = claimed_labels[0].casefold()
+        dommes = await self.dommes.list_for_guild(guild_id)
+        matches = []
+        for domme in dommes:
+            candidates = set()
+            if domme.public_display_name:
+                candidates.add(domme.public_display_name.casefold())
+            if domme.throne_handle:
+                candidates.add(domme.throne_handle.casefold())
+            domme_member = guild.get_member(domme.discord_user_id)
+            if domme_member is not None:
+                candidates.add(domme_member.display_name.casefold())
+                candidates.add(domme_member.name.casefold())
+            if label in candidates:
+                matches.append(domme)
+
+        if len(matches) != 1:
+            return _ClaimResolution(
+                required_domme_user_id=_CLAIM_UNRESOLVED_SENTINEL,
+                required_domme_id=None,
+                claimed_restriction=True,
+                claimed_unresolved=True,
+            )
+
+        domme = matches[0]
+        return _ClaimResolution(
+            required_domme_user_id=domme.discord_user_id,
+            required_domme_id=domme.id,
+            claimed_restriction=True,
+            claimed_unresolved=False,
+        )
+
+    @staticmethod
+    def _has_role(user, role_id: int | None) -> bool:
+        if role_id is None or not isinstance(user, discord.Member):
+            return False
+        return any(role.id == role_id for role in user.roles)
+
+    @staticmethod
+    def _parse_count_attempt(content: str) -> tuple[bool, int]:
+        stripped = content.strip()
+        if not stripped:
+            return False, 0
+        if stripped.isdigit():
+            return True, int(stripped)
+        if len(stripped) > _MAX_COUNT_EXPRESSION_LENGTH:
+            return True, -1
+        if not any(ch.isdigit() for ch in stripped):
+            return False, 0
+        if any(ch not in _ALLOWED_EXPRESSION_CHARS for ch in stripped):
+            return False, 0
         try:
-            while True:
-                window = self._rescue_windows.get(guild_id)
-                if window is None:
-                    return
-                remaining = int((window.deadline - datetime.now(timezone.utc)).total_seconds())
-                if remaining <= 0:
-                    await self._expire_rescue_window(guild_id)
-                    return
-                await asyncio.sleep(min(self.rescue_tick_seconds, remaining))
-                window = self._rescue_windows.get(guild_id)
-                if window is None:
-                    return
-                remaining = max(0, int((window.deadline - datetime.now(timezone.utc)).total_seconds()))
-                try:
-                    await window.message.edit(
-                        **count_rescue_needed_card(
-                            remaining_seconds=remaining,
-                            deadline_unix=int(window.deadline.timestamp()),
-                        ).edit_kwargs()
-                    )
-                except discord.HTTPException:
-                    continue
-        except asyncio.CancelledError:
-            return
+            return True, _ExpressionEvaluator.evaluate(stripped)
+        except ValueError:
+            return True, -1
 
-    async def _expire_rescue_window(self, guild_id: int) -> None:
-        window = self._rescue_windows.get(guild_id)
-        if window is None:
-            return
-        state = await self.get_or_create_state(guild_id)
-        await self.counting.upsert(
-            guild_id=state.guild_id,
-            channel_id=state.channel_id,
-            current_number=0,
-            last_user_id=None,
-            is_enabled=state.is_enabled,
-            pending_restore=False,
-        )
-        try:
-            await window.message.edit(**count_failed_card().edit_kwargs())
-        except discord.HTTPException:
-            pass
-        # TODO: `count_sub_blocked` and `count_domme_failed_recovery` are defined,
-        # but current v2 counting does not yet apply a true timed block or Dom/me
-        # rescue branch to map those unlocks accurately.
-        await self._clear_rescue_window(guild_id)
+    @staticmethod
+    def evaluate_expression(content: str) -> int:
+        return _ExpressionEvaluator.evaluate(content)
 
-    async def _clear_rescue_window(self, guild_id: int) -> None:
-        window = self._rescue_windows.pop(guild_id, None)
-        if window is None:
-            return
-        if window.task is not None and not window.task.done():
-            window.task.cancel()
+    async def get_active_recovery_windows(self) -> list[CountRecoveryWindow]:
+        return await self.counting.list_active_recovery_windows()
+
+    async def resolve_expired_windows_once(self) -> None:
+        await self._sync_recovery_windows()
