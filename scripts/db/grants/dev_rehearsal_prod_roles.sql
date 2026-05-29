@@ -1,37 +1,14 @@
--- Rob v2 runtime grants template.
--- Run manually as doadmin and adjust role/database names if needed.
--- Runtime roles must not receive CREATE/ALTER/DROP/TRUNCATE privileges.
--- NOTE: This template is environment-specific and is intentionally not tracked
--- in db_build_version checks. scripts/check_db.py validates runtime privileges
--- based on the active DATABASE_URL user instead.
--- For prod-role rehearsal against rob_dev_v2, use ../grants/dev_rehearsal_prod_roles.sql.
+-- Rehearsal-only runtime grants for production-style roles on rob_dev_v2.
+-- This is rehearsal-only.
+-- Run manually as doadmin when validating prod credentials before prod cutover.
+-- This does not mean production runtime should normally point at the dev database.
 
--- ---------------------------------------------------------------------------
--- dev_rob_bot on rob_dev_v2
--- ---------------------------------------------------------------------------
 \connect rob_dev_v2
 
-GRANT CONNECT ON DATABASE rob_dev_v2 TO dev_rob_bot;
-GRANT USAGE ON SCHEMA public TO dev_rob_bot;
-GRANT SELECT, INSERT, UPDATE, DELETE
-ON ALL TABLES IN SCHEMA public
-TO dev_rob_bot;
-GRANT USAGE, SELECT, UPDATE
-ON ALL SEQUENCES IN SCHEMA public
-TO dev_rob_bot;
-REVOKE CREATE ON SCHEMA public FROM dev_rob_bot;
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO dev_rob_bot;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO dev_rob_bot;
-
 -- ---------------------------------------------------------------------------
--- prod_rob_bot on rob_prod
+-- prod_rob_bot on rob_dev_v2 (rehearsal only; mirrors bot runtime grants)
 -- ---------------------------------------------------------------------------
-\connect rob_prod
-
-GRANT CONNECT ON DATABASE rob_prod TO prod_rob_bot;
+GRANT CONNECT ON DATABASE rob_dev_v2 TO prod_rob_bot;
 GRANT USAGE ON SCHEMA public TO prod_rob_bot;
 GRANT SELECT, INSERT, UPDATE, DELETE
 ON ALL TABLES IN SCHEMA public
@@ -39,6 +16,7 @@ TO prod_rob_bot;
 GRANT USAGE, SELECT, UPDATE
 ON ALL SEQUENCES IN SCHEMA public
 TO prod_rob_bot;
+
 REVOKE CREATE ON SCHEMA public FROM prod_rob_bot;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
@@ -47,11 +25,9 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO prod_rob_bot;
 
 -- ---------------------------------------------------------------------------
--- prod_rob_webhook on rob_prod (narrower scope)
+-- prod_rob_webhook on rob_dev_v2 (rehearsal only; mirrors webhook runtime grants)
 -- ---------------------------------------------------------------------------
-\connect rob_prod
-
-GRANT CONNECT ON DATABASE rob_prod TO prod_rob_webhook;
+GRANT CONNECT ON DATABASE rob_dev_v2 TO prod_rob_webhook;
 GRANT USAGE ON SCHEMA public TO prod_rob_webhook;
 
 GRANT SELECT ON
@@ -103,5 +79,4 @@ REVOKE DELETE ON TABLE bot_users FROM prod_rob_webhook;
 REVOKE DELETE ON TABLE user_achievements FROM prod_rob_webhook;
 REVOKE DELETE ON TABLE achievement_events FROM prod_rob_webhook;
 
--- If webhook code needs more access, add the smallest specific grant required.
--- Do not grant CREATE/ALTER/DROP/TRUNCATE to webhook roles.
+-- Rehearsal roles must not receive CREATE, ALTER, DROP, or TRUNCATE grants.

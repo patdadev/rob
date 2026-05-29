@@ -509,7 +509,7 @@ ACHIEVEMENTS: tuple[AchievementDefinition, ...] = (
     _a(
         "dm_rob",
         "Did Rob Ghost You?",
-        "You messaged Rob. I guess that's achievement worth.",
+        "You messaged Rob. I guess that’s achievement-worthy.",
         category="misc",
         rarity="common",
         trigger_type="dm_rob",

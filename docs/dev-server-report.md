@@ -120,7 +120,7 @@
 - `THRONE_WEBHOOK_MAX_TIMESTAMP_SKEW_SECONDS`
 
 Webhook env must not include `DISCORD_TOKEN`.
-Use `THRONE_WEBHOOK_REQUIRE_SIGNATURE=false` for early dev if you do not yet have verified Throne signing details. Switch it to `true` once the public key and signature format are confirmed for the dev webhook endpoint.
+Use `THRONE_WEBHOOK_REQUIRE_SIGNATURE=false` for early dev if you do not yet have verified Throne signing details. Switch it to `true` once the public key and signature format are confirmed for the development webhook endpoint.
 
 ### Bot `.env`
 

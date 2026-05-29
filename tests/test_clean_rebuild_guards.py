@@ -170,6 +170,7 @@ def test_db_build_scripts_exist_under_scripts_db_build():
     assert (build_dir / "README.md").exists()
     grants_dir = REPO_ROOT / "scripts" / "db" / "grants"
     assert (grants_dir / "dev_rob_bot.sql").exists()
+    assert (grants_dir / "dev_rehearsal_prod_roles.sql").exists()
     assert (grants_dir / "prod_rob_bot.sql").exists()
     assert (grants_dir / "prod_rob_webhook.sql").exists()
     assert not (REPO_ROOT / "rob" / "database" / "migrations").exists()
@@ -228,16 +229,47 @@ def test_runtime_grants_template_does_not_grant_schema_create_to_runtime_users()
     assert "GRANT CREATE ON SCHEMA public TO dev_rob_bot" not in grants
     assert "GRANT CREATE ON SCHEMA public TO prod_rob_bot" not in grants
     assert "GRANT CREATE ON SCHEMA public TO prod_rob_webhook" not in grants
+    assert "_".join(("dev", "rob", "webhook")) not in grants
 
 
-def test_prod_webhook_grants_are_runtime_only_and_not_schema_changing():
+def test_webhook_grants_are_runtime_only_and_not_schema_changing():
+    grant_files = (
+        "prod_rob_webhook.sql",
+        "dev_rehearsal_prod_roles.sql",
+    )
+    for file_name in grant_files:
+        grants = (REPO_ROOT / "scripts" / "db" / "grants" / file_name).read_text(
+            encoding="utf-8"
+        )
+        for forbidden in (
+            "GRANT CREATE",
+            "GRANT ALTER",
+            "GRANT DROP",
+            "GRANT TRUNCATE",
+        ):
+            assert forbidden not in grants
+        assert "user_achievements" in grants
+        assert "achievement_events" in grants
+
+
+def test_dev_rehearsal_grants_are_explicitly_prod_role_rehearsal_only():
     grants = (
-        REPO_ROOT / "scripts" / "db" / "grants" / "prod_rob_webhook.sql"
+        REPO_ROOT / "scripts" / "db" / "grants" / "dev_rehearsal_prod_roles.sql"
     ).read_text(encoding="utf-8")
-    for forbidden in ("GRANT CREATE", "GRANT ALTER", "GRANT DROP", "GRANT TRUNCATE"):
-        assert forbidden not in grants
+    assert "rehearsal only" in grants.lower()
+    assert "production runtime should normally point at the dev database" in grants
+    assert "\\connect rob_dev_v2" in grants
+    assert "GRANT CONNECT ON DATABASE rob_dev_v2 TO prod_rob_bot" in grants
+    assert "GRANT CONNECT ON DATABASE rob_dev_v2 TO prod_rob_webhook" in grants
+    assert "_".join(("dev", "rob", "webhook")) not in grants
     assert "user_achievements" in grants
     assert "achievement_events" in grants
+    assert "GRANT DELETE" not in grants
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE\nON ALL TABLES IN SCHEMA public\nTO prod_rob_webhook" not in grants
+    assert "REVOKE DELETE ON TABLE sends FROM prod_rob_webhook" in grants
+    assert "REVOKE DELETE ON TABLE bot_users FROM prod_rob_webhook" in grants
+    assert "REVOKE DELETE ON TABLE user_achievements FROM prod_rob_webhook" in grants
+    assert "REVOKE DELETE ON TABLE achievement_events FROM prod_rob_webhook" in grants
 
 
 def test_webhook_supports_new_and_compatibility_routes():
