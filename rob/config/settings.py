@@ -144,7 +144,7 @@ def load_base_settings(env_file: str | Path | None = None) -> BaseSettings:
         inactivity_final_notice_days=_env_int("INACTIVITY_FINAL_NOTICE_DAYS", 7, minimum=1),
         inactivity_owner_user_id=_env_optional_int("INACTIVITY_OWNER_USER_ID"),
         inactivity_notice_channel_id=_env_optional_int("INACTIVITY_NOTICE_CHANNEL_ID"),
-        rob_public_base_url=_env_str("ROB_PUBLIC_BASE_URL", "https://rob-dev.barecoding.com"),
+        rob_public_base_url=_env_str("ROB_PUBLIC_BASE_URL", "https://leaderboard.robthebot.com"),
     )
 
 
@@ -175,7 +175,7 @@ def load_webhook_settings(env_file: str | Path | None = None) -> WebhookSettings
         throne_webhook_port=_env_int("THRONE_WEBHOOK_PORT", 8080, minimum=1),
         throne_webhook_base_url=_env_str(
             "THRONE_WEBHOOK_BASE_URL",
-            "https://rob-dev.barecoding.com",
+            "https://throne.robthebot.com",
         ),
         throne_webhook_require_signature=_env_bool(
             "THRONE_WEBHOOK_REQUIRE_SIGNATURE",

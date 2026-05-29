@@ -10,7 +10,6 @@ def test_database_docs_reference_v2_runtime_users():
     architecture_doc = (REPO_ROOT / "docs" / "database-architecture.md").read_text(
         encoding="utf-8"
     )
-    assert "dev_rob_bot" in architecture_doc
     assert "prod_rob_bot" in architecture_doc
     assert "prod_rob_webhook" in architecture_doc
     assert "rob_dev_v2" in architecture_doc

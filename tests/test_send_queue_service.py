@@ -50,8 +50,11 @@ class _FakeMaintenance:
 
 
 class _FakeSettingsRepo:
+    def __init__(self, *, send_track_channel_id: int | None = 123):
+        self.send_track_channel_id = send_track_channel_id
+
     async def get(self, _guild_id: int):
-        return SimpleNamespace(send_track_channel_id=123)
+        return SimpleNamespace(send_track_channel_id=self.send_track_channel_id)
 
 
 class _FakeSends:
@@ -60,13 +63,18 @@ class _FakeSends:
         self.mark_failed_calls: list[int] = []
         self.released = 0
         self.pending = [_send()]
+        self.queued_maintenance: list[SendRecord] = []
 
     async def release_queued_maintenance(self):
         return self.released
 
-    async def fetch_for_status(self, _status: str, *, limit: int = 50):
+    async def fetch_for_status(self, status: str, *, limit: int = 50):
         del limit
-        return list(self.pending)
+        if status == "pending":
+            return list(self.pending)
+        if status == "queued_maintenance":
+            return list(self.queued_maintenance)
+        return []
 
     async def mark_posted(self, send_id: int, *, message_id: int | None):
         del message_id
@@ -132,9 +140,11 @@ class _FakeLeaderboard:
 class _FakeCounting:
     def __init__(self):
         self.calls = 0
+        self.send_ids: list[int] = []
 
-    async def process_send_for_count_rescue(self, _send):
+    async def process_send_for_count_rescue(self, send):
         self.calls += 1
+        self.send_ids.append(send.id)
         return False
 
 
@@ -142,19 +152,21 @@ def test_send_queue_refreshes_after_successful_send_post(monkeypatch: pytest.Mon
     monkeypatch.setattr("rob.services.send_queue_service.discord.TextChannel", _FakeChannel)
     sends = _FakeSends()
     leaderboard = _FakeLeaderboard()
+    counting = _FakeCounting()
     service = SendQueueService(
         bot=_FakeBot(),
         sends=sends,
         guild_settings=_FakeSettingsRepo(),
         maintenance=_FakeMaintenance(),
         leaderboard_service=leaderboard,
-        counting_service=_FakeCounting(),
+        counting_service=counting,
     )
 
     asyncio.run(service.process_cycle())
 
     assert sends.mark_posted_calls == [1]
     assert leaderboard.refresh_calls == [1]
+    assert counting.send_ids == [1]
 
 
 def test_send_queue_still_refreshes_if_leader_alert_fails(monkeypatch: pytest.MonkeyPatch):
@@ -162,31 +174,34 @@ def test_send_queue_still_refreshes_if_leader_alert_fails(monkeypatch: pytest.Mo
     sends = _FakeSends()
     leaderboard = _FakeLeaderboard()
     leaderboard.raise_alert = True
+    counting = _FakeCounting()
     service = SendQueueService(
         bot=_FakeBot(),
         sends=sends,
         guild_settings=_FakeSettingsRepo(),
         maintenance=_FakeMaintenance(),
         leaderboard_service=leaderboard,
-        counting_service=_FakeCounting(),
+        counting_service=counting,
     )
 
     asyncio.run(service.process_cycle())
 
     assert sends.mark_posted_calls == [1]
     assert leaderboard.refresh_calls == [1]
+    assert counting.send_ids == [1]
 
 
 def test_send_queue_does_not_refresh_for_failed_send_post():
     sends = _FakeSends()
     leaderboard = _FakeLeaderboard()
+    counting = _FakeCounting()
     service = SendQueueService(
         bot=_FakeBot(),
         sends=sends,
         guild_settings=_FakeSettingsRepo(),
         maintenance=_FakeMaintenance(),
         leaderboard_service=leaderboard,
-        counting_service=_FakeCounting(),
+        counting_service=counting,
     )
 
     async def _always_fail(_send):
@@ -196,6 +211,7 @@ def test_send_queue_does_not_refresh_for_failed_send_post():
     asyncio.run(service.process_cycle())
 
     assert leaderboard.refresh_calls == []
+    assert counting.send_ids == [1]
 
 
 def test_send_queue_refreshes_all_leaderboards_once_on_startup():
@@ -214,3 +230,71 @@ def test_send_queue_refreshes_all_leaderboards_once_on_startup():
     asyncio.run(service._refresh_leaderboards_on_startup())
 
     assert leaderboard.refresh_all_calls == 1
+
+
+def test_send_queue_runs_count_recovery_for_queued_maintenance_sends(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.send_queue_service.discord.TextChannel", _FakeChannel)
+    sends = _FakeSends()
+    queued = _send()
+    queued = SendRecord(
+        queued.id + 10,
+        queued.guild_id,
+        queued.domme_id,
+        queued.domme_user_id,
+        queued.sub_id,
+        queued.sub_user_id,
+        queued.sub_name,
+        queued.amount_cents,
+        queued.currency,
+        queued.method,
+        queued.source,
+        queued.item_name,
+        queued.item_image_url,
+        queued.external_id,
+        queued.event_id,
+        queued.fallback_event_hash,
+        queued.is_private,
+        queued.seeded,
+        queued.sent_at,
+        queued.received_at,
+        "queued_maintenance",
+        queued.discord_posted_at,
+        queued.discord_message_id,
+        queued.discord_post_error,
+        queued.created_at,
+    )
+    sends.queued_maintenance = [queued]
+    leaderboard = _FakeLeaderboard()
+    counting = _FakeCounting()
+    service = SendQueueService(
+        bot=_FakeBot(),
+        sends=sends,
+        guild_settings=_FakeSettingsRepo(),
+        maintenance=_FakeMaintenance(),
+        leaderboard_service=leaderboard,
+        counting_service=counting,
+    )
+
+    asyncio.run(service.process_cycle())
+
+    assert counting.send_ids == [1, 11]
+
+
+def test_send_queue_count_recovery_does_not_depend_on_send_post_success():
+    sends = _FakeSends()
+    leaderboard = _FakeLeaderboard()
+    counting = _FakeCounting()
+    service = SendQueueService(
+        bot=_FakeBot(),
+        sends=sends,
+        guild_settings=_FakeSettingsRepo(send_track_channel_id=None),
+        maintenance=_FakeMaintenance(),
+        leaderboard_service=leaderboard,
+        counting_service=counting,
+    )
+
+    asyncio.run(service.process_cycle())
+
+    assert counting.send_ids == [1]
+    assert sends.mark_failed_calls == [1]
+    assert sends.mark_posted_calls == []

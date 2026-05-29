@@ -7,6 +7,14 @@ This process imports legacy SQLite data into the v2 PostgreSQL schema.
 - Source SQLite (read-only): `/opt/rob-the-bot/data/rob_the_bot.sqlite3`
 - Dev rehearsal target: `rob_dev_v2`
 
+Before importing data, manually apply DB build SQL (as `doadmin`) in this order:
+
+1. `scripts/db/build/001_core_schema.sql`
+2. `scripts/db/build/002_indexes.sql`
+3. `scripts/db/build/003_achievements.sql`
+4. `scripts/db/build/004_sub_send_names.sql`
+5. `scripts/db/build/005_count_recovery.sql`
+
 ## Safety rules
 
 1. Do not write to live SQLite.
@@ -28,7 +36,7 @@ python3 -m scripts.data_migration.inspect_sqlite \
 ```bash
 python3 -m scripts.data_migration.import_sqlite_to_postgres \
   --sqlite /opt/rob-the-bot/data/rob_the_bot.sqlite3 \
-  --database-url 'postgresql://dev_rob_bot:***@host:25060/rob_dev_v2?sslmode=require' \
+  --database-url 'postgresql://prod_rob_bot:***@host:25060/rob_dev_v2?sslmode=require' \
   --default-guild-id 1506597978251591813 \
   --dry-run \
   --report-json /tmp/rob-import-dry-run.json
@@ -39,7 +47,7 @@ python3 -m scripts.data_migration.import_sqlite_to_postgres \
 ```bash
 python3 -m scripts.data_migration.import_sqlite_to_postgres \
   --sqlite /opt/rob-the-bot/data/rob_the_bot.sqlite3 \
-  --database-url 'postgresql://dev_rob_bot:***@host:25060/rob_dev_v2?sslmode=require' \
+  --database-url 'postgresql://prod_rob_bot:***@host:25060/rob_dev_v2?sslmode=require' \
   --default-guild-id 1506597978251591813 \
   --no-dry-run \
   --report-json /tmp/rob-import-apply.json
@@ -50,7 +58,7 @@ Optional target reset (dangerous):
 ```bash
 python3 -m scripts.data_migration.import_sqlite_to_postgres \
   --sqlite /opt/rob-the-bot/data/rob_the_bot.sqlite3 \
-  --database-url 'postgresql://dev_rob_bot:***@host:25060/rob_dev_v2?sslmode=require' \
+  --database-url 'postgresql://prod_rob_bot:***@host:25060/rob_dev_v2?sslmode=require' \
   --default-guild-id 1506597978251591813 \
   --no-dry-run \
   --truncate-target \

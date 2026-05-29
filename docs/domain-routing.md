@@ -1,17 +1,39 @@
 # Domain Routing
 
-## Preferred webhook endpoint
+Canonical hostnames:
 
-Use:
+- `bot-01.robthebot.com`
+- `webhook-01.robthebot.com`
+- `db-01.robthebot.com`
+- `throne.robthebot.com`
+- `leaderboard.robthebot.com`
+
+Preferred public webhook route:
 
 - `https://throne.robthebot.com/webhook/{creator_id}/{secret}`
 
-Compatibility endpoint remains supported:
+Compatibility webhook route (still supported):
 
-- `/throne/webhook/{creator_id}/{secret}`
+- `https://throne.robthebot.com/throne/webhook/{creator_id}/{secret}`
 
-## Notes
+Future public leaderboard route:
 
-- Keep webhook host/service private behind your reverse proxy.
-- Ensure proxy forwards request body exactly for signature verification.
-- Keep webhook secret path values confidential.
+- `https://leaderboard.robthebot.com/guild/{guild_id}`
+
+## Cloudflare guidance
+
+- Prefer Cloudflare Tunnel for:
+  - `throne.robthebot.com`
+  - `leaderboard.robthebot.com`
+- DNS-only is usually right for SSH/admin identity hostnames:
+  - `bot-01.robthebot.com`
+  - `webhook-01.robthebot.com`
+
+`db-01.robthebot.com` should remain private/internal/admin-only.
+Do not expose PostgreSQL publicly.
+
+Webhook origin should stay local:
+
+- `http://127.0.0.1:8080`
+
+Do not open port `8080` publicly.

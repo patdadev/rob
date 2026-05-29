@@ -35,6 +35,7 @@ class DommeRegistrationResult:
 @dataclass(frozen=True)
 class SubRegistrationResult:
     sub: Sub
+    send_names: tuple[str, ...]
 
 
 class RegistrationService:
@@ -128,26 +129,35 @@ class RegistrationService:
         *,
         guild_id: int,
         discord_user_id: int,
-        send_name: str,
+        send_name: str | None = None,
+        send_names: list[str] | None = None,
     ) -> SubRegistrationResult:
         if await self.blacklist.contains(discord_user_id):
             raise ValueError("You are currently blocked from registering.")
 
-        cleaned_name = collapse_whitespace(send_name.strip())
-        if not cleaned_name:
-            raise ValueError("A sending name is required.")
-        if cleaned_name.casefold() in _RESERVED_SUB_NAMES:
-            raise ValueError("That sending name is reserved.")
+        input_names = send_names if send_names is not None else ([send_name] if send_name is not None else [])
+        cleaned_names = [collapse_whitespace(name.strip()) for name in input_names if name and name.strip()]
+        if not cleaned_names:
+            raise ValueError("At least one sending name is required.")
+        if len(cleaned_names) > 3:
+            raise ValueError("You can register up to 3 sending names.")
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for name in cleaned_names:
+            lowered = name.casefold()
+            if lowered in _RESERVED_SUB_NAMES:
+                raise ValueError(f"'{name}' is reserved and cannot be claimed.")
+            if lowered in seen:
+                raise ValueError("Duplicate sending names are not allowed.")
+            seen.add(lowered)
+            deduped.append(name)
 
         await self.guild_settings.ensure_guild(guild_id)
 
-        existing = await self.subs.get_by_name(guild_id, cleaned_name)
-        if existing is not None and existing.discord_user_id != discord_user_id:
-            raise ValueError("That sending name is already claimed.")
-
-        sub = await self.subs.upsert(
+        sub = await self.subs.upsert_with_send_names(
             guild_id=guild_id,
             discord_user_id=discord_user_id,
-            send_name=cleaned_name,
+            send_names=deduped,
         )
-        return SubRegistrationResult(sub=sub)
+        return SubRegistrationResult(sub=sub, send_names=tuple(deduped))

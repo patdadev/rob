@@ -2,8 +2,8 @@
 
 ## Public commands
 
-- `/register domme`
-- `/register sub`
+- `/register domme` (no options; starts Dom/me DM setup flow and collects Throne profile in modal)
+- `/register sub` (no options; opens modal for up to 3 Throne usernames/send names)
 - `/leaderboard`
 - `/achievements`
 - `/report`

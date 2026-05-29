@@ -9,9 +9,10 @@ Rob runtime services should not use `defaultdb` or `_dodb` for app data.
 
 ## Runtime users
 
-- Dev bot runtime: `dev_rob_bot`
-- Prod bot runtime: `prod_rob_bot`
-- Prod webhook runtime: `prod_rob_webhook`
+- Rehearsal bot runtime: `prod_rob_bot` (against `rob_dev_v2`)
+- Rehearsal webhook runtime: `prod_rob_webhook` (against `rob_dev_v2`)
+- Production bot runtime: `prod_rob_bot` (against `rob_prod`)
+- Production webhook runtime: `prod_rob_webhook` (against `rob_prod`)
 
 Schema creation/alteration is handled manually by `doadmin` (or provider-equivalent admin).
 
@@ -29,11 +30,14 @@ Schema creation/alteration is handled manually by `doadmin` (or provider-equival
 - `bot_users`
 - `dommes`
 - `subs`
+- `sub_send_names`
 - `sends`
 - `vib_settings`
 - `vib_leaderboard`
 - `the_count`
 - `inactive_users`
+- `count_recovery_windows`
+- `count_blocks`
 
 ## `bot_settings` JSON shape
 
@@ -78,7 +82,7 @@ Preferred production URL base:
 `scripts/check_db.py` validates:
 
 1. required v2 tables/columns
-2. required `db_build_version` entries (`001_core_schema`, `002_indexes`)
+2. required `db_build_version` entries (`001_core_schema`, `002_indexes`, `003_achievements`, `004_sub_send_names`, `005_count_recovery`)
 3. runtime permission profile for `_bot` and `_webhook` users
 4. no schema `CREATE` privilege for runtime users
 

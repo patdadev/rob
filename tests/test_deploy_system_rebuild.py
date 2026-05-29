@@ -46,6 +46,8 @@ def test_deploy_scripts_and_docs():
     bot_dev = Path('deploy/scripts/deploy-bot-dev.sh').read_text()
     webhook_dev = Path('deploy/scripts/deploy-webhook-dev.sh').read_text()
     docs = Path('docs/deployment.md').read_text()
+    cloudflared_script = Path('deploy/scripts/install-cloudflared-webhook.sh')
+    cloudflared_doc = Path('docs/cloudflared-webhook.md')
 
     assert 'scripts/check_db.py' in pre_bot and 'scripts/check_db.py' in pre_webhook
     assert 'systemctl restart' not in pre_bot and 'systemctl restart' not in pre_webhook
@@ -56,6 +58,8 @@ def test_deploy_scripts_and_docs():
     assert 'scripts/db/build/002_indexes.sql' in deploy_bot
     assert 'SQLite data migration remains separate' in docs
     assert 'Do not expose PostgreSQL publicly' in docs
+    assert cloudflared_script.exists()
+    assert cloudflared_doc.exists()
 
     assert deploy_bot
     assert deploy_webhook

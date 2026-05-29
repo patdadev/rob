@@ -1,74 +1,69 @@
-# Deployment: Webhook Dev
+# Deployment: Webhook (Prod-Role Rehearsal)
 
-For a first-time bootstrap on a fresh Debian or Ubuntu host, run:
-
-```bash
-sudo DEPLOY_USER=deployuser bash deploy/scripts/install-webhook-dev.sh
-```
-
-That installer:
-
-- installs system packages
-- clones the configured branch into `/opt/rob-webhook/app`
-- creates the virtual environment
-- installs the systemd unit
-- creates `/opt/rob-webhook/deploy-webhook-dev.sh`
-- installs the deploy sudoers entry
-- writes a webhook-only `.env` template if one does not already exist
-- installs or refreshes the global `rob` command
-- runs migrations + DB checks before first service start (when real env values exist)
-
-## Target
+Use this on the webhook host:
 
 - App path: `/opt/rob-webhook/app`
 - Service: `rob-webhook-dev.service`
-- Public URL: `https://rob-dev.barecoding.com`
+- Runtime DB user: `prod_rob_webhook`
+- Rehearsal DB: `rob_dev_v2`
+- Public webhook URL base: `https://throne.robthebot.com`
 - Local bind: `127.0.0.1:8080`
 
-## Setup
+`deploy/scripts/install-webhook-dev.sh` is safe-by-default:
 
-Use these steps if you are doing the install manually instead of the bootstrap script above.
+- does not overwrite an existing `.env`;
+- does not run DB build SQL;
+- does not run SQLite import;
+- does not create DB users;
+- warns if stale values are found in `.env`.
 
-1. Create a runtime user such as `rob`.
-2. Clone the repo into `/opt/rob-webhook/app`.
-3. Copy `.env.example` to `/opt/rob-webhook/app/.env` and fill the webhook values only. Do not set `DISCORD_TOKEN` on the webhook server.
-4. Create `.venv` and install `requirements.txt`.
-5. Copy `deploy/systemd/rob-webhook-dev.service` to `/etc/systemd/system/rob-webhook-dev.service`.
-6. Copy or symlink `deploy/scripts/deploy-webhook-dev.sh` to `/opt/rob-webhook/deploy-webhook-dev.sh`.
-7. Run `scripts/install-rob-global.sh` if you want the `rob` command immediately before the first deploy.
-8. Enable the service with `sudo systemctl enable --now rob-webhook-dev.service`.
-9. Verify `curl http://127.0.0.1:8080/health` returns `OK`.
+Webhook `.env` should be webhook-only (no `DISCORD_TOKEN`).
 
-## Signature mode for dev
-
-- Set `THRONE_WEBHOOK_REQUIRE_SIGNATURE=false` for early dev if you do not yet have the real Throne public key or confirmed signed-message format.
-- In that mode, the webhook still validates the URL secret and still writes accepted sends to PostgreSQL.
-- Set `THRONE_WEBHOOK_REQUIRE_SIGNATURE=true` once `THRONE_PUBLIC_KEY_PEM` and the signature header format are confirmed for the dev tunnel.
-- When `true`, invalid timestamps, missing public key configuration, or invalid signatures are rejected with `401`.
-
-## Passwordless sudo for deploy user
-
-`deploy-webhook-dev.sh` restarts the systemd unit with `sudo systemctl restart rob-webhook-dev.service`, so the SSH deploy user should be allowed to run that command without an interactive password prompt.
-
-Example `/etc/sudoers.d/rob-webhook-deploy` entry:
-
-```sudoers
-Cmnd_Alias ROB_WEBHOOK_DEPLOY = /bin/systemctl restart rob-webhook-dev.service, /usr/bin/systemctl restart rob-webhook-dev.service
-deployuser ALL=(root) NOPASSWD: ROB_WEBHOOK_DEPLOY
+```dotenv
+APP_ENV=prod
+LOG_LEVEL=INFO
+DATABASE_URL=postgresql://prod_rob_webhook:replace@replace:25060/rob_dev_v2?sslmode=require
+THRONE_WEBHOOK_HOST=127.0.0.1
+THRONE_WEBHOOK_PORT=8080
+THRONE_WEBHOOK_BASE_URL=https://throne.robthebot.com
+THRONE_WEBHOOK_REQUIRE_SIGNATURE=false
+THRONE_PUBLIC_KEY_PEM=
+THRONE_WEBHOOK_DEBUG_LOG_PAYLOAD=false
+THRONE_WEBHOOK_TIMESTAMP_HEADER=X-Signature-Timestamp
+THRONE_WEBHOOK_SIGNATURE_HEADER=X-Signature-Ed25519
+THRONE_WEBHOOK_SIGNED_MESSAGE_FORMAT=timestamp_dot_body
+THRONE_WEBHOOK_MAX_TIMESTAMP_SKEW_SECONDS=300
+THRONE_PARSE_TEST_SENDS_AS_REAL_SENDS=false
 ```
 
-## GitHub Actions
+## Canonical install sequence
 
-Add these secrets:
+```bash
+sudo bash deploy/scripts/install-webhook-dev.sh
+sudo nano /opt/rob-webhook/app/.env
+sudo chown "${USER}:rob" /opt/rob-webhook/app/.env
+sudo chmod 0640 /opt/rob-webhook/app/.env
+cd /opt/rob-webhook/app
+set -a
+source .env
+set +a
+PYTHONPATH=. .venv/bin/python -m scripts.check_db
+sudo systemctl restart rob-webhook-dev.service
+sudo systemctl status rob-webhook-dev.service --no-pager
+curl -fsS http://127.0.0.1:8080/health
+```
 
-- `WEBHOOK_DEV_HOST`
-- `WEBHOOK_DEV_USER`
-- `WEBHOOK_DEV_SSH_KEY`
-- `WEBHOOK_DEV_PORT`
+## Cloudflared sequence
 
-`Deploy Webhook Dev` is now automated:
+```bash
+sudo bash deploy/scripts/install-cloudflared-webhook.sh
+sudo systemctl status cloudflared --no-pager
+sudo journalctl -u cloudflared -n 100 --no-pager
+curl -I https://throne.robthebot.com/health
+```
 
-- runs on `push` to `main` when webhook/shared runtime files change
-- supports manual `workflow_dispatch` with optional `deploy_ref` override
-- deploys the exact commit SHA by default (`DEPLOY_REF=${{ github.sha }}`)
-- refreshes the global `rob` command on the target host during each deploy
+Cloudflared should route:
+
+- `throne.robthebot.com -> http://127.0.0.1:8080`
+
+Do not expose port `8080` publicly.

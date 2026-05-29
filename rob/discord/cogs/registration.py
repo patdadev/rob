@@ -8,6 +8,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from rob.discord.permissions import member_has_role
+from rob.achievements.embeds import achievement_unlocked_card
 from rob.ui.cards.errors import error_card, error_permission
 from rob.ui.cards.registration import domme_registered_card, registration_card, throne_setup_card
 from rob.ui.copy import (
@@ -17,6 +18,7 @@ from rob.ui.copy import (
     throne_setup_steps,
 )
 from rob.ui.render import add_card_actions
+from rob.utils.text import collapse_whitespace
 
 if TYPE_CHECKING:
     from rob.discord.client import RobBot
@@ -25,6 +27,18 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 SUCCESS_GIF_URL = "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExMDN5OW9vZTYyODl4MnRmd3A5aGVxeWVkNWF2eTY4ZnhwdXVpeW4wYyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/uLiEXaouJVkuA/giphy.gif"
+_RESERVED_SUB_NAMES = {"anonymous", "anon", "private", "hidden"}
+
+
+def _dm_blocked_error_card():
+    return error_card(
+        "You're registered, but Rob couldn't DM you.",
+        "This usually means Discord blocked the DM. Please check:\n\n"
+        "- Server Privacy Settings → Allow direct messages from server members\n"
+        "- You have not blocked this bot\n"
+        "- Your Discord privacy settings allow bot/member DMs\n\n"
+        "Once fixed, run /register domme again.",
+    )
 
 
 def add_setup_buttons(view: discord.ui.LayoutView, *, domme_id: int, webhook_url: str, send_track_channel_id: int | None) -> None:
@@ -125,8 +139,7 @@ class RegistrationCog(commands.Cog):
         return True
 
     @register_group.command(name="domme", description="Register a Dom/me Throne profile.")
-    @app_commands.describe(throne="Your Throne profile URL or username.")
-    async def register_domme(self, interaction: discord.Interaction, throne: str) -> None:
+    async def register_domme(self, interaction: discord.Interaction) -> None:
         if interaction.guild is None or interaction.user is None:
             await interaction.response.send_message(**error_card("This command can only be used in a server.").send_kwargs(), ephemeral=True)
             return
@@ -138,15 +151,74 @@ class RegistrationCog(commands.Cog):
         ):
             return
 
-        await interaction.response.defer(ephemeral=True)
         try:
-            result = await self.bot.registration_service.register_domme(guild_id=interaction.guild.id, discord_user_id=interaction.user.id, throne_input=throne)
+            invite = registration_card(
+                title="Rob | Dom/me Setup",
+                summary=(
+                    "Use the button below to continue setup in DMs.\n"
+                    "Rob will ask for your Throne username/profile in a secure modal."
+                ),
+                details=[
+                    ("Next step", "Click **Continue Setup** and submit your Throne username or profile URL."),
+                    ("After that", "Rob will send your webhook setup steps and setup buttons."),
+                ],
+            )
+            add_card_actions(
+                invite.view,
+                _DommeSetupStartButton(
+                    cog=self,
+                    guild_id=interaction.guild.id,
+                    discord_user_id=interaction.user.id,
+                    send_track_channel_id=settings.send_track_channel_id if settings else None,
+                ),
+            )
+            await interaction.user.send(**invite.send_kwargs())
+        except discord.Forbidden as exc:
+            log.warning("Failed to DM Throne setup flow to user_id=%s guild_id=%s reason=Forbidden status=%s code=%s text=%s", interaction.user.id, interaction.guild.id if interaction.guild else None, getattr(exc, "status", None), getattr(exc, "code", None), getattr(exc, "text", None))
+            await interaction.response.send_message(**_dm_blocked_error_card().send_kwargs(), ephemeral=True)
+            return
+        except discord.HTTPException as exc:
+            log.exception("Failed to DM Throne setup flow to user_id=%s guild_id=%s status=%s code=%s text=%s", interaction.user.id, interaction.guild.id if interaction.guild else None, getattr(exc, "status", None), getattr(exc, "code", None), getattr(exc, "text", None))
+            if getattr(exc, "status", None) == 400 and getattr(exc, "code", None) == 50035:
+                await interaction.response.send_message(**error_card("Rob hit a setup-message error.", "Rob couldn't generate the setup DM correctly. Staff have enough detail in logs to fix it.").send_kwargs(), ephemeral=True)
+                return
+            await interaction.response.send_message(**_dm_blocked_error_card().send_kwargs(), ephemeral=True)
+            return
+
+        await interaction.response.send_message(
+            **registration_card(
+                title="Rob | Setup Sent",
+                summary="I sent your Dom/me setup flow in DMs. Open that DM and press **Continue Setup**.",
+            ).send_kwargs(),
+            ephemeral=True,
+        )
+
+    async def _complete_domme_registration(
+        self,
+        *,
+        interaction: discord.Interaction,
+        guild_id: int,
+        discord_user_id: int,
+        send_track_channel_id: int | None,
+        throne_input: str,
+    ) -> None:
+        try:
+            result = await self.bot.registration_service.register_domme(
+                guild_id=guild_id,
+                discord_user_id=discord_user_id,
+                throne_input=throne_input,
+            )
         except ValueError as exc:
-            await interaction.followup.send(**error_card("Dom/me registration could not be completed.", str(exc)).send_kwargs(), ephemeral=True)
+            await interaction.followup.send(**error_card("Dom/me registration could not be completed.", str(exc)).send_kwargs())
             return
 
         if not result.webhook_url:
-            await interaction.followup.send(**error_card("Webhook URL setup is unavailable.", "Ask staff to verify THRONE_WEBHOOK_BASE_URL on the bot server.").send_kwargs(), ephemeral=True)
+            await interaction.followup.send(
+                **error_card(
+                    "Webhook URL setup is unavailable.",
+                    "Ask staff to verify THRONE_WEBHOOK_BASE_URL on the bot server.",
+                ).send_kwargs()
+            )
             return
 
         domme_result = getattr(result, "domme", None) or getattr(result, "creator", None)
@@ -155,45 +227,48 @@ class RegistrationCog(commands.Cog):
                 **error_card(
                     "Dom/me registration completed, but setup could not continue.",
                     "Rob could not resolve the registration record needed for setup buttons. Please ask staff to check the logs.",
-                ).send_kwargs(),
-                ephemeral=True,
+                ).send_kwargs()
             )
             return
 
-        try:
-            dm_msg = throne_setup_card(THRONE_SETUP_INTRO)
-            add_setup_buttons(
-                dm_msg.view,
-                domme_id=int(domme_result.id),
-                webhook_url=result.webhook_url,
-                send_track_channel_id=settings.send_track_channel_id if settings else None,
-            )
-            await interaction.user.send(**dm_msg.send_kwargs())
-        except discord.Forbidden as exc:
-            log.warning("Failed to DM Throne setup flow to user_id=%s guild_id=%s reason=Forbidden status=%s code=%s text=%s", interaction.user.id, interaction.guild.id if interaction.guild else None, getattr(exc, "status", None), getattr(exc, "code", None), getattr(exc, "text", None))
-            await interaction.followup.send(**error_card("You're registered, but Rob couldn't DM you.", "This usually means Discord blocked the DM. Please check:\n\n- Server Privacy Settings → Allow direct messages from server members\n- You have not blocked this bot\n- Your Discord privacy settings allow bot/member DMs\n\nOnce fixed, run /register domme again.").send_kwargs(), ephemeral=True)
-            return
-        except discord.HTTPException as exc:
-            log.exception("Failed to DM Throne setup flow to user_id=%s guild_id=%s status=%s code=%s text=%s", interaction.user.id, interaction.guild.id if interaction.guild else None, getattr(exc, "status", None), getattr(exc, "code", None), getattr(exc, "text", None))
-            if getattr(exc, "status", None) == 400 and getattr(exc, "code", None) == 50035:
-                await interaction.followup.send(**error_card("You're registered, but Rob hit a setup-message error.", "Your profile is linked, but Rob couldn't generate the setup DM correctly. Staff have been given enough detail in the logs to fix it.").send_kwargs(), ephemeral=True)
-                return
-            await interaction.followup.send(**error_card("You're registered, but Rob couldn't DM you.", "This usually means Discord blocked the DM. Please check:\n\n- Server Privacy Settings → Allow direct messages from server members\n- You have not blocked this bot\n- Your Discord privacy settings allow bot/member DMs\n\nOnce fixed, run /register domme again.").send_kwargs(), ephemeral=True)
-            return
+        dm_msg = throne_setup_card(THRONE_SETUP_INTRO)
+        add_setup_buttons(
+            dm_msg.view,
+            domme_id=int(domme_result.id),
+            webhook_url=result.webhook_url,
+            send_track_channel_id=send_track_channel_id,
+        )
+        await interaction.followup.send(**dm_msg.send_kwargs())
 
         achievements_service = getattr(self.bot, "achievements_service", None)
         if achievements_service is not None:
+            def _announce_domme_unlock(display_name: str):
+                async def _callback(achievement) -> None:
+                    await interaction.followup.send(
+                        **achievement_unlocked_card(
+                            achievement,
+                            unlocked_by_display_name=display_name,
+                        ).send_kwargs()
+                    )
+
+                return _callback
+
             await achievements_service.unlock_achievement(
-                guild_id=interaction.guild.id,
-                discord_user_id=interaction.user.id,
+                guild_id=guild_id,
+                discord_user_id=discord_user_id,
                 achievement_key="throne_tracking_started",
                 source="register:domme",
+                on_unlocked=_announce_domme_unlock(
+                    interaction.user.display_name
+                    if isinstance(interaction.user, discord.Member)
+                    else getattr(interaction.user, "name", str(discord_user_id))
+                ),
             )
-        await interaction.followup.send(**domme_registered_card().send_kwargs(), ephemeral=True)
+
+        await interaction.followup.send(**domme_registered_card().send_kwargs())
 
     @register_group.command(name="sub", description="Register a sending name to claim sends.")
-    @app_commands.describe(send_name="The exact name you use on Throne sends.")
-    async def register_sub(self, interaction: discord.Interaction, send_name: str) -> None:
+    async def register_sub(self, interaction: discord.Interaction) -> None:
         if interaction.guild is None or interaction.user is None:
             await interaction.response.send_message(**error_card("This command can only be used in a server.").send_kwargs(), ephemeral=True)
             return
@@ -205,11 +280,183 @@ class RegistrationCog(commands.Cog):
         ):
             return
 
-        await interaction.response.defer(ephemeral=True)
-        try:
-            result = await self.bot.registration_service.register_sub(guild_id=interaction.guild.id, discord_user_id=interaction.user.id, send_name=send_name)
-        except ValueError as exc:
-            await interaction.followup.send(**error_card("Sub registration could not be completed.", str(exc)).send_kwargs(), ephemeral=True)
+        await interaction.response.send_modal(
+            _SubRegistrationModal(
+                cog=self,
+                guild_id=interaction.guild.id,
+                discord_user_id=interaction.user.id,
+            )
+        )
+
+
+class _DommeSetupStartButton(discord.ui.Button):
+    def __init__(
+        self,
+        *,
+        cog: RegistrationCog,
+        guild_id: int,
+        discord_user_id: int,
+        send_track_channel_id: int | None,
+    ) -> None:
+        super().__init__(label="Continue Setup", style=discord.ButtonStyle.primary)
+        self.cog = cog
+        self.guild_id = guild_id
+        self.discord_user_id = discord_user_id
+        self.send_track_channel_id = send_track_channel_id
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if interaction.user is None or interaction.user.id != self.discord_user_id:
+            await interaction.response.send_message(
+                **error_card("This setup flow belongs to someone else.").send_kwargs(),
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_modal(
+            _DommeRegistrationModal(
+                cog=self.cog,
+                guild_id=self.guild_id,
+                discord_user_id=self.discord_user_id,
+                send_track_channel_id=self.send_track_channel_id,
+            )
+        )
+
+
+class _DommeRegistrationModal(discord.ui.Modal, title="Rob | Dom/me Setup"):
+    throne = discord.ui.TextInput(
+        label="Throne username or profile URL",
+        placeholder="example: missadore or https://throne.com/missadore",
+        required=True,
+        max_length=200,
+    )
+
+    def __init__(
+        self,
+        *,
+        cog: RegistrationCog,
+        guild_id: int,
+        discord_user_id: int,
+        send_track_channel_id: int | None,
+    ) -> None:
+        super().__init__(timeout=600)
+        self.cog = cog
+        self.guild_id = guild_id
+        self.discord_user_id = discord_user_id
+        self.send_track_channel_id = send_track_channel_id
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        if interaction.user is None or interaction.user.id != self.discord_user_id:
+            await interaction.response.send_message(
+                **error_card("This setup flow belongs to someone else.").send_kwargs(),
+                ephemeral=True,
+            )
             return
 
-        await interaction.followup.send(**registration_card(title="Rob | Sub Registered", summary="Your send-claim name is now active.", details=[("Tracked Name", result.sub.send_name)]).send_kwargs(), ephemeral=True)
+        await interaction.response.defer()
+        await self.cog._complete_domme_registration(
+            interaction=interaction,
+            guild_id=self.guild_id,
+            discord_user_id=self.discord_user_id,
+            send_track_channel_id=self.send_track_channel_id,
+            throne_input=str(self.throne.value),
+        )
+
+
+class _SubRegistrationModal(discord.ui.Modal, title="Rob | Sub Registration"):
+    send_name_1 = discord.ui.TextInput(
+        label="Throne username / send name 1",
+        placeholder="Required",
+        required=True,
+        max_length=120,
+    )
+    send_name_2 = discord.ui.TextInput(
+        label="Throne username / send name 2",
+        placeholder="Optional",
+        required=False,
+        max_length=120,
+    )
+    send_name_3 = discord.ui.TextInput(
+        label="Throne username / send name 3",
+        placeholder="Optional",
+        required=False,
+        max_length=120,
+    )
+
+    def __init__(
+        self,
+        *,
+        cog: RegistrationCog,
+        guild_id: int,
+        discord_user_id: int,
+    ) -> None:
+        super().__init__(timeout=600)
+        self.cog = cog
+        self.guild_id = guild_id
+        self.discord_user_id = discord_user_id
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        if interaction.user is None or interaction.user.id != self.discord_user_id:
+            await interaction.response.send_message(
+                **error_card("This registration flow belongs to someone else.").send_kwargs(),
+                ephemeral=True,
+            )
+            return
+
+        raw_names = [
+            str(self.send_name_1.value),
+            str(self.send_name_2.value),
+            str(self.send_name_3.value),
+        ]
+        cleaned = [collapse_whitespace(value.strip()) for value in raw_names if value and value.strip()]
+        if not cleaned:
+            await interaction.response.send_message(
+                **error_card("Sub registration could not be completed.", "At least one sending name is required.").send_kwargs(),
+                ephemeral=True,
+            )
+            return
+        if len(cleaned) > 3:
+            await interaction.response.send_message(
+                **error_card("Sub registration could not be completed.", "You can register up to 3 sending names.").send_kwargs(),
+                ephemeral=True,
+            )
+            return
+
+        seen: set[str] = set()
+        for name in cleaned:
+            lowered = name.casefold()
+            if lowered in seen:
+                await interaction.response.send_message(
+                    **error_card("Sub registration could not be completed.", "Duplicate sending names are not allowed.").send_kwargs(),
+                    ephemeral=True,
+                )
+                return
+            if lowered in _RESERVED_SUB_NAMES:
+                await interaction.response.send_message(
+                    **error_card("Sub registration could not be completed.", f"'{name}' is reserved and cannot be claimed.").send_kwargs(),
+                    ephemeral=True,
+                )
+                return
+            seen.add(lowered)
+
+        await interaction.response.defer(ephemeral=True)
+        try:
+            result = await self.cog.bot.registration_service.register_sub(
+                guild_id=self.guild_id,
+                discord_user_id=self.discord_user_id,
+                send_names=cleaned,
+            )
+        except ValueError as exc:
+            await interaction.followup.send(
+                **error_card("Sub registration could not be completed.", str(exc)).send_kwargs(),
+                ephemeral=True,
+            )
+            return
+
+        details = [(f"Tracked Name {idx + 1}", name) for idx, name in enumerate(result.send_names)]
+        await interaction.followup.send(
+            **registration_card(
+                title="Rob | Sub Registered",
+                summary="Your send-claim names are now active.",
+                details=details,
+            ).send_kwargs(),
+            ephemeral=True,
+        )

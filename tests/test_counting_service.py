@@ -2,62 +2,31 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
 
+from rob.database.repositories.models import CountBlock, CountRecoveryWindow, CountingState
 from rob.services.counting_service import CountingService
 
 
 @dataclass
-class _State:
-    guild_id: int
-    channel_id: int | None
-    current_number: int
-    last_user_id: int | None
-    is_enabled: bool
-    pending_restore: bool
+class _Role:
+    id: int
+    name: str
 
 
-class _FakeCountingRepo:
-    def __init__(self):
-        self.state = _State(
-            guild_id=1,
-            channel_id=100,
-            current_number=0,
-            last_user_id=None,
-            is_enabled=True,
-            pending_restore=False,
-        )
-
-    async def get(self, guild_id: int):
-        if guild_id != self.state.guild_id:
-            return None
-        return self.state
-
-    async def upsert(self, **kwargs):
-        self.state = _State(
-            guild_id=kwargs["guild_id"],
-            channel_id=kwargs["channel_id"],
-            current_number=kwargs["current_number"],
-            last_user_id=kwargs["last_user_id"],
-            is_enabled=kwargs["is_enabled"],
-            pending_restore=kwargs["pending_restore"],
-        )
-        return self.state
+class _FakeMember:
+    def __init__(self, user_id: int, roles: list[_Role], *, display_name: str = "Member", name: str = "member"):
+        self.id = user_id
+        self.bot = False
+        self.roles = roles
+        self.display_name = display_name
+        self.name = name
 
 
-class _FakeGuildSettingsRepo:
-    async def get(self, _guild_id: int):
-        return SimpleNamespace(counting_channel_id=100, sub_role_id=22)
-
-
-class _FakeDommesRepo:
-    async def get_by_user_id(self, _guild_id: int, _domme_user_id: int):
-        return SimpleNamespace(id=1)
-
-
-class _FakeMessage:
+class _FakeMessageRecord:
     def __init__(self):
         self.edits: list[dict] = []
 
@@ -66,238 +35,478 @@ class _FakeMessage:
 
 
 class _FakeChannel:
-    def __init__(self):
-        self.id = 100
+    def __init__(self, channel_id: int):
+        self.id = channel_id
         self.sent: list[dict] = []
-        self.messages: list[_FakeMessage] = []
+        self.messages: list[_FakeMessageRecord] = []
 
     async def send(self, **kwargs):
         self.sent.append(kwargs)
-        message = _FakeMessage()
-        self.messages.append(message)
-        return message
+        msg = _FakeMessageRecord()
+        self.messages.append(msg)
+        return msg
 
 
-class _FakeMember:
-    def __init__(self, user_id: int, role_ids: list[int]):
-        self.id = user_id
-        self.bot = False
-        self.roles = [SimpleNamespace(id=role_id) for role_id in role_ids]
+class _FakeGuild:
+    def __init__(self, guild_id: int, channel: _FakeChannel, members: list[_FakeMember]):
+        self.id = guild_id
+        self._channel = channel
+        self._members = {member.id: member for member in members}
+
+    def get_channel(self, channel_id: int):
+        if channel_id == self._channel.id:
+            return self._channel
+        return None
+
+    async def fetch_channel(self, channel_id: int):
+        if channel_id == self._channel.id:
+            return self._channel
+        raise RuntimeError("channel not found")
+
+    def get_member(self, user_id: int):
+        return self._members.get(user_id)
 
 
+class _FakeBot:
+    def __init__(self, guild: _FakeGuild):
+        self._guild = guild
+
+    def get_guild(self, guild_id: int):
+        if guild_id == self._guild.id:
+            return self._guild
+        return None
+
+
+@dataclass
 class _FakeMessageEvent:
-    def __init__(self, *, author, content: str, channel: _FakeChannel):
-        self.guild = SimpleNamespace(id=1)
-        self.author = author
-        self.content = content
-        self.channel = channel
-        self.attachments = []
-        self.stickers = []
+    guild: _FakeGuild
+    author: _FakeMember
+    content: str
+    channel: _FakeChannel
+    attachments: list = None
+    stickers: list = None
+
+    def __post_init__(self):
+        if self.attachments is None:
+            self.attachments = []
+        if self.stickers is None:
+            self.stickers = []
 
 
-class _FakeAchievements:
+class _FakeCountingRepo:
     def __init__(self):
-        self.unlock_calls: list[str] = []
-        self.unlock_many_calls: list[list[str]] = []
+        self.state = CountingState(
+            guild_id=1,
+            channel_id=100,
+            current_number=0,
+            last_user_id=None,
+            is_enabled=True,
+            pending_restore=False,
+            updated_at=datetime.now(timezone.utc),
+        )
+        self.next_window_id = 1
+        self.next_block_id = 1
+        self.windows: dict[int, CountRecoveryWindow] = {}
+        self.blocks: dict[tuple[int, int], CountBlock] = {}
 
-    async def unlock_achievement(self, *, achievement_key: str, **_kwargs):
-        self.unlock_calls.append(achievement_key)
+    async def get(self, guild_id: int):
+        if guild_id != self.state.guild_id:
+            return None
+        return self.state
+
+    async def upsert(self, **kwargs):
+        self.state = CountingState(
+            guild_id=kwargs["guild_id"],
+            channel_id=kwargs["channel_id"],
+            current_number=kwargs["current_number"],
+            last_user_id=kwargs["last_user_id"],
+            is_enabled=kwargs["is_enabled"],
+            pending_restore=kwargs["pending_restore"],
+            updated_at=datetime.now(timezone.utc),
+        )
+        return self.state
+
+    async def create_recovery_window(self, **kwargs):
+        window = CountRecoveryWindow(
+            id=self.next_window_id,
+            guild_id=kwargs["guild_id"],
+            channel_id=kwargs["channel_id"],
+            failed_user_id=kwargs["failed_user_id"],
+            failed_user_role=kwargs["failed_user_role"],
+            required_domme_user_id=kwargs["required_domme_user_id"],
+            required_domme_id=kwargs["required_domme_id"],
+            expected_number=kwargs["expected_number"],
+            attempted_content=kwargs["attempted_content"],
+            started_at=kwargs["started_at"],
+            expires_at=kwargs["expires_at"],
+            resolved_at=None,
+            resolution=None,
+            created_at=datetime.now(timezone.utc),
+        )
+        self.windows[self.next_window_id] = window
+        self.next_window_id += 1
+        return window
+
+    async def get_active_recovery_window(self, guild_id: int, channel_id: int):
+        active = [
+            window
+            for window in self.windows.values()
+            if window.guild_id == guild_id
+            and window.channel_id == channel_id
+            and window.resolved_at is None
+        ]
+        if not active:
+            return None
+        return sorted(active, key=lambda value: value.id, reverse=True)[0]
+
+    async def list_active_recovery_windows(self):
+        return [
+            window
+            for window in self.windows.values()
+            if window.resolved_at is None
+        ]
+
+    async def resolve_recovery_window(self, *, window_id: int, resolution: str):
+        window = self.windows.get(window_id)
+        if window is None or window.resolved_at is not None:
+            return False
+        self.windows[window_id] = CountRecoveryWindow(
+            id=window.id,
+            guild_id=window.guild_id,
+            channel_id=window.channel_id,
+            failed_user_id=window.failed_user_id,
+            failed_user_role=window.failed_user_role,
+            required_domme_user_id=window.required_domme_user_id,
+            required_domme_id=window.required_domme_id,
+            expected_number=window.expected_number,
+            attempted_content=window.attempted_content,
+            started_at=window.started_at,
+            expires_at=window.expires_at,
+            resolved_at=datetime.now(timezone.utc),
+            resolution=resolution,
+            created_at=window.created_at,
+        )
         return True
 
-    async def unlock_many(self, *, achievement_keys, **_kwargs):
-        self.unlock_many_calls.append(list(achievement_keys))
-        return list(achievement_keys)
+    async def get_active_block(self, guild_id: int, discord_user_id: int, *, now: datetime | None = None):
+        block = self.blocks.get((guild_id, discord_user_id))
+        if block is None:
+            return None
+        cutoff = now or datetime.now(timezone.utc)
+        if block.blocked_until <= cutoff:
+            return None
+        return block
+
+    async def upsert_block(self, *, guild_id: int, discord_user_id: int, reason: str, blocked_until: datetime):
+        block = CountBlock(
+            id=self.next_block_id,
+            guild_id=guild_id,
+            discord_user_id=discord_user_id,
+            reason=reason,
+            blocked_until=blocked_until,
+            created_at=datetime.now(timezone.utc),
+        )
+        self.next_block_id += 1
+        self.blocks[(guild_id, discord_user_id)] = block
+        return block
 
 
-def _service(
-    *,
-    counting_repo: _FakeCountingRepo,
-    tick_seconds: int = 15,
-    rescue_seconds: int = 300,
-    achievements: _FakeAchievements | None = None,
-):
+class _FakeGuildSettingsRepo:
+    async def get(self, _guild_id: int):
+        return SimpleNamespace(
+            counting_channel_id=100,
+            sub_role_id=22,
+            domme_role_id=33,
+        )
+
+
+class _FakeDommesRepo:
+    async def get_by_user_id(self, _guild_id: int, discord_user_id: int):
+        if discord_user_id in {20, 21, 30}:
+            return SimpleNamespace(id=discord_user_id + 1000)
+        return None
+
+    async def list_for_guild(self, _guild_id: int):
+        return [
+            SimpleNamespace(
+                id=1020,
+                discord_user_id=20,
+                public_display_name="Miss Adore",
+                throne_handle="missadore",
+            ),
+            SimpleNamespace(
+                id=1021,
+                discord_user_id=21,
+                public_display_name="Lady Star",
+                throne_handle="ladystar",
+            ),
+        ]
+
+
+class _FakeBotSettings:
+    async def get_text(self, key: str):
+        if key == "count_claimed_role_prefix":
+            return "Claimed by "
+        return None
+
+
+def _service(*, repo: _FakeCountingRepo, guild: _FakeGuild):
     return CountingService(
-        bot=SimpleNamespace(),
-        counting=counting_repo,
+        bot=_FakeBot(guild),
+        counting=repo,
         guild_settings=_FakeGuildSettingsRepo(),
         dommes=_FakeDommesRepo(),
-        achievements=achievements,
-        rescue_tick_seconds=tick_seconds,
-        rescue_window_seconds=rescue_seconds,
+        bot_settings=_FakeBotSettings(),
+        achievements=None,
+        rescue_tick_seconds=1,
+        rescue_window_seconds=300,
+        block_seconds=12 * 60 * 60,
         parse_test_sends_as_real_sends=False,
         test_gifter_usernames=("marie_123",),
     )
 
 
-def test_same_user_double_count_does_not_reset(monkeypatch: pytest.MonkeyPatch):
+@pytest.fixture(autouse=True)
+def _patch_discord_member(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("rob.services.counting_service.discord.Member", _FakeMember)
+
+
+def _make_setup():
+    channel = _FakeChannel(channel_id=100)
+    domme = _FakeMember(20, [_Role(33, "Dom/me")], display_name="Miss Adore", name="missadore")
+    domme_alt = _FakeMember(21, [_Role(33, "Dom/me")], display_name="Lady Star", name="ladystar")
+    sub = _FakeMember(10, [_Role(22, "Sub")], display_name="Subby", name="subby")
+    claimed_sub = _FakeMember(
+        11,
+        [_Role(22, "Sub"), _Role(44, "Claimed by Miss Adore")],
+        display_name="Claimed Sub",
+        name="claimedsub",
+    )
+    guild = _FakeGuild(1, channel, [domme, domme_alt, sub, claimed_sub])
     repo = _FakeCountingRepo()
-    repo.state.current_number = 7
-    repo.state.last_user_id = 10
-    channel = _FakeChannel()
-    service = _service(counting_repo=repo)
-    message = _FakeMessageEvent(author=_FakeMember(10, [22]), content="8", channel=channel)
+    service = _service(repo=repo, guild=guild)
+    return service, repo, channel, guild, domme, domme_alt, sub, claimed_sub
+
+
+def test_basic_math_expression_parser_accepts_valid_cases():
+    assert CountingService.evaluate_expression("2 + 2") == 4
+    assert CountingService.evaluate_expression("(2 + 2) * 3") == 12
+    assert CountingService.evaluate_expression("10 / 2") == 5
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "5 / 2",
+        "__import__('os')",
+        "open('/etc/passwd')",
+        "1 / 0",
+        "9" * 81,
+    ],
+)
+def test_basic_math_expression_parser_rejects_unsafe_or_invalid_cases(expression: str):
+    with pytest.raises(ValueError):
+        CountingService.evaluate_expression(expression)
+
+
+def test_domme_wrong_count_creates_recovery_window_and_qualifying_send_recovers():
+    service, repo, _channel, _guild, domme, _domme_alt, _sub, _claimed_sub = _make_setup()
+    repo.state = CountingState(1, 100, 7, 9, True, False, datetime.now(timezone.utc))
+    message = _FakeMessageEvent(guild=service.bot.get_guild(1), author=domme, content="99", channel=service.bot.get_guild(1).get_channel(100))
 
     result = asyncio.run(service.process_message(message))
 
     assert result is not None
-    assert result.reason == "same_user"
-    assert repo.state.current_number == 7
-    assert repo.state.pending_restore is False
-
-
-def test_wrong_sub_number_starts_rescue_and_valid_send_restores(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("rob.services.counting_service.discord.Member", _FakeMember)
-    repo = _FakeCountingRepo()
-    repo.state.current_number = 7
-    repo.state.last_user_id = 9
-    channel = _FakeChannel()
-    service = _service(counting_repo=repo, tick_seconds=1, rescue_seconds=60)
-    message = _FakeMessageEvent(author=_FakeMember(10, [22]), content="99", channel=channel)
-
-    result = asyncio.run(service.process_message(message))
-    assert result is not None
-    assert result.reason == "wrong_number_sub_rescue"
+    assert result.reason == "wrong_number_domme_recovery"
     assert repo.state.pending_restore is True
-    assert len(channel.sent) == 1
+    active_windows = asyncio.run(repo.list_active_recovery_windows())
+    assert len(active_windows) == 1
+    assert active_windows[0].failed_user_role == "domme"
 
-    send = SimpleNamespace(
-        guild_id=1,
-        domme_user_id=20,
-        sub_user_id=10,
-        sub_name="real",
-        source="manual:paypal",
-        is_private=False,
-        is_test_send=False,
+    recovered = asyncio.run(
+        service.process_send_for_count_rescue(
+            SimpleNamespace(
+                guild_id=1,
+                domme_user_id=domme.id,
+                sub_user_id=10,
+                sub_name="subby",
+                sent_at=datetime.now(timezone.utc),
+                is_private=False,
+                is_test_send=False,
+            )
+        )
     )
-    restored = asyncio.run(service.process_send_for_count_rescue(send))
-    assert restored is True
+    assert recovered is True
     assert repo.state.pending_restore is False
     assert repo.state.current_number == 7
 
 
-def test_send_request_send_can_rescue_when_sub_user_is_known(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("rob.services.counting_service.discord.Member", _FakeMember)
-    repo = _FakeCountingRepo()
-    repo.state.current_number = 12
-    repo.state.last_user_id = 9
-    channel = _FakeChannel()
-    service = _service(counting_repo=repo, tick_seconds=1, rescue_seconds=60)
-    message = _FakeMessageEvent(author=_FakeMember(10, [22]), content="99", channel=channel)
-
-    start = asyncio.run(service.process_message(message))
-    assert start is not None
-    assert start.reason == "wrong_number_sub_rescue"
-    assert repo.state.pending_restore is True
-
-    send = SimpleNamespace(
-        guild_id=1,
-        domme_user_id=20,
-        sub_user_id=10,
-        sub_name=None,
-        source="send_request",
-        is_private=False,
-        is_test_send=False,
-    )
-    restored = asyncio.run(service.process_send_for_count_rescue(send))
-    assert restored is True
-    assert repo.state.pending_restore is False
-    assert repo.state.current_number == 12
-
-
-def test_test_send_does_not_rescue(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("rob.services.counting_service.discord.Member", _FakeMember)
-    repo = _FakeCountingRepo()
-    repo.state.current_number = 7
-    repo.state.last_user_id = 9
-    channel = _FakeChannel()
-    service = _service(counting_repo=repo, tick_seconds=1, rescue_seconds=60)
-    message = _FakeMessageEvent(author=_FakeMember(10, [22]), content="99", channel=channel)
+def test_domme_recovery_expiry_resets_count_to_one_visible_start():
+    service, repo, _channel, _guild, domme, _domme_alt, _sub, _claimed_sub = _make_setup()
+    repo.state = CountingState(1, 100, 7, 9, True, False, datetime.now(timezone.utc))
+    message = _FakeMessageEvent(guild=service.bot.get_guild(1), author=domme, content="99", channel=service.bot.get_guild(1).get_channel(100))
     asyncio.run(service.process_message(message))
-
-    send = SimpleNamespace(
-        guild_id=1,
-        domme_user_id=20,
-        sub_user_id=10,
-        sub_name="marie_123",
-        is_private=False,
-        is_test_send=True,
+    window = asyncio.run(repo.get_active_recovery_window(1, 100))
+    assert window is not None
+    repo.windows[window.id] = CountRecoveryWindow(
+        id=window.id,
+        guild_id=window.guild_id,
+        channel_id=window.channel_id,
+        failed_user_id=window.failed_user_id,
+        failed_user_role=window.failed_user_role,
+        required_domme_user_id=window.required_domme_user_id,
+        required_domme_id=window.required_domme_id,
+        expected_number=window.expected_number,
+        attempted_content=window.attempted_content,
+        started_at=window.started_at,
+        expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+        resolved_at=None,
+        resolution=None,
+        created_at=window.created_at,
     )
-    restored = asyncio.run(service.process_send_for_count_rescue(send))
-    assert restored is False
-    assert repo.state.pending_restore is True
-    asyncio.run(service._clear_rescue_window(1))
 
-
-def test_rescue_window_expiry_resets_count(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("rob.services.counting_service.discord.Member", _FakeMember)
-    repo = _FakeCountingRepo()
-    repo.state.current_number = 7
-    repo.state.last_user_id = 9
-    channel = _FakeChannel()
-    service = _service(counting_repo=repo, tick_seconds=1, rescue_seconds=1)
-    message = _FakeMessageEvent(author=_FakeMember(10, [22]), content="99", channel=channel)
-    asyncio.run(service.process_message(message))
-
-    async def _wait():
-        await asyncio.sleep(1.3)
-
-    asyncio.run(_wait())
+    asyncio.run(service.resolve_expired_windows_once())
     assert repo.state.current_number == 0
     assert repo.state.pending_restore is False
 
 
-def test_count_milestone_unlocks_achievement(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("rob.services.counting_service.discord.Member", _FakeMember)
-    repo = _FakeCountingRepo()
-    repo.state.current_number = 9
-    channel = _FakeChannel()
-    achievements = _FakeAchievements()
-    service = _service(counting_repo=repo, achievements=achievements)
-    message = _FakeMessageEvent(author=_FakeMember(10, [22]), content="10", channel=channel)
+def test_sub_recovery_unclaimed_allows_any_domme_but_claimed_requires_claimed_domme():
+    service, repo, _channel, guild, _domme, domme_alt, sub, claimed_sub = _make_setup()
+    repo.state = CountingState(1, 100, 12, 9, True, False, datetime.now(timezone.utc))
 
-    result = asyncio.run(service.process_message(message))
-
-    assert result is not None and result.success is True
-    assert "count_10" in achievements.unlock_calls
-
-
-def test_wrong_number_unlocks_first_mistake(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("rob.services.counting_service.discord.Member", _FakeMember)
-    repo = _FakeCountingRepo()
-    repo.state.current_number = 4
-    repo.state.last_user_id = 9
-    channel = _FakeChannel()
-    achievements = _FakeAchievements()
-    service = _service(counting_repo=repo, achievements=achievements)
-    message = _FakeMessageEvent(author=_FakeMember(10, [22]), content="6", channel=channel)
-
-    result = asyncio.run(service.process_message(message))
-
-    assert result is not None and result.success is False
-    assert "count_first_mistake" in achievements.unlock_calls
-
-
-def test_rescue_unlocks_sub_save_count_achievement(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("rob.services.counting_service.discord.Member", _FakeMember)
-    repo = _FakeCountingRepo()
-    repo.state.current_number = 7
-    repo.state.last_user_id = 9
-    channel = _FakeChannel()
-    achievements = _FakeAchievements()
-    service = _service(counting_repo=repo, tick_seconds=1, rescue_seconds=60, achievements=achievements)
-    message = _FakeMessageEvent(author=_FakeMember(10, [22]), content="99", channel=channel)
-    asyncio.run(service.process_message(message))
-
-    send = SimpleNamespace(
-        guild_id=1,
-        domme_user_id=20,
-        sub_user_id=10,
-        sub_name="real",
-        source="manual:paypal",
-        is_private=False,
-        is_test_send=False,
+    unclaimed_message = _FakeMessageEvent(guild=guild, author=sub, content="99", channel=guild.get_channel(100))
+    unclaimed_result = asyncio.run(service.process_message(unclaimed_message))
+    assert unclaimed_result is not None
+    assert unclaimed_result.reason == "wrong_number_sub_recovery"
+    unclaimed_recovered = asyncio.run(
+        service.process_send_for_count_rescue(
+            SimpleNamespace(
+                guild_id=1,
+                domme_user_id=domme_alt.id,
+                sub_user_id=sub.id,
+                sub_name="subby",
+                sent_at=datetime.now(timezone.utc),
+                is_private=False,
+                is_test_send=False,
+            )
+        )
     )
-    restored = asyncio.run(service.process_send_for_count_rescue(send))
-    assert restored is True
-    assert "sub_save_count" in achievements.unlock_calls
+    assert unclaimed_recovered is True
+
+    repo.state = CountingState(1, 100, 12, 9, True, False, datetime.now(timezone.utc))
+    claimed_message = _FakeMessageEvent(guild=guild, author=claimed_sub, content="99", channel=guild.get_channel(100))
+    claimed_result = asyncio.run(service.process_message(claimed_message))
+    assert claimed_result is not None
+    assert claimed_result.reason == "wrong_number_sub_recovery"
+    wrong_domme_recovered = asyncio.run(
+        service.process_send_for_count_rescue(
+            SimpleNamespace(
+                guild_id=1,
+                domme_user_id=domme_alt.id,
+                sub_user_id=claimed_sub.id,
+                sub_name="claimedsub",
+                sent_at=datetime.now(timezone.utc),
+                is_private=False,
+                is_test_send=False,
+            )
+        )
+    )
+    assert wrong_domme_recovered is False
+    correct_domme_recovered = asyncio.run(
+        service.process_send_for_count_rescue(
+            SimpleNamespace(
+                guild_id=1,
+                domme_user_id=20,
+                sub_user_id=claimed_sub.id,
+                sub_name="claimedsub",
+                sent_at=datetime.now(timezone.utc),
+                is_private=False,
+                is_test_send=False,
+            )
+        )
+    )
+    assert correct_domme_recovered is True
+
+
+def test_sub_recovery_expiry_creates_12h_block_and_blocked_sub_cannot_count():
+    service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub = _make_setup()
+    repo.state = CountingState(1, 100, 3, 9, True, False, datetime.now(timezone.utc))
+    message = _FakeMessageEvent(guild=guild, author=sub, content="99", channel=guild.get_channel(100))
+    asyncio.run(service.process_message(message))
+    window = asyncio.run(repo.get_active_recovery_window(1, 100))
+    assert window is not None
+    repo.windows[window.id] = CountRecoveryWindow(
+        id=window.id,
+        guild_id=window.guild_id,
+        channel_id=window.channel_id,
+        failed_user_id=window.failed_user_id,
+        failed_user_role=window.failed_user_role,
+        required_domme_user_id=window.required_domme_user_id,
+        required_domme_id=window.required_domme_id,
+        expected_number=window.expected_number,
+        attempted_content=window.attempted_content,
+        started_at=window.started_at,
+        expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+        resolved_at=None,
+        resolution=None,
+        created_at=window.created_at,
+    )
+    asyncio.run(service.resolve_expired_windows_once())
+    block = asyncio.run(repo.get_active_block(1, sub.id))
+    assert block is not None
+
+    blocked_result = asyncio.run(
+        service.process_message(
+            _FakeMessageEvent(guild=guild, author=sub, content="4", channel=guild.get_channel(100))
+        )
+    )
+    assert blocked_result is not None
+    assert blocked_result.reason == "blocked_sub"
+
+    repo.blocks[(1, sub.id)] = CountBlock(
+        id=block.id,
+        guild_id=1,
+        discord_user_id=sub.id,
+        reason=block.reason,
+        blocked_until=datetime.now(timezone.utc) - timedelta(seconds=1),
+        created_at=block.created_at,
+    )
+    unblocked_result = asyncio.run(
+        service.process_message(
+            _FakeMessageEvent(guild=guild, author=sub, content="4", channel=guild.get_channel(100))
+        )
+    )
+    assert unblocked_result is not None
+    assert unblocked_result.success is True
+
+
+def test_recovery_windows_are_restart_safe_and_expiry_resolution_is_idempotent():
+    service, repo, _channel, guild, _domme, _domme_alt, _sub, _claimed_sub = _make_setup()
+    repo.state = CountingState(1, 100, 15, 8, True, False, datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
+    repo.windows[1] = CountRecoveryWindow(
+        id=1,
+        guild_id=1,
+        channel_id=100,
+        failed_user_id=10,
+        failed_user_role="sub",
+        required_domme_user_id=None,
+        required_domme_id=None,
+        expected_number=16,
+        attempted_content="99",
+        started_at=now - timedelta(seconds=20),
+        expires_at=now - timedelta(seconds=1),
+        resolved_at=None,
+        resolution=None,
+        created_at=now - timedelta(seconds=20),
+    )
+
+    new_service = _service(repo=repo, guild=guild)
+    asyncio.run(new_service.resolve_expired_windows_once())
+    first_block = asyncio.run(repo.get_active_block(1, 10))
+    assert first_block is not None
+    first_resolution = repo.windows[1].resolution
+    assert first_resolution == "expired_blocked"
+
+    asyncio.run(new_service.resolve_expired_windows_once())
+    assert repo.windows[1].resolution == "expired_blocked"

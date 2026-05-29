@@ -6,62 +6,23 @@ Rob v2 schema build is manual and admin-driven.
 
 - **DB build scripts**: SQL files that create/alter schema.
 - **Data migration**: moving legacy SQLite data into PostgreSQL.
-- **Rehearsal database**: `rob_dev_v2`, used to validate production-style runtime users before `rob_prod` is built or used.
 
 Only SQLite -> PostgreSQL transfer should be called a migration.
 
-## Run order for `rob_dev_v2` rehearsal
+## Run order
 
 Execute as `doadmin` in pgAdmin4 or `psql`:
 
 1. `scripts/db/build/001_core_schema.sql`
 2. `scripts/db/build/002_indexes.sql`
 3. `scripts/db/build/003_achievements.sql`
-4. `scripts/db/grants/dev_rehearsal_prod_roles.sql`
+4. `scripts/db/build/004_sub_send_names.sql`
+5. `scripts/db/build/005_count_recovery.sql`
+6. `scripts/db/build/003_runtime_grants_template.sql` (optional reference template)
 
-The rehearsal grants intentionally use production-style runtime users against the rehearsal database:
+Then apply runtime grants:
 
-- `rob_dev_v2` is the rehearsal database.
-- `prod_rob_bot` is the bot runtime user.
-- `prod_rob_webhook` is the webhook runtime user.
-- Production runtime should later point to `rob_prod`, not `rob_dev_v2`.
-
-Configure bot/webhook servers with `prod_rob_bot` and `prod_rob_webhook` credentials against `rob_dev_v2` for rehearsal, then run `scripts/check_db.py` once from each runtime credential.
-
-## Webhook reinstall rehearsal
-
-The webhook server can be reset/reinstalled and configured with:
-
-```env
-DATABASE_URL=postgresql://prod_rob_webhook:...@.../rob_dev_v2?sslmode=require
-```
-
-Then run:
-
-```bash
-PYTHONPATH=. python3 -m scripts.check_db
-```
-
-Expected outcome:
-
-- `prod_rob_webhook` can connect to `rob_dev_v2`.
-- `prod_rob_webhook` can insert `sends`.
-- `prod_rob_webhook` can update `dommes` webhook status fields.
-- `prod_rob_webhook` can insert achievement unlock/event rows for webhook-triggered achievements.
-- `prod_rob_webhook` cannot create/alter/drop/truncate schema.
-- `prod_rob_webhook` cannot delete from `sends`, `bot_users`, `user_achievements`, or `achievement_events`.
-
-## Run order for `rob_prod`
-
-Execute as `doadmin` in pgAdmin4 or `psql`:
-
-1. `scripts/db/build/001_core_schema.sql`
-2. `scripts/db/build/002_indexes.sql`
-3. `scripts/db/build/003_achievements.sql`
-4. `scripts/db/build/003_runtime_grants_template.sql` (optional reference template)
-
-Then apply production runtime grants:
-
+- Dev rehearsal using production-shaped roles: `scripts/db/grants/dev_rehearsal_prod_roles.sql`
 - Prod bot: `scripts/db/grants/prod_rob_bot.sql`
 - Prod webhook: `scripts/db/grants/prod_rob_webhook.sql`
 
@@ -70,8 +31,21 @@ Required `db_build_version` rows are:
 - `001_core_schema`
 - `002_indexes`
 - `003_achievements`
+- `004_sub_send_names`
+- `005_count_recovery`
 
 Runtime grants are environment-specific and are validated by `scripts/check_db.py` from runtime credentials.
+
+## Canonical rehearsal order (`rob_dev_v2`)
+
+1. Ensure `prod_rob_bot` and `prod_rob_webhook` roles exist.
+2. Run `scripts/db/build/001_core_schema.sql`.
+3. Run `scripts/db/build/002_indexes.sql`.
+4. Run `scripts/db/build/003_achievements.sql`.
+5. Run `scripts/db/build/004_sub_send_names.sql`.
+6. Run `scripts/db/build/005_count_recovery.sql`.
+7. Run `scripts/db/grants/dev_rehearsal_prod_roles.sql`.
+8. Run `PYTHONPATH=. python3 -m scripts.check_db` from both bot and webhook runtime environments.
 
 ## Target tables
 
@@ -80,23 +54,24 @@ Runtime grants are environment-specific and are validated by `scripts/check_db.p
 - `bot_users`
 - `dommes`
 - `subs`
+- `sub_send_names`
 - `sends`
 - `vib_settings`
 - `vib_leaderboard`
 - `the_count`
 - `inactive_users`
+- `count_recovery_windows`
+- `count_blocks`
 - `user_achievements`
 - `achievement_events`
 
 ## Runtime safety
 
-Runtime users (`dev_rob_bot`, `prod_rob_bot`, `prod_rob_webhook`) must not receive:
+Runtime users (`prod_rob_bot`, `prod_rob_webhook`) must not receive:
 
 - `CREATE`
 - `ALTER`
 - `DROP`
 - `TRUNCATE`
-
-The webhook runtime user (`prod_rob_webhook`) must also not receive `DELETE` on `sends`, `bot_users`, `user_achievements`, or `achievement_events`.
 
 Use `scripts/check_db.py` from runtime credentials to validate permissions and table/column shape.

@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_DIR="${APP_DIR:-/opt/rob-bot/app}"
-SERVICE_NAME="${SERVICE_NAME:-rob-bot.service}"
+SERVICE_NAME="${SERVICE_NAME:-rob-bot-dev.service}"
 PYTHON_BIN="${PYTHON_BIN:-${APP_DIR}/.venv/bin/python}"
 
 require_cmd() {

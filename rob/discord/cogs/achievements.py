@@ -50,20 +50,35 @@ class AchievementsCog(commands.Cog):
 
         target = user or viewer
 
-        await self.bot.achievements_service.unlock_achievement(
+        unlocked_cards: list = []
+
+        async def _collect_unlock_card(achievement) -> None:
+            unlocked_cards.append(
+                achievement_unlocked_card(
+                    achievement,
+                    unlocked_by_display_name=viewer.display_name,
+                )
+            )
+
+        newly_unlocked = 0
+        if await self.bot.achievements_service.unlock_achievement(
             guild_id=interaction.guild.id,
             discord_user_id=viewer.id,
             achievement_key="first_achievement_view",
             source="slash:/achievements",
-        )
+            on_unlocked=_collect_unlock_card,
+        ):
+            newly_unlocked += 1
         if target.id != viewer.id:
-            await self.bot.achievements_service.unlock_achievement(
+            if await self.bot.achievements_service.unlock_achievement(
                 guild_id=interaction.guild.id,
                 discord_user_id=viewer.id,
                 achievement_key="viewed_other_achievements",
                 source="slash:/achievements",
                 metadata={"target_user_id": target.id},
-            )
+                on_unlocked=_collect_unlock_card,
+            ):
+                newly_unlocked += 1
 
         unlocked_keys = await self.bot.achievements_service.get_user_achievement_keys(
             guild_id=interaction.guild.id,
@@ -73,10 +88,13 @@ class AchievementsCog(commands.Cog):
             display_name=target.display_name,
             unlocked_keys=unlocked_keys,
             for_self=target.id == viewer.id,
+            newly_unlocked_count=newly_unlocked,
         )
         first, *rest = cards
         await interaction.response.send_message(**first.send_kwargs(), ephemeral=False)
         for card in rest:
+            await interaction.followup.send(**card.send_kwargs(), ephemeral=False)
+        for card in unlocked_cards:
             await interaction.followup.send(**card.send_kwargs(), ephemeral=False)
 
     async def _can_use_test_achievements(self, interaction: discord.Interaction) -> bool:
@@ -117,7 +135,13 @@ class AchievementsCog(commands.Cog):
         achievements = self.bot.achievements_service.all_definitions()
         for achievement in achievements:
             try:
-                await channel.send(**achievement_unlocked_card(achievement, include_meta_line=True).send_kwargs())
+                await channel.send(
+                    **achievement_unlocked_card(
+                        achievement,
+                        unlocked_by_display_name="Preview Mode",
+                        include_meta_line=True,
+                    ).send_kwargs()
+                )
             except discord.HTTPException:
                 log.exception("Failed to send achievement preview key=%s", achievement.key)
                 continue
@@ -133,10 +157,19 @@ class AchievementsCog(commands.Cog):
         if not guild_ids:
             return
         guild_id = guild_ids[0]
+        display_name = (
+            getattr(message.author, "display_name", None)
+            or getattr(message.author, "name", str(message.author.id))
+        )
         await self.bot.achievements_service.unlock_achievement(
             guild_id=guild_id,
             discord_user_id=message.author.id,
             achievement_key="dm_rob",
             source="dm",
+            on_unlocked=lambda achievement: message.channel.send(
+                **achievement_unlocked_card(
+                    achievement,
+                    unlocked_by_display_name=display_name,
+                ).send_kwargs()
+            ),
         )
-

@@ -16,7 +16,7 @@ def test_load_base_settings_only_requires_database(monkeypatch):
     assert settings.rob_ops_port == 8811
     assert settings.inactivity_enabled_default is False
     assert settings.inactivity_loop_minutes == 60
-    assert settings.rob_public_base_url == "https://rob-dev.barecoding.com"
+    assert settings.rob_public_base_url == "https://leaderboard.robthebot.com"
 
 
 def test_load_bot_settings_requires_discord_token(monkeypatch):
@@ -45,15 +45,15 @@ def test_load_webhook_settings_does_not_require_discord_token(monkeypatch):
 
 
 def test_sanitize_webhook_base_url_handles_bad_equals_quotes_and_slash():
-    raw = "  '=https://rob-dev.barecoding.com/'  "
-    assert sanitize_webhook_base_url(raw) == "https://rob-dev.barecoding.com"
+    raw = "  '=https://throne.robthebot.com/'  "
+    assert sanitize_webhook_base_url(raw) == "https://throne.robthebot.com"
 
 
 def test_load_webhook_url_sanitizes_when_generating_registration_url(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://example/db")
-    monkeypatch.setenv("THRONE_WEBHOOK_BASE_URL", "==https://rob-dev.barecoding.com/")
+    monkeypatch.setenv("THRONE_WEBHOOK_BASE_URL", "==https://throne.robthebot.com/")
     settings = load_webhook_settings()
-    assert sanitize_webhook_base_url(settings.throne_webhook_base_url) == "https://rob-dev.barecoding.com"
+    assert sanitize_webhook_base_url(settings.throne_webhook_base_url) == "https://throne.robthebot.com"
 
 
 def test_load_base_settings_supports_test_sender_and_leaderboard_env(monkeypatch):

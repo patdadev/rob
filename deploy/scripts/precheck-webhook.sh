@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_DIR="${APP_DIR:-/opt/rob-webhook/app}"
-SERVICE_NAME="${SERVICE_NAME:-rob-webhook.service}"
+SERVICE_NAME="${SERVICE_NAME:-rob-webhook-dev.service}"
 PYTHON_BIN="${PYTHON_BIN:-${APP_DIR}/.venv/bin/python}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8080/health}"
 

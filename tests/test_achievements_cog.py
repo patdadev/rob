@@ -119,8 +119,10 @@ def test_achievements_command_shows_secret_placeholder_when_locked():
     payload = interaction.response.messages[0]
     assert payload["ephemeral"] is False
     text = _message_text(payload)
-    assert "Your Achievements" in text
-    assert "|| Secret Achievement ||" in text
+    text += "\n".join(_message_text(message) for message in interaction.followup.messages)
+    assert "Rob Achievements" in text
+    assert "⚪ **Secret Achievement**" in text
+    assert "???" in text
 
 
 def test_achievements_viewing_other_user_unlocks_nosy_achievement():
@@ -147,3 +149,8 @@ def test_test_achievements_renders_all_configured_cards_for_admin(monkeypatch):
 
     assert interaction.response.messages[0]["ephemeral"] is True
     assert len(channel.messages) == len(bot.achievements_service.all_definitions())
+    assert bot.achievements_service.unlock_calls == []
+    rendered = _message_text(channel.messages[0])
+    assert "🏆 Achievement Unlocked" in rendered
+    assert "Key:" in rendered
+    assert "Unlocked by Preview Mode" in rendered

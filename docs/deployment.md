@@ -35,16 +35,20 @@ If schema build/grants are required, run manually (admin action):
 
 - `scripts/db/build/001_core_schema.sql`
 - `scripts/db/build/002_indexes.sql`
+- `scripts/db/build/003_achievements.sql`
+- `scripts/db/build/004_sub_send_names.sql`
+- `scripts/db/build/005_count_recovery.sql`
 - `scripts/db/grants/*.sql`
 
 SQLite data migration remains separate and is not part of deployment.
 
-## Dev v2 database target
+## Prod-role rehearsal target
 
-For dev deploys, ensure both server `.env` files point to `rob_dev_v2`:
+For current rehearsals, both services run against `rob_dev_v2` with production-shaped runtime users:
 
-- Bot server (`/opt/rob-bot/app/.env`): `DATABASE_URL=.../rob_dev_v2?...`
-- Webhook server (`/opt/rob-webhook/app/.env`): `DATABASE_URL=.../rob_dev_v2?...`
+- Bot server (`/opt/rob-bot/app/.env`): `DATABASE_URL=postgresql://prod_rob_bot:.../rob_dev_v2?...`
+- Webhook server (`/opt/rob-webhook/app/.env`): `DATABASE_URL=postgresql://prod_rob_webhook:.../rob_dev_v2?...`
+- Webhook base URL: `THRONE_WEBHOOK_BASE_URL=https://throne.robthebot.com`
 
 If either service still points at an older database, `scripts/check_db.py` will fail because Rob v2 expects `db_build_version` and the new v2 schema tables.
 
@@ -55,3 +59,5 @@ If either service still points at an older database, `scripts/check_db.py` will 
 - `db-01.robthebot.com`
 
 `db-01.robthebot.com` is a private/internal/admin-only reference by default. Do not expose PostgreSQL publicly unless protected by strict network controls.
+
+The webhook service should stay on `127.0.0.1:8080` behind Cloudflared; do not expose port `8080` publicly.

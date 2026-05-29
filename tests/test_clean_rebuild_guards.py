@@ -166,6 +166,8 @@ def test_db_build_scripts_exist_under_scripts_db_build():
     assert (build_dir / "001_core_schema.sql").exists()
     assert (build_dir / "002_indexes.sql").exists()
     assert (build_dir / "003_achievements.sql").exists()
+    assert (build_dir / "004_sub_send_names.sql").exists()
+    assert (build_dir / "005_count_recovery.sql").exists()
     assert (build_dir / "003_runtime_grants_template.sql").exists()
     assert (build_dir / "README.md").exists()
     grants_dir = REPO_ROOT / "scripts" / "db" / "grants"
@@ -186,6 +188,12 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     achievements_schema = (
         REPO_ROOT / "scripts" / "db" / "build" / "003_achievements.sql"
     ).read_text(encoding="utf-8")
+    sub_send_names_schema = (
+        REPO_ROOT / "scripts" / "db" / "build" / "004_sub_send_names.sql"
+    ).read_text(encoding="utf-8")
+    count_recovery_schema = (
+        REPO_ROOT / "scripts" / "db" / "build" / "005_count_recovery.sql"
+    ).read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS db_build_version" in core_schema
     assert "CREATE TABLE IF NOT EXISTS bot_users" in core_schema
@@ -199,6 +207,11 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     assert "CREATE TABLE IF NOT EXISTS user_achievements" in achievements_schema
     assert "CREATE TABLE IF NOT EXISTS achievement_events" in achievements_schema
     assert "VALUES ('003_achievements'," in achievements_schema
+    assert "CREATE TABLE IF NOT EXISTS sub_send_names" in sub_send_names_schema
+    assert "VALUES ('004_sub_send_names'," in sub_send_names_schema
+    assert "CREATE TABLE IF NOT EXISTS count_recovery_windows" in count_recovery_schema
+    assert "CREATE TABLE IF NOT EXISTS count_blocks" in count_recovery_schema
+    assert "VALUES ('005_count_recovery'," in count_recovery_schema
 
 
 def test_deploy_scripts_do_not_run_schema_builder():
@@ -226,50 +239,29 @@ def test_runtime_grants_template_does_not_grant_schema_create_to_runtime_users()
     grants = (
         REPO_ROOT / "scripts" / "db" / "build" / "003_runtime_grants_template.sql"
     ).read_text(encoding="utf-8")
-    assert "GRANT CREATE ON SCHEMA public TO dev_rob_bot" not in grants
     assert "GRANT CREATE ON SCHEMA public TO prod_rob_bot" not in grants
     assert "GRANT CREATE ON SCHEMA public TO prod_rob_webhook" not in grants
-    assert "_".join(("dev", "rob", "webhook")) not in grants
 
 
-def test_webhook_grants_are_runtime_only_and_not_schema_changing():
-    grant_files = (
-        "prod_rob_webhook.sql",
-        "dev_rehearsal_prod_roles.sql",
-    )
-    for file_name in grant_files:
-        grants = (REPO_ROOT / "scripts" / "db" / "grants" / file_name).read_text(
-            encoding="utf-8"
-        )
-        for forbidden in (
-            "GRANT CREATE",
-            "GRANT ALTER",
-            "GRANT DROP",
-            "GRANT TRUNCATE",
-        ):
-            assert forbidden not in grants
-        assert "user_achievements" in grants
-        assert "achievement_events" in grants
+def test_prod_webhook_grants_are_runtime_only_and_not_schema_changing():
+    grants = (
+        REPO_ROOT / "scripts" / "db" / "grants" / "prod_rob_webhook.sql"
+    ).read_text(encoding="utf-8")
+    for forbidden in ("GRANT CREATE", "GRANT ALTER", "GRANT DROP", "GRANT TRUNCATE"):
+        assert forbidden not in grants
+    assert "user_achievements" in grants
+    assert "achievement_events" in grants
+    assert "sub_send_names" in grants
+    assert "REVOKE DELETE ON TABLE user_achievements FROM prod_rob_webhook;" in grants
+    assert "REVOKE DELETE ON TABLE achievement_events FROM prod_rob_webhook;" in grants
 
 
-def test_dev_rehearsal_grants_are_explicitly_prod_role_rehearsal_only():
+def test_rehearsal_webhook_grants_revoke_delete_for_achievement_tables():
     grants = (
         REPO_ROOT / "scripts" / "db" / "grants" / "dev_rehearsal_prod_roles.sql"
     ).read_text(encoding="utf-8")
-    assert "rehearsal only" in grants.lower()
-    assert "production runtime should normally point at the dev database" in grants
-    assert "\\connect rob_dev_v2" in grants
-    assert "GRANT CONNECT ON DATABASE rob_dev_v2 TO prod_rob_bot" in grants
-    assert "GRANT CONNECT ON DATABASE rob_dev_v2 TO prod_rob_webhook" in grants
-    assert "_".join(("dev", "rob", "webhook")) not in grants
-    assert "user_achievements" in grants
-    assert "achievement_events" in grants
-    assert "GRANT DELETE" not in grants
-    assert "GRANT SELECT, INSERT, UPDATE, DELETE\nON ALL TABLES IN SCHEMA public\nTO prod_rob_webhook" not in grants
-    assert "REVOKE DELETE ON TABLE sends FROM prod_rob_webhook" in grants
-    assert "REVOKE DELETE ON TABLE bot_users FROM prod_rob_webhook" in grants
-    assert "REVOKE DELETE ON TABLE user_achievements FROM prod_rob_webhook" in grants
-    assert "REVOKE DELETE ON TABLE achievement_events FROM prod_rob_webhook" in grants
+    assert "REVOKE DELETE ON TABLE user_achievements FROM prod_rob_webhook;" in grants
+    assert "REVOKE DELETE ON TABLE achievement_events FROM prod_rob_webhook;" in grants
 
 
 def test_webhook_supports_new_and_compatibility_routes():

@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_DIR="${APP_DIR:-/opt/rob-webhook/app}"
-SERVICE_NAME="${SERVICE_NAME:-rob-webhook.service}"
+SERVICE_NAME="${SERVICE_NAME:-rob-webhook-dev.service}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 DEPLOY_REF="${DEPLOY_REF:-${DEPLOY_BRANCH}}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8080/health}"
@@ -74,7 +74,22 @@ if [[ -z "${THRONE_WEBHOOK_BASE_URL:-}" ]]; then
 fi
 
 echo "[10/13] Run database checks"
-PYTHONPATH=. "$PYTHON_BIN" scripts/check_db.py
+if ! PYTHONPATH=. "$PYTHON_BIN" scripts/check_db.py; then
+  echo "Database check failed."
+  echo "This database has not been built for Rob v2 yet, or runtime grants are incomplete."
+  echo
+  echo "Manual fix:"
+  echo "1. Open pgAdmin4 / psql as doadmin."
+  echo "2. Select the target database."
+  echo "3. Run scripts/db/build/001_core_schema.sql."
+  echo "4. Run scripts/db/build/002_indexes.sql."
+  echo "5. Run scripts/db/build/003_achievements.sql."
+  echo "6. Run scripts/db/build/004_sub_send_names.sql."
+  echo "7. Run scripts/db/build/005_count_recovery.sql."
+  echo "8. Run the correct grants file from scripts/db/grants/."
+  echo "9. Rerun deploy."
+  exit 1
+fi
 
 echo "[11/13] Restart webhook service"
 sudo systemctl restart "$SERVICE_NAME"
@@ -97,4 +112,4 @@ done
 echo "[13/13] Show final service status"
 sudo systemctl --no-pager --full status "$SERVICE_NAME" | sed -n '1,14p'
 
-echo "Webhook deployment completed successfully."
+echo "Webhook prod-role rehearsal deploy complete."

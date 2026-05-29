@@ -20,10 +20,6 @@ log() {
   printf '[install-webhook-dev] %s\n' "$*"
 }
 
-warn() {
-  printf '[install-webhook-dev] warning: %s\n' "$*" >&2
-}
-
 die() {
   printf '[install-webhook-dev] error: %s\n' "$*" >&2
   exit 1
@@ -113,9 +109,6 @@ write_env_template_if_missing() {
 
   if [[ -f "${env_file}" ]]; then
     log "Keeping existing ${env_file}"
-    if grep -Eq 'dev_rob_bot|rob-dev\.barecoding\.com' "${env_file}"; then
-      warn "Existing .env appears to contain old dev webhook values. This installer will not overwrite it. Please update DATABASE_URL to prod_rob_webhook against rob_dev_v2 and THRONE_WEBHOOK_BASE_URL to https://throne.robthebot.com."
-    fi
     return
   fi
 
@@ -140,6 +133,21 @@ THRONE_PARSE_TEST_SENDS_AS_REAL_SENDS=false
 EOF
   chown "${DEPLOY_USER}:${RUNTIME_GROUP}" "${env_file}"
   chmod 0640 "${env_file}"
+}
+
+warn_if_stale_env_values() {
+  local env_file="${APP_DIR}/.env"
+  [[ -f "${env_file}" ]] || return
+
+  if grep -Eq 'dev_rob_bot|rob-dev\.barecoding\.com' "${env_file}"; then
+    warn "Existing .env appears to contain old dev webhook values."
+    warn "This installer will not overwrite it."
+    warn "Please update DATABASE_URL to prod_rob_webhook against rob_dev_v2 and THRONE_WEBHOOK_BASE_URL to https://throne.robthebot.com."
+  elif grep -Fq "dev_rob_webhook" "${env_file}"; then
+    warn "Existing .env still references dev_rob_webhook."
+    warn "This installer will not overwrite it."
+    warn "Please update DATABASE_URL to prod_rob_webhook against rob_dev_v2."
+  fi
 }
 
 install_service_files() {
@@ -216,15 +224,11 @@ Runtime user:   ${RUNTIME_USER}
 Service:        ${SERVICE_NAME}
 Deploy script:  ${DEPLOY_SCRIPT_LINK}
 
-This webhook install is configured for prod-role rehearsal:
-  - DB user should be prod_rob_webhook
-  - DB target should be rob_dev_v2 until prod cutover
-  - Public webhook base URL should be https://throne.robthebot.com
-
 Next steps:
-  1. Edit ${APP_DIR}/.env with the real prod_rob_webhook database password and DigitalOcean DB host.
-  2. Run scripts.check_db from the webhook runtime credentials.
-  3. Restart the webhook service.
+  1. Edit ${APP_DIR}/.env with the real PostgreSQL and webhook values.
+  2. Keep THRONE_WEBHOOK_BASE_URL set to https://throne.robthebot.com.
+  3. If you want signed requests, set THRONE_WEBHOOK_REQUIRE_SIGNATURE=true and add THRONE_PUBLIC_KEY_PEM.
+  4. Run ${DEPLOY_SCRIPT_LINK} after pushing updates, or restart the service manually once the .env file is ready.
 EOF
 }
 
@@ -236,6 +240,7 @@ main() {
   clone_or_update_repo
   install_python_environment
   write_env_template_if_missing
+  warn_if_stale_env_values
   install_service_files
   install_sudoers
   maybe_enable_and_start

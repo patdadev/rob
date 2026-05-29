@@ -26,23 +26,21 @@ Rob achievements are definition-driven in code, with per-user unlock state store
 
 ## Manual DB setup
 
-Run manually as `doadmin` for rehearsal on `rob_dev_v2`:
+Run manually as `doadmin`:
 
-1. Build the base `rob_dev_v2` schema with `001_core_schema.sql` and `002_indexes.sql`.
-2. Run `scripts/db/build/003_achievements.sql`.
-3. Run `scripts/db/grants/dev_rehearsal_prod_roles.sql`.
-4. Configure the bot and webhook servers to use production-style runtime users against `rob_dev_v2` for rehearsal:
-   - `prod_rob_bot`
-   - `prod_rob_webhook`
-5. Validate with each runtime credential:
+1. Ensure base DB build scripts are already applied:
+   - `scripts/db/build/001_core_schema.sql`
+   - `scripts/db/build/002_indexes.sql`
+2. Apply achievements and current rehearsal extensions:
+   - `scripts/db/build/003_achievements.sql`
+   - `scripts/db/build/004_sub_send_names.sql`
+   - `scripts/db/build/005_count_recovery.sql`
+3. Re-run the relevant grants file:
+   - dev rehearsal: `scripts/db/grants/dev_rehearsal_prod_roles.sql`
+   - prod bot: `scripts/db/grants/prod_rob_bot.sql`
+   - prod webhook: `scripts/db/grants/prod_rob_webhook.sql`
+4. Validate with runtime credentials:
    - `PYTHONPATH=. python3 -m scripts.check_db`
-
-`rob_dev_v2` is the rehearsal database. `prod_rob_bot` is the bot runtime user. `prod_rob_webhook` is the webhook runtime user. Production runtime should later point to `rob_prod`, not `rob_dev_v2`.
-
-For production on `rob_prod`, run `scripts/db/build/003_achievements.sql`, then re-run the relevant production grants file:
-
-- prod bot: `scripts/db/grants/prod_rob_bot.sql`
-- prod webhook: `scripts/db/grants/prod_rob_webhook.sql`
 
 If `scripts.check_db.py` reports achievement tables missing, apply the SQL manually and rerun the check.
 

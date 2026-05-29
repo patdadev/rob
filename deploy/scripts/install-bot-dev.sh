@@ -113,14 +113,34 @@ write_env_template_if_missing() {
 
   log "Writing bot .env template to ${env_file}"
   cat > "${env_file}" <<'EOF'
-APP_ENV=dev
+APP_ENV=prod
 LOG_LEVEL=INFO
-DATABASE_URL=postgresql://dev_rob_bot:replace@127.0.0.1:5432/rob_dev_v2
+DATABASE_URL=postgresql://prod_rob_bot:replace@replace:25060/rob_dev_v2?sslmode=require
 DISCORD_TOKEN=replace
-BOT_NAME=Rob Dev
+DISCORD_GUILD_ID=replace
+BOT_NAME=Rob
+# Optional: useful when the bot needs to generate webhook URLs.
+THRONE_WEBHOOK_BASE_URL=https://throne.robthebot.com
 EOF
   chown "${DEPLOY_USER}:${RUNTIME_GROUP}" "${env_file}"
   chmod 0640 "${env_file}"
+}
+
+warn_if_stale_env_values() {
+  local env_file="${APP_DIR}/.env"
+  [[ -f "${env_file}" ]] || return
+
+  local stale=()
+  for token in "dev_rob_bot" "dev_rob_webhook" "rob-dev.barecoding.com"; do
+    if grep -Fq "${token}" "${env_file}"; then
+      stale+=("${token}")
+    fi
+  done
+
+  if [[ "${#stale[@]}" -gt 0 ]]; then
+    log "WARNING: ${env_file} still contains stale values (${stale[*]})."
+    log "WARNING: Update DATABASE_URL to prod_rob_bot on rob_dev_v2 before restarting."
+  fi
 }
 
 install_service_files() {
@@ -189,7 +209,7 @@ maybe_enable_and_start() {
 print_summary() {
   cat <<EOF
 
-Bot dev bootstrap complete.
+Bot prod-role rehearsal bootstrap complete.
 
 App root:       ${APP_ROOT}
 App dir:        ${APP_DIR}
@@ -200,8 +220,9 @@ Deploy script:  ${DEPLOY_SCRIPT_LINK}
 
 Next steps:
   1. Edit ${APP_DIR}/.env with the real PostgreSQL and Discord values.
-  2. Confirm the bot can connect with the configured token.
-  3. Run ${DEPLOY_SCRIPT_LINK} after pushing updates, or restart the service manually once the .env file is ready.
+  2. Keep DATABASE_URL on prod_rob_bot against rob_dev_v2 for rehearsal.
+  3. Confirm the bot can connect with the configured token.
+  4. Run ${DEPLOY_SCRIPT_LINK} after pushing updates, or restart the service manually once the .env file is ready.
 EOF
 }
 
@@ -213,6 +234,7 @@ main() {
   clone_or_update_repo
   install_python_environment
   write_env_template_if_missing
+  warn_if_stale_env_values
   install_service_files
   install_sudoers
   maybe_enable_and_start

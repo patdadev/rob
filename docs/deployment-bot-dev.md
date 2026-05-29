@@ -1,65 +1,47 @@
-# Deployment: Bot Dev
+# Deployment: Bot (Prod-Role Rehearsal)
 
-For a first-time bootstrap on a fresh Debian or Ubuntu host, run:
-
-```bash
-sudo DEPLOY_USER=deployuser bash deploy/scripts/install-bot-dev.sh
-```
-
-That installer:
-
-- installs system packages
-- clones the configured branch into `/opt/rob-bot/app`
-- creates the virtual environment
-- installs the systemd unit
-- creates `/opt/rob-bot/deploy-bot-dev.sh`
-- installs the deploy sudoers entry
-- writes a bot `.env` template if one does not already exist
-- installs or refreshes the global `rob` command
-- runs migrations + DB checks before first service start (when real env values exist)
-
-## Target
+Use this on the bot host:
 
 - App path: `/opt/rob-bot/app`
 - Service: `rob-bot-dev.service`
+- Runtime DB user: `prod_rob_bot`
+- Rehearsal DB: `rob_dev_v2`
 
-## Setup
+`deploy/scripts/install-bot-dev.sh` is safe-by-default:
 
-Use these steps if you are doing the install manually instead of the bootstrap script above.
+- does not overwrite an existing `.env`;
+- does not run DB build SQL;
+- does not run SQLite import;
+- does not create DB users;
+- warns if stale values are found in `.env`.
 
-1. Create a runtime user such as `rob`.
-2. Clone the repo into `/opt/rob-bot/app`.
-3. Copy `.env.example` to `/opt/rob-bot/app/.env` and fill the bot values. `DISCORD_TOKEN` is required on the bot server.
-4. Create `.venv` and install `requirements.txt`.
-5. Copy `deploy/systemd/rob-bot-dev.service` to `/etc/systemd/system/rob-bot-dev.service`.
-6. Copy or symlink `deploy/scripts/deploy-bot-dev.sh` to `/opt/rob-bot/deploy-bot-dev.sh`.
-7. Run `scripts/install-rob-global.sh` if you want the `rob` command immediately before the first deploy.
-8. Enable the service with `sudo systemctl enable --now rob-bot-dev.service`.
-9. Verify startup with `PYTHONPATH=. python -m apps.bot.main`.
+Bot `.env` should include Discord bot values:
 
-## Passwordless sudo for deploy user
-
-`deploy-bot-dev.sh` restarts the bot service and reads its status with `sudo systemctl ...`, so the SSH deploy user should be allowed to run those commands without an interactive password prompt.
-
-Example `/etc/sudoers.d/rob-bot-deploy` entry:
-
-```sudoers
-Cmnd_Alias ROB_BOT_DEPLOY = /bin/systemctl restart rob-bot-dev.service, /usr/bin/systemctl restart rob-bot-dev.service, /bin/systemctl --no-pager --full status rob-bot-dev.service, /usr/bin/systemctl --no-pager --full status rob-bot-dev.service
-deployuser ALL=(root) NOPASSWD: ROB_BOT_DEPLOY
+```dotenv
+APP_ENV=prod
+LOG_LEVEL=INFO
+DATABASE_URL=postgresql://prod_rob_bot:replace@replace:25060/rob_dev_v2?sslmode=require
+DISCORD_TOKEN=replace
+DISCORD_GUILD_ID=replace
+BOT_NAME=Rob
+THRONE_WEBHOOK_BASE_URL=https://throne.robthebot.com
 ```
 
-## GitHub Actions
+`THRONE_WEBHOOK_BASE_URL` is optional on bot hosts, but recommended when bot flows need to render webhook URLs.
 
-Add these secrets:
+## Canonical install sequence
 
-- `BOT_DEV_HOST`
-- `BOT_DEV_USER`
-- `BOT_DEV_SSH_KEY`
-- `BOT_DEV_PORT`
-
-`Deploy Bot Dev` is now automated:
-
-- runs on `push` to `main` when bot/shared runtime files change
-- supports manual `workflow_dispatch` with optional `deploy_ref` override
-- deploys the exact commit SHA by default (`DEPLOY_REF=${{ github.sha }}`)
-- refreshes the global `rob` command on the target host during each deploy
+```bash
+sudo bash deploy/scripts/install-bot-dev.sh
+sudo nano /opt/rob-bot/app/.env
+sudo chown "${USER}:rob" /opt/rob-bot/app/.env
+sudo chmod 0640 /opt/rob-bot/app/.env
+cd /opt/rob-bot/app
+set -a
+source .env
+set +a
+PYTHONPATH=. .venv/bin/python -m scripts.check_db
+sudo systemctl restart rob-bot-dev.service
+sudo systemctl status rob-bot-dev.service --no-pager
+sudo journalctl -u rob-bot-dev.service -n 100 --no-pager
+```

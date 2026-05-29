@@ -65,4 +65,4 @@ Deploy scripts run `scripts/check_db.py` and stop on failure with:
 
 > Database check failed.  
 > This database has not been built for Rob v2 yet, or runtime grants are incomplete.  
-> Run `001_core_schema.sql`, `002_indexes.sql`, and the correct runtime grants SQL, then rerun deploy.
+> Run `001_core_schema.sql`, `002_indexes.sql`, `003_achievements.sql`, `004_sub_send_names.sql`, `005_count_recovery.sql`, and the correct runtime grants SQL, then rerun deploy.
