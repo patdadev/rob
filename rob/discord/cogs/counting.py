@@ -93,10 +93,6 @@ class CountingCog(commands.Cog):
                 await message.delete()
             except discord.HTTPException:
                 pass
-            try:
-                await message.add_reaction("❌")
-            except discord.HTTPException:
-                pass
             return
 
         if result.reason == "wrong_number_reset":

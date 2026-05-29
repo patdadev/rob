@@ -5,6 +5,7 @@ import logging
 
 import discord
 
+from rob.achievements.embeds import achievement_unlocked_card
 from rob.achievements.service import AchievementsService
 from rob.database.repositories.guild_settings import GuildSettingsRepository
 from rob.database.repositories.leaderboards import LeaderboardsRepository
@@ -98,6 +99,18 @@ class SendQueueService:
         log.info("Send queue cycle started.")
         pending = await self.sends.fetch_for_status("pending", limit=50)
         log.info("Pending sends found: %s", len(pending))
+        if self.counting_service is not None:
+            queued_maintenance = await self.sends.fetch_for_status("queued_maintenance", limit=50)
+            recovery_candidates = list(pending) + list(queued_maintenance)
+            for send in recovery_candidates:
+                try:
+                    await self.counting_service.process_send_for_count_rescue(send)
+                except Exception:
+                    log.exception(
+                        "Count rescue evaluation failed for send_id=%s guild_id=%s.",
+                        send.id,
+                        send.guild_id,
+                    )
 
         for send in pending:
             ok = await self._post_send(send)
@@ -160,6 +173,7 @@ class SendQueueService:
             await self._unlock_send_achievements(
                 send,
                 previous_leader_user_id=previous_leader.user_id if previous_leader is not None else None,
+                announce_channel=channel,
             )
         except Exception:
             log.exception(
@@ -167,15 +181,6 @@ class SendQueueService:
                 send.id,
                 send.guild_id,
             )
-        if self.counting_service is not None:
-            try:
-                await self.counting_service.process_send_for_count_rescue(send)
-            except Exception:
-                log.exception(
-                    "Count rescue evaluation failed for send_id=%s guild_id=%s.",
-                    send.id,
-                    send.guild_id,
-                )
         try:
             await self.leaderboard_service.maybe_post_leader_alert(
                 send.guild_id,
@@ -189,40 +194,79 @@ class SendQueueService:
             )
         return True
 
-    async def _unlock_send_achievements(self, send, *, previous_leader_user_id: int | None) -> None:
+    async def _unlock_send_achievements(
+        self,
+        send,
+        *,
+        previous_leader_user_id: int | None,
+        announce_channel: discord.TextChannel | None,
+    ) -> None:
         if self.achievements is None:
             return
 
         guild_id = send.guild_id
         domme_user_id = send.domme_user_id
+        guild = self.bot.get_guild(guild_id)
+
+        def _unlock_display_name(user_id: int) -> str:
+            member = guild.get_member(user_id) if guild is not None else None
+            if member is not None:
+                return member.display_name
+            return f"<@{user_id}>"
+
+        def _announce_callback(user_id: int):
+            if announce_channel is None:
+                return None
+
+            async def _callback(achievement) -> None:
+                await announce_channel.send(
+                    **achievement_unlocked_card(
+                        achievement,
+                        unlocked_by_display_name=_unlock_display_name(user_id),
+                    ).send_kwargs()
+                )
+
+            return _callback
+
+        async def _unlock(
+            *,
+            user_id: int,
+            achievement_key: str,
+            source: str,
+            metadata: dict | None = None,
+        ) -> bool:
+            return await self.achievements.unlock_achievement(
+                guild_id=guild_id,
+                discord_user_id=user_id,
+                achievement_key=achievement_key,
+                source=source,
+                metadata=metadata,
+                on_unlocked=_announce_callback(user_id),
+            )
 
         if send.is_test_send:
-            await self.achievements.unlock_achievement(
-                guild_id=guild_id,
-                discord_user_id=domme_user_id,
+            await _unlock(
+                user_id=domme_user_id,
                 achievement_key="domme_first_test_send",
                 source="send:test",
             )
         else:
-            await self.achievements.unlock_achievement(
-                guild_id=guild_id,
-                discord_user_id=domme_user_id,
+            await _unlock(
+                user_id=domme_user_id,
                 achievement_key="domme_first_tracked_send",
                 source="send:posted",
             )
 
         if send.source.startswith("manual:"):
-            await self.achievements.unlock_achievement(
-                guild_id=guild_id,
-                discord_user_id=domme_user_id,
+            await _unlock(
+                user_id=domme_user_id,
                 achievement_key="domme_manual_send",
                 source="send:manual",
             )
 
         if send.source == "throne_webhook" and not send.is_test_send:
-            await self.achievements.unlock_achievement(
-                guild_id=guild_id,
-                discord_user_id=domme_user_id,
+            await _unlock(
+                user_id=domme_user_id,
                 achievement_key="throne_first_real_auto_send",
                 source="send:throne",
             )
@@ -239,32 +283,28 @@ class SendQueueService:
         )
         if not send.is_test_send:
             if stats.total_cents >= 10_000:
-                await self.achievements.unlock_achievement(
-                    guild_id=guild_id,
-                    discord_user_id=domme_user_id,
+                await _unlock(
+                    user_id=domme_user_id,
                     achievement_key="domme_100_tracked",
                     source="send:posted",
                 )
             if stats.total_cents >= 100_000:
-                await self.achievements.unlock_achievement(
-                    guild_id=guild_id,
-                    discord_user_id=domme_user_id,
+                await _unlock(
+                    user_id=domme_user_id,
                     achievement_key="domme_1000_tracked",
                     source="send:posted",
                 )
             if stats.total_cents >= 500_000:
-                await self.achievements.unlock_achievement(
-                    guild_id=guild_id,
-                    discord_user_id=domme_user_id,
+                await _unlock(
+                    user_id=domme_user_id,
                     achievement_key="domme_5000_tracked",
                     source="send:posted",
                 )
 
         for threshold, key in ((10, "domme_10_sends_received"), (50, "domme_50_sends_received"), (100, "domme_100_sends_received")):
             if stats.send_count >= threshold:
-                await self.achievements.unlock_achievement(
-                    guild_id=guild_id,
-                    discord_user_id=domme_user_id,
+                await _unlock(
+                    user_id=domme_user_id,
                     achievement_key=key,
                     source="send:posted",
                 )
@@ -277,9 +317,8 @@ class SendQueueService:
             owner_test_user_id=self.owner_test_user_id,
         )
         if rank is not None and rank <= 10:
-            await self.achievements.unlock_achievement(
-                guild_id=guild_id,
-                discord_user_id=domme_user_id,
+            await _unlock(
+                user_id=domme_user_id,
                 achievement_key="domme_top_10",
                 source="leaderboard:rank",
                 metadata={"rank": rank},
@@ -294,15 +333,15 @@ class SendQueueService:
                 discord_user_id=domme_user_id,
                 achievement_key="domme_first_place",
                 source="leaderboard:rank",
+                on_unlocked=_announce_callback(domme_user_id),
             )
             if (
                 previous_leader_user_id is not None
                 and previous_leader_user_id != domme_user_id
                 and "domme_first_place" in already_unlocked
             ):
-                await self.achievements.unlock_achievement(
-                    guild_id=guild_id,
-                    discord_user_id=domme_user_id,
+                await _unlock(
+                    user_id=domme_user_id,
                     achievement_key="domme_regain_first",
                     source="leaderboard:rank",
                 )
@@ -311,9 +350,8 @@ class SendQueueService:
         if sub_user_id is None:
             return
 
-        await self.achievements.unlock_achievement(
-            guild_id=guild_id,
-            discord_user_id=sub_user_id,
+        await _unlock(
+            user_id=sub_user_id,
             achievement_key="sub_first_send",
             source="send:posted",
         )
@@ -326,32 +364,28 @@ class SendQueueService:
             owner_test_user_id=self.owner_test_user_id,
         )
         if sub_stats.total_cents >= 10_000:
-            await self.achievements.unlock_achievement(
-                guild_id=guild_id,
-                discord_user_id=sub_user_id,
+            await _unlock(
+                user_id=sub_user_id,
                 achievement_key="sub_100_sent",
                 source="send:posted",
             )
         if sub_stats.total_cents >= 100_000:
-            await self.achievements.unlock_achievement(
-                guild_id=guild_id,
-                discord_user_id=sub_user_id,
+            await _unlock(
+                user_id=sub_user_id,
                 achievement_key="sub_1000_sent",
                 source="send:posted",
             )
         if sub_stats.total_cents >= 500_000:
-            await self.achievements.unlock_achievement(
-                guild_id=guild_id,
-                discord_user_id=sub_user_id,
+            await _unlock(
+                user_id=sub_user_id,
                 achievement_key="sub_5000_sent",
                 source="send:posted",
             )
 
         for threshold, key in ((10, "sub_10_sends"), (50, "sub_50_sends"), (100, "sub_100_sends")):
             if sub_stats.send_count >= threshold:
-                await self.achievements.unlock_achievement(
-                    guild_id=guild_id,
-                    discord_user_id=sub_user_id,
+                await _unlock(
+                    user_id=sub_user_id,
                     achievement_key=key,
                     source="send:posted",
                 )
@@ -363,9 +397,8 @@ class SendQueueService:
             and previous_leader_user_id is not None
             and previous_leader_user_id != domme_user_id
         ):
-            await self.achievements.unlock_achievement(
-                guild_id=guild_id,
-                discord_user_id=sub_user_id,
+            await _unlock(
+                user_id=sub_user_id,
                 achievement_key="sub_kingmaker",
                 source="leaderboard:leader_change",
                 metadata={"new_leader_user_id": domme_user_id},

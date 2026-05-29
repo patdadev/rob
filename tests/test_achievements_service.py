@@ -104,3 +104,34 @@ def test_summary_counts_unlocked_and_total():
     assert summary.unlocked_count == 2
     assert summary.total_count >= 2
 
+
+def test_unlock_callback_runs_only_for_new_unlocks():
+    repo = _FakeAchievementsRepo()
+    service = AchievementsService(repo)  # type: ignore[arg-type]
+    announced: list[str] = []
+
+    async def _callback(definition):
+        announced.append(definition.key)
+
+    first = asyncio.run(
+        service.unlock_achievement(
+            guild_id=1,
+            discord_user_id=2,
+            achievement_key="count_10",
+            source="test",
+            on_unlocked=_callback,
+        )
+    )
+    second = asyncio.run(
+        service.unlock_achievement(
+            guild_id=1,
+            discord_user_id=2,
+            achievement_key="count_10",
+            source="test",
+            on_unlocked=_callback,
+        )
+    )
+
+    assert first is True
+    assert second is False
+    assert announced == ["count_10"]

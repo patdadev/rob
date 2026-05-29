@@ -252,6 +252,16 @@ def test_prod_webhook_grants_are_runtime_only_and_not_schema_changing():
     assert "user_achievements" in grants
     assert "achievement_events" in grants
     assert "sub_send_names" in grants
+    assert "REVOKE DELETE ON TABLE user_achievements FROM prod_rob_webhook;" in grants
+    assert "REVOKE DELETE ON TABLE achievement_events FROM prod_rob_webhook;" in grants
+
+
+def test_rehearsal_webhook_grants_revoke_delete_for_achievement_tables():
+    grants = (
+        REPO_ROOT / "scripts" / "db" / "grants" / "dev_rehearsal_prod_roles.sql"
+    ).read_text(encoding="utf-8")
+    assert "REVOKE DELETE ON TABLE user_achievements FROM prod_rob_webhook;" in grants
+    assert "REVOKE DELETE ON TABLE achievement_events FROM prod_rob_webhook;" in grants
 
 
 def test_webhook_supports_new_and_compatibility_routes():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 
 from rob.achievements.definitions import ACHIEVEMENTS, ACHIEVEMENTS_BY_KEY, AchievementDefinition
 from rob.database.repositories.achievements import AchievementsRepository
@@ -43,6 +44,7 @@ class AchievementsService:
         achievement_key: str,
         source: str | None = None,
         metadata: dict | None = None,
+        on_unlocked: Callable[[AchievementDefinition], Awaitable[None]] | None = None,
     ) -> bool:
         definition = self.get_definition(achievement_key)
         if definition is None:
@@ -68,6 +70,16 @@ class AchievementsService:
                     source=source,
                     metadata=metadata,
                 )
+                if on_unlocked is not None:
+                    try:
+                        await on_unlocked(definition)
+                    except Exception:
+                        log.exception(
+                            "Achievement announcement failed guild_id=%s user_id=%s key=%s",
+                            guild_id,
+                            discord_user_id,
+                            achievement_key,
+                        )
             return unlocked
         except Exception:
             log.exception(

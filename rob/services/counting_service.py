@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 import discord
 
 from rob.achievements.service import COUNT_NUMBER_TO_ACHIEVEMENT_KEYS, AchievementsService
+from rob.achievements.embeds import achievement_unlocked_card
 from rob.database.repositories.bot_settings import BotSettingsRepository
 from rob.database.repositories.counting import CountingRepository
 from rob.database.repositories.dommes import DommesRepository
@@ -249,12 +250,21 @@ class CountingService:
 
         if number != expected:
             if self.achievements is not None:
+                on_unlocked = self._make_channel_achievement_announcer(
+                    guild_id=message.guild.id,
+                    channel_id=message.channel.id,
+                    unlocked_by_user_id=message.author.id,
+                    unlocked_by_display_name=message.author.display_name
+                    if isinstance(message.author, discord.Member)
+                    else getattr(message.author, "name", str(message.author.id)),
+                )
                 await self.achievements.unlock_achievement(
                     guild_id=message.guild.id,
                     discord_user_id=message.author.id,
                     achievement_key="count_first_mistake",
                     source="counting:wrong_number",
                     metadata={"attempted_content": content, "expected_number": expected},
+                    on_unlocked=on_unlocked,
                 )
 
             deadline = now + timedelta(seconds=self.rescue_window_seconds)
@@ -336,6 +346,14 @@ class CountingService:
             pending_restore=False,
         )
         if self.achievements is not None:
+            on_unlocked = self._make_channel_achievement_announcer(
+                guild_id=message.guild.id,
+                channel_id=message.channel.id,
+                unlocked_by_user_id=message.author.id,
+                unlocked_by_display_name=message.author.display_name
+                if isinstance(message.author, discord.Member)
+                else getattr(message.author, "name", str(message.author.id)),
+            )
             for achievement_key in COUNT_NUMBER_TO_ACHIEVEMENT_KEYS.get(number, ()):
                 await self.achievements.unlock_achievement(
                     guild_id=message.guild.id,
@@ -343,15 +361,18 @@ class CountingService:
                     achievement_key=achievement_key,
                     source="counting:number",
                     metadata={"number": number},
+                    on_unlocked=on_unlocked,
                 )
             if expected == 1:
-                await self.achievements.unlock_many(
-                    guild_id=message.guild.id,
-                    discord_user_id=message.author.id,
-                    achievement_keys=["count_start", "count_after_reset"],
-                    source="counting:restart",
-                    metadata={"number": number},
-                )
+                for achievement_key in ("count_start", "count_after_reset"):
+                    await self.achievements.unlock_achievement(
+                        guild_id=message.guild.id,
+                        discord_user_id=message.author.id,
+                        achievement_key=achievement_key,
+                        source="counting:restart",
+                        metadata={"number": number},
+                        on_unlocked=on_unlocked,
+                    )
         return CountingProcessResult(
             success=True,
             expected_number=expected,
@@ -395,6 +416,11 @@ class CountingService:
                 except discord.HTTPException:
                     pass
             if self.achievements is not None and send.sub_user_id is not None:
+                announce_sub = self._make_channel_achievement_announcer(
+                    guild_id=window.guild_id,
+                    channel_id=state.channel_id,
+                    unlocked_by_user_id=send.sub_user_id,
+                )
                 remaining_seconds = int((window.expires_at - now).total_seconds())
                 await self.achievements.unlock_achievement(
                     guild_id=send.guild_id,
@@ -402,6 +428,7 @@ class CountingService:
                     achievement_key="sub_save_count",
                     source="counting:rescue",
                     metadata={"remaining_seconds": max(0, remaining_seconds)},
+                    on_unlocked=announce_sub,
                 )
                 if remaining_seconds <= self.rescue_tick_seconds:
                     await self.achievements.unlock_achievement(
@@ -410,6 +437,7 @@ class CountingService:
                         achievement_key="count_last_second_save",
                         source="counting:rescue",
                         metadata={"remaining_seconds": max(0, remaining_seconds)},
+                        on_unlocked=announce_sub,
                     )
                 if window.failed_user_role == "sub" and window.failed_user_id == send.sub_user_id:
                     await self.achievements.unlock_achievement(
@@ -417,19 +445,26 @@ class CountingService:
                         discord_user_id=send.sub_user_id,
                         achievement_key="count_sub_recovered_own_mistake",
                         source="counting:rescue",
+                        on_unlocked=announce_sub,
                     )
                 if window.failed_user_role == "domme":
-                    await self.achievements.unlock_many(
+                    await self.achievements.unlock_achievement(
                         guild_id=send.guild_id,
                         discord_user_id=send.sub_user_id,
-                        achievement_keys=["count_sub_recovered_domme_mistake"],
+                        achievement_key="count_sub_recovered_domme_mistake",
                         source="counting:rescue",
+                        on_unlocked=announce_sub,
                     )
                     await self.achievements.unlock_achievement(
                         guild_id=send.guild_id,
                         discord_user_id=window.failed_user_id,
                         achievement_key="count_domme_saved_by_sub",
                         source="counting:rescue",
+                        on_unlocked=self._make_channel_achievement_announcer(
+                            guild_id=window.guild_id,
+                            channel_id=state.channel_id,
+                            unlocked_by_user_id=window.failed_user_id,
+                        ),
                     )
             return True
         return False
@@ -555,6 +590,11 @@ class CountingService:
                     discord_user_id=window.failed_user_id,
                     achievement_key="count_domme_failed_recovery",
                     source="counting:rescue_expired",
+                    on_unlocked=self._make_channel_achievement_announcer(
+                        guild_id=window.guild_id,
+                        channel_id=state.channel_id,
+                        unlocked_by_user_id=window.failed_user_id,
+                    ),
                 )
             return
 
@@ -584,6 +624,11 @@ class CountingService:
                 discord_user_id=window.failed_user_id,
                 achievement_key="count_sub_blocked",
                 source="counting:rescue_expired",
+                on_unlocked=self._make_channel_achievement_announcer(
+                    guild_id=window.guild_id,
+                    channel_id=state.channel_id,
+                    unlocked_by_user_id=window.failed_user_id,
+                ),
             )
 
     async def _cancel_active_windows_for_guild(self, guild_id: int) -> None:
@@ -653,6 +698,38 @@ class CountingService:
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             return None
         return fetched
+
+    def _make_channel_achievement_announcer(
+        self,
+        *,
+        guild_id: int,
+        channel_id: int | None,
+        unlocked_by_user_id: int,
+        unlocked_by_display_name: str | None = None,
+    ):
+        async def _announce(achievement) -> None:
+            if channel_id is None:
+                return
+            channel = await self._resolve_channel(guild_id, channel_id)
+            if channel is None:
+                return
+            display_name = unlocked_by_display_name
+            if display_name is None:
+                guild = self.bot.get_guild(guild_id)
+                member = guild.get_member(unlocked_by_user_id) if guild is not None else None
+                display_name = (
+                    member.display_name
+                    if member is not None
+                    else f"<@{unlocked_by_user_id}>"
+                )
+            await channel.send(
+                **achievement_unlocked_card(
+                    achievement,
+                    unlocked_by_display_name=display_name,
+                ).send_kwargs()
+            )
+
+        return _announce
 
     def _send_qualifies_for_window(self, *, send, window: CountRecoveryWindow, send_time: datetime) -> bool:
         if send.is_private:

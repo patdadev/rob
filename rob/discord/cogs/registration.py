@@ -8,6 +8,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from rob.discord.permissions import member_has_role
+from rob.achievements.embeds import achievement_unlocked_card
 from rob.ui.cards.errors import error_card, error_permission
 from rob.ui.cards.registration import domme_registered_card, registration_card, throne_setup_card
 from rob.ui.copy import (
@@ -241,11 +242,27 @@ class RegistrationCog(commands.Cog):
 
         achievements_service = getattr(self.bot, "achievements_service", None)
         if achievements_service is not None:
+            def _announce_domme_unlock(display_name: str):
+                async def _callback(achievement) -> None:
+                    await interaction.followup.send(
+                        **achievement_unlocked_card(
+                            achievement,
+                            unlocked_by_display_name=display_name,
+                        ).send_kwargs()
+                    )
+
+                return _callback
+
             await achievements_service.unlock_achievement(
                 guild_id=guild_id,
                 discord_user_id=discord_user_id,
                 achievement_key="throne_tracking_started",
                 source="register:domme",
+                on_unlocked=_announce_domme_unlock(
+                    interaction.user.display_name
+                    if isinstance(interaction.user, discord.Member)
+                    else getattr(interaction.user, "name", str(discord_user_id))
+                ),
             )
 
         await interaction.followup.send(**domme_registered_card().send_kwargs())
