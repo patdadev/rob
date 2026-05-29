@@ -59,3 +59,41 @@ def test_deploy_scripts_and_docs():
 
     assert deploy_bot
     assert deploy_webhook
+
+
+def test_cloudflared_webhook_installer_guards():
+    script_path = Path('deploy/scripts/install-cloudflared-webhook.sh')
+    assert script_path.exists()
+    script = script_path.read_text()
+
+    assert 'throne.robthebot.com' in script
+    assert 'http://127.0.0.1:8080' in script
+    assert 'TUNNEL_TOKEN=' not in script
+    assert 'eyJh' not in script
+    assert 'ufw allow 8080' not in script
+    assert 'firewall-cmd' not in script
+    assert 'iptables' not in script
+    assert 'head -n 1' not in script
+    assert 'source_file=' not in script
+    assert '.bak-$(date +%Y%m%d-%H%M%S)' in script
+    assert 'cp -a "${CLOUDFLARED_CONFIG}" "${backup_path}"' in script
+    assert 'Named tunnel ${tunnel_name} exists, but ${credentials_file} was not found.' in script
+
+
+def test_webhook_dev_installer_uses_prod_role_rehearsal_env_template():
+    script = Path('deploy/scripts/install-webhook-dev.sh').read_text()
+    env_template = script.split("cat > \"${env_file}\" <<'EOF'", 1)[1].split('EOF', 1)[0]
+
+    assert 'DATABASE_URL=postgresql://dev_rob_bot:replace@127.0.0.1:5432/rob_dev_v2' not in env_template
+    assert 'THRONE_WEBHOOK_BASE_URL=https://rob-dev.barecoding.com' not in env_template
+    assert 'prod_rob_webhook' in env_template
+    assert 'rob_dev_v2' in env_template
+    assert 'https://throne.robthebot.com' in env_template
+
+
+def test_webhook_dev_installer_warns_about_existing_stale_env():
+    script = Path('deploy/scripts/install-webhook-dev.sh').read_text()
+
+    assert 'Existing .env appears to contain old dev webhook values.' in script
+    assert 'This installer will not overwrite it.' in script
+    assert 'dev_rob_bot|rob-dev\\.barecoding\\.com' in script
