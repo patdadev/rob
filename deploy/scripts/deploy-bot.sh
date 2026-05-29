@@ -11,6 +11,37 @@ PYTHON_BIN="${PYTHON_BIN:-${APP_DIR}/.venv/bin/python}"
 
 trap 'echo "Deploy failed. Showing service diagnostics:"; sudo systemctl status "$SERVICE_NAME" --no-pager || true; sudo journalctl -u "$SERVICE_NAME" -n 120 --no-pager || true' ERR
 
+load_env_file() {
+  local env_file="$1"
+  local line=""
+  local line_no=0
+
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    line_no=$((line_no + 1))
+    line="${line%$'\r'}"
+
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    [[ "${line}" =~ ^[[:space:]]*# ]] && continue
+
+    if [[ "${line}" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+      local key="${BASH_REMATCH[2]}"
+      local value="${BASH_REMATCH[3]}"
+      value="${value#"${value%%[![:space:]]*}"}"
+
+      if [[ ! "${value}" =~ ^\".*\"$ && ! "${value}" =~ ^\'.*\'$ ]]; then
+        value="$(printf '%s' "${value}" | sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+$//')"
+      fi
+
+      export "${key}=${value}"
+      continue
+    fi
+
+    echo "ERROR: Invalid .env syntax on line ${line_no}: ${line}"
+    echo "Hint: Use KEY=value format and prefix comments with #."
+    exit 1
+  done < "${env_file}"
+}
+
 echo "[1/12] Pre-flight checks"
 command -v git >/dev/null
 command -v python3 >/dev/null
@@ -61,7 +92,7 @@ else
 fi
 
 echo "[9/12] Load and validate environment"
-set -a; source .env; set +a
+load_env_file ".env"
 for key in DATABASE_URL DISCORD_TOKEN BOT_NAME; do
   [[ -n "${!key:-}" ]] || { echo "ERROR: Missing required environment variable: $key"; exit 1; }
 done
