@@ -89,6 +89,9 @@ Usage:
 
   rob count set <number> --guild <guild_id>
   rob count status --guild <guild_id>
+  rob scan --guild <guild_id>
+  rob auto-apply --guild <guild_id> [all|channels|roles|field_a,field_b]
+  rob achievement reset --guild <guild_id>
 
   rob block <discord_user_id>
   rob unblock <discord_user_id>
@@ -533,6 +536,50 @@ count_command() {
   esac
 }
 
+scan_command() {
+  collect_guild_option "$@"
+  if ((${#REMAINING_ARGS[@]})); then
+    set -- "${REMAINING_ARGS[@]}"
+  else
+    set --
+  fi
+  [[ $# -eq 0 ]] || die "usage: rob scan --guild <guild_id>"
+  ops_get "/guilds/${GUILD_ID}/scan?format=text"
+}
+
+auto_apply_command() {
+  collect_guild_option "$@"
+  if ((${#REMAINING_ARGS[@]})); then
+    set -- "${REMAINING_ARGS[@]}"
+  else
+    set --
+  fi
+  [[ $# -le 1 ]] || die "usage: rob auto-apply --guild <guild_id> [all|channels|roles|field_a,field_b]"
+  local options="${1:-all}"
+  ops_post_form "/guilds/${GUILD_ID}/scan/apply?format=text" "options=${options}"
+}
+
+achievement_command() {
+  local action="${1:-}"
+  shift || true
+
+  case "${action}" in
+    reset)
+      collect_guild_option "$@"
+      if ((${#REMAINING_ARGS[@]})); then
+        set -- "${REMAINING_ARGS[@]}"
+      else
+        set --
+      fi
+      [[ $# -eq 0 ]] || die "usage: rob achievement reset --guild <guild_id>"
+      ops_post_form "/guilds/${GUILD_ID}/achievements/reset?format=text"
+      ;;
+    *)
+      die "usage: rob achievement reset --guild <guild_id>"
+      ;;
+  esac
+}
+
 maintenance_command() {
   local action="${1:-status}"
   shift || true
@@ -613,6 +660,15 @@ case "${cmd}" in
     ;;
   count)
     count_command "$@"
+    ;;
+  scan)
+    scan_command "$@"
+    ;;
+  auto-apply)
+    auto_apply_command "$@"
+    ;;
+  achievement|achievements)
+    achievement_command "$@"
     ;;
   block)
     block_command "$@"

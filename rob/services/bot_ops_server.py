@@ -8,6 +8,100 @@ import discord
 
 log = logging.getLogger(__name__)
 
+GUILD_CHANNEL_FIELDS = (
+    "registration_channel_id",
+    "leaderboard_channel_id",
+    "send_track_channel_id",
+    "counting_channel_id",
+    "report_channel_id",
+    "warn_log_channel_id",
+)
+
+GUILD_CHANNEL_LABELS = {
+    "registration_channel_id": "Registration Channel",
+    "leaderboard_channel_id": "Leaderboard Channel",
+    "send_track_channel_id": "Send Tracker Channel",
+    "counting_channel_id": "Counting Channel",
+    "report_channel_id": "Report Channel",
+    "warn_log_channel_id": "Warn Log Channel",
+}
+
+GUILD_CHANNEL_MATCH_TOKENS = {
+    "registration_channel_id": ("registration", "register", "setup", "welcome"),
+    "leaderboard_channel_id": ("leaderboard", "rank", "leader-board"),
+    "send_track_channel_id": ("send-tracker", "send-tracking", "sendtracker", "throne", "sends"),
+    "counting_channel_id": ("counting", "count"),
+    "report_channel_id": ("report", "support", "help"),
+    "warn_log_channel_id": ("warn", "warning", "mod-log", "logs", "log"),
+}
+
+GUILD_ROLE_FIELDS = (
+    "domme_role_id",
+    "sub_role_id",
+    "mod_role_id",
+    "inactive_role_id",
+)
+
+GUILD_ROLE_LABELS = {
+    "domme_role_id": "Dom/me Role",
+    "sub_role_id": "Sub Role",
+    "mod_role_id": "Moderator Role",
+    "inactive_role_id": "Inactive Role",
+}
+
+GUILD_ROLE_MATCH_TOKENS = {
+    "domme_role_id": ("domme", "dom/me", "dom", "dommes"),
+    "sub_role_id": ("sub", "subs"),
+    "mod_role_id": ("mod", "mods", "moderator", "staff", "admin"),
+    "inactive_role_id": ("inactive", "inactivity", "away"),
+}
+
+SCAN_APPLY_FIELD_ORDER = (*GUILD_CHANNEL_FIELDS, *GUILD_ROLE_FIELDS)
+
+
+def _normalize_scan_name(name: str) -> str:
+    return name.strip().lower().replace("_", "-").replace(" ", "-")
+
+
+def _score_named_match(name: str, tokens: tuple[str, ...]) -> int:
+    normalized = _normalize_scan_name(name)
+    score = 0
+    for token in tokens:
+        normalized_token = _normalize_scan_name(token)
+        if normalized == normalized_token:
+            score = max(score, 100)
+        elif normalized.startswith(normalized_token):
+            score = max(score, 75)
+        elif normalized_token in normalized:
+            score = max(score, 50)
+    return score
+
+
+def _find_best_channel_match(channels: list[dict[str, Any]], field_name: str) -> dict[str, Any] | None:
+    tokens = GUILD_CHANNEL_MATCH_TOKENS[field_name]
+    scored: list[tuple[int, dict[str, Any]]] = []
+    for channel in channels:
+        score = _score_named_match(str(channel["name"]), tokens)
+        if score:
+            scored.append((score, channel))
+    if not scored:
+        return None
+    scored.sort(key=lambda item: (-item[0], str(item[1]["name"]).lower(), int(item[1]["id"])))
+    return scored[0][1]
+
+
+def _find_best_role_match(roles: list[dict[str, Any]], field_name: str) -> dict[str, Any] | None:
+    tokens = GUILD_ROLE_MATCH_TOKENS[field_name]
+    scored: list[tuple[int, dict[str, Any]]] = []
+    for role in roles:
+        score = _score_named_match(str(role["name"]), tokens)
+        if score:
+            scored.append((score, role))
+    if not scored:
+        return None
+    scored.sort(key=lambda item: (-item[0], str(item[1]["name"]).lower(), int(item[1]["id"])))
+    return scored[0][1]
+
 
 class BotOpsServer:
     def __init__(
@@ -46,6 +140,11 @@ class BotOpsServer:
         app.router.add_post("/sends/process", self._handle_process_send)
         app.router.add_post("/maintenance", self._handle_set_maintenance)
         app.router.add_post("/guilds/{guild_id}/count", self._handle_set_count)
+        app.router.add_post("/guilds/{guild_id}/scan/apply", self._handle_apply_guild_scan)
+        app.router.add_post(
+            "/guilds/{guild_id}/achievements/reset",
+            self._handle_reset_guild_achievements,
+        )
         app.router.add_post("/guilds/{guild_id}/dommes", self._handle_add_domme)
         app.router.add_post("/guilds/{guild_id}/dommes/remove", self._handle_remove_domme)
         app.router.add_post("/guilds/{guild_id}/subs", self._handle_add_sub)
@@ -88,47 +187,137 @@ class BotOpsServer:
         guild_id = self._match_guild_id(request)
         if guild_id is None:
             return web.json_response({"error": "invalid_guild_id"}, status=400)
+        payload, status = await self._build_guild_scan_payload(guild_id)
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_guild_scan_text(payload),
+                status=status,
+                content_type="text/plain",
+            )
+        return web.json_response(payload, status=status)
 
-        guild = self.bot.get_guild(guild_id)
-        if guild is None:
-            return web.json_response(
+    async def _handle_apply_guild_scan(self, request: web.Request) -> web.Response:
+        if not self._is_authorized(request):
+            return web.json_response({"error": "forbidden"}, status=403)
+        if not hasattr(self.bot, "vib_settings_repo"):
+            return web.json_response({"error": "vib_settings_repo_unavailable"}, status=500)
+
+        guild_id = self._match_guild_id(request)
+        if guild_id is None:
+            return web.json_response({"error": "invalid_guild_id"}, status=400)
+
+        payload = await self._json_payload(request)
+        selected_fields, invalid_options = self._parse_scan_apply_options(payload.get("options"))
+        if invalid_options:
+            error_payload = {
+                "error": "invalid_options",
+                "invalid_options": invalid_options,
+                "valid_options": ["all", "channels", "roles", *SCAN_APPLY_FIELD_ORDER],
+            }
+            if self._wants_text(request):
+                return web.Response(
+                    text=self._format_invalid_scan_options_text(error_payload),
+                    status=400,
+                    content_type="text/plain",
+                )
+            return web.json_response(error_payload, status=400)
+
+        scan_payload, status = await self._build_guild_scan_payload(guild_id)
+        if status != 200:
+            if self._wants_text(request):
+                return web.Response(
+                    text=self._format_guild_scan_text(scan_payload),
+                    status=status,
+                    content_type="text/plain",
+                )
+            return web.json_response(scan_payload, status=status)
+
+        applied: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+        for entry in [*scan_payload["channel_matches"], *scan_payload["role_matches"]]:
+            if entry["field"] not in selected_fields:
+                continue
+
+            current = entry["current"]
+            suggested = entry["suggested"]
+            if suggested is None:
+                skipped.append(
+                    {
+                        "field": entry["field"],
+                        "label": entry["label"],
+                        "reason": "no_suggestion",
+                    }
+                )
+                continue
+            if current["id"] == suggested["id"] and current.get("found", True):
+                skipped.append(
+                    {
+                        "field": entry["field"],
+                        "label": entry["label"],
+                        "reason": "already_matches",
+                        "target_id": suggested["id"],
+                        "target_name": suggested["name"],
+                    }
+                )
+                continue
+
+            if entry["type"] == "channel":
+                await self.bot.vib_settings_repo.set_channel_id(
+                    guild_id,
+                    entry["field"],
+                    int(suggested["id"]),
+                )
+            else:
+                await self.bot.vib_settings_repo.set_role_id(
+                    guild_id,
+                    entry["field"],
+                    int(suggested["id"]),
+                )
+            applied.append(
                 {
-                    "guild_id": guild_id,
-                    "guild_name": None,
-                    "channels": [],
-                    "roles": [],
-                    "source": "bot-session",
-                    "error": "Guild is not currently available in the running bot cache.",
-                },
-                status=404,
+                    "field": entry["field"],
+                    "label": entry["label"],
+                    "target_type": entry["type"],
+                    "target_id": int(suggested["id"]),
+                    "target_name": str(suggested["name"]),
+                }
             )
 
-        channels = [
-            {
-                "id": channel.id,
-                "name": channel.name,
-                "kind": type(channel).__name__,
-            }
-            for channel in sorted(guild.channels, key=lambda item: (item.name.lower(), item.id))
-            if isinstance(channel, discord.TextChannel)
-        ]
-        roles = [
-            {
-                "id": role.id,
-                "name": role.name,
-            }
-            for role in sorted(guild.roles, key=lambda item: (item.name.lower(), item.id))
-            if role.name != "@everyone"
-        ]
-        return web.json_response(
-            {
-                "guild_id": guild.id,
-                "guild_name": guild.name,
-                "channels": channels,
-                "roles": roles,
-                "source": "bot-session",
-            }
-        )
+        if applied:
+            await self._refresh_guild(guild_id)
+
+        result_payload = {
+            "ok": True,
+            "guild_id": guild_id,
+            "guild_name": scan_payload.get("guild_name"),
+            "selected_fields": [field for field in SCAN_APPLY_FIELD_ORDER if field in selected_fields],
+            "applied": applied,
+            "skipped": skipped,
+        }
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_guild_apply_text(result_payload),
+                content_type="text/plain",
+            )
+        return web.json_response(result_payload)
+
+    async def _handle_reset_guild_achievements(self, request: web.Request) -> web.Response:
+        if not self._is_authorized(request):
+            return web.json_response({"error": "forbidden"}, status=403)
+        if not hasattr(self.bot, "achievements_repo"):
+            return web.json_response({"error": "achievements_repo_unavailable"}, status=500)
+
+        guild_id = self._match_guild_id(request)
+        if guild_id is None:
+            return web.json_response({"error": "invalid_guild_id"}, status=400)
+
+        result = await self.bot.achievements_repo.reset_for_guild(guild_id=guild_id)
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_guild_achievement_reset_text(result),
+                content_type="text/plain",
+            )
+        return web.json_response({"ok": True, **result})
 
     async def _handle_refresh_public_names(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
@@ -540,6 +729,275 @@ class BotOpsServer:
             return web.json_response({"error": "invalid_discord_user_id"}, status=400)
         await self.bot.blacklist_repo.remove(discord_user_id)
         return web.json_response({"ok": True, "discord_user_id": discord_user_id, "blocked": False})
+
+    async def _build_guild_scan_payload(self, guild_id: int) -> tuple[dict[str, Any], int]:
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            return (
+                {
+                    "guild_id": guild_id,
+                    "guild_name": None,
+                    "channels": [],
+                    "roles": [],
+                    "channel_matches": [],
+                    "role_matches": [],
+                    "source": "bot-session",
+                    "error": "Guild is not currently available in the running bot cache.",
+                },
+                404,
+            )
+
+        settings = None
+        if hasattr(self.bot, "vib_settings_repo"):
+            settings = await self.bot.vib_settings_repo.get(guild_id)
+
+        channels = [
+            {
+                "id": int(channel.id),
+                "name": str(channel.name),
+                "kind": type(channel).__name__,
+            }
+            for channel in sorted(guild.channels, key=lambda item: (item.name.lower(), item.id))
+            if isinstance(channel, discord.TextChannel)
+        ]
+        roles = [
+            {
+                "id": int(role.id),
+                "name": str(role.name),
+            }
+            for role in sorted(guild.roles, key=lambda item: (item.name.lower(), item.id))
+            if role.name != "@everyone"
+        ]
+
+        channel_lookup = {int(channel["id"]): channel for channel in channels}
+        role_lookup = {int(role["id"]): role for role in roles}
+
+        channel_matches: list[dict[str, Any]] = []
+        for field_name in GUILD_CHANNEL_FIELDS:
+            configured_id = getattr(settings, field_name, None) if settings is not None else None
+            current = channel_lookup.get(configured_id) if configured_id is not None else None
+            suggested = _find_best_channel_match(channels, field_name)
+            channel_matches.append(
+                {
+                    "type": "channel",
+                    "field": field_name,
+                    "label": GUILD_CHANNEL_LABELS[field_name],
+                    "current": {
+                        "id": configured_id,
+                        "name": current["name"] if current is not None else None,
+                        "kind": current["kind"] if current is not None else None,
+                        "found": current is not None,
+                    },
+                    "suggested": suggested,
+                }
+            )
+
+        role_matches: list[dict[str, Any]] = []
+        for field_name in GUILD_ROLE_FIELDS:
+            configured_id = getattr(settings, field_name, None) if settings is not None else None
+            current = role_lookup.get(configured_id) if configured_id is not None else None
+            suggested = _find_best_role_match(roles, field_name)
+            role_matches.append(
+                {
+                    "type": "role",
+                    "field": field_name,
+                    "label": GUILD_ROLE_LABELS[field_name],
+                    "current": {
+                        "id": configured_id,
+                        "name": current["name"] if current is not None else None,
+                        "found": current is not None,
+                    },
+                    "suggested": suggested,
+                }
+            )
+
+        return (
+            {
+                "guild_id": int(guild.id),
+                "guild_name": guild.name,
+                "channels": channels,
+                "roles": roles,
+                "channel_matches": channel_matches,
+                "role_matches": role_matches,
+                "source": "bot-session",
+            },
+            200,
+        )
+
+    @staticmethod
+    def _wants_text(request: web.Request) -> bool:
+        return request.query.get("format", "").strip().lower() == "text"
+
+    @staticmethod
+    def _parse_scan_apply_options(raw: Any) -> tuple[set[str], list[str]]:
+        if raw is None:
+            return set(SCAN_APPLY_FIELD_ORDER), []
+
+        if isinstance(raw, list):
+            parts = ",".join(str(item) for item in raw)
+        else:
+            parts = str(raw)
+        if not parts.strip():
+            return set(SCAN_APPLY_FIELD_ORDER), []
+
+        selected: set[str] = set()
+        invalid: list[str] = []
+        for raw_token in parts.split(","):
+            token = raw_token.strip()
+            if not token:
+                continue
+            normalized = token.casefold()
+            if normalized == "all":
+                return set(SCAN_APPLY_FIELD_ORDER), []
+            if normalized == "channels":
+                selected.update(GUILD_CHANNEL_FIELDS)
+                continue
+            if normalized == "roles":
+                selected.update(GUILD_ROLE_FIELDS)
+                continue
+            if normalized in SCAN_APPLY_FIELD_ORDER:
+                selected.add(normalized)
+                continue
+            invalid.append(token)
+
+        if not selected and not invalid:
+            selected.update(SCAN_APPLY_FIELD_ORDER)
+        return selected, invalid
+
+    @staticmethod
+    def _format_guild_scan_text(payload: dict[str, Any]) -> str:
+        lines = [
+            "Guild Scan",
+            f"Guild ID: {payload['guild_id']}",
+            f"Guild Name: {payload.get('guild_name') or '(unknown)'}",
+            f"Live Text Channels: {len(payload.get('channels', []))}",
+            f"Live Roles: {len(payload.get('roles', []))}",
+            f"Live Source: {payload.get('source', 'bot-session')}",
+        ]
+        if payload.get("error"):
+            lines.append(f"Live Scan: {payload['error']}")
+
+        channel_matches = payload.get("channel_matches") or []
+        if channel_matches:
+            lines.extend(["", "Channels"])
+            for entry in channel_matches:
+                lines.append(f"{entry['label']}:")
+                lines.append(f"  current: {BotOpsServer._format_scan_current(entry)}")
+                lines.append(f"  suggested: {BotOpsServer._format_scan_suggested(entry)}")
+                suggested = entry.get("suggested")
+                current = entry.get("current") or {}
+                if suggested is not None and (
+                    current.get("id") != suggested.get("id") or not current.get("found", True)
+                ):
+                    lines.append(
+                        "  auto-apply: "
+                        f"rob auto-apply --guild {payload['guild_id']} {entry['field']}"
+                    )
+
+        role_matches = payload.get("role_matches") or []
+        if role_matches:
+            lines.extend(["", "Roles"])
+            for entry in role_matches:
+                lines.append(f"{entry['label']}:")
+                lines.append(f"  current: {BotOpsServer._format_scan_current(entry)}")
+                lines.append(f"  suggested: {BotOpsServer._format_scan_suggested(entry)}")
+                suggested = entry.get("suggested")
+                current = entry.get("current") or {}
+                if suggested is not None and (
+                    current.get("id") != suggested.get("id") or not current.get("found", True)
+                ):
+                    lines.append(
+                        "  auto-apply: "
+                        f"rob auto-apply --guild {payload['guild_id']} {entry['field']}"
+                    )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_scan_current(entry: dict[str, Any]) -> str:
+        current = entry.get("current") or {}
+        current_id = current.get("id")
+        if current_id is None:
+            return "(not set)"
+        if not current.get("found", False):
+            return f"{current_id} (not found in live guild scan)"
+        if entry.get("type") == "channel":
+            return f"#{current.get('name')} ({current_id})"
+        return f"@{current.get('name')} ({current_id})"
+
+    @staticmethod
+    def _format_scan_suggested(entry: dict[str, Any]) -> str:
+        suggested = entry.get("suggested")
+        if suggested is None:
+            return "(no obvious match found)"
+        if entry.get("type") == "channel":
+            return f"#{suggested.get('name')} ({suggested.get('id')})"
+        return f"@{suggested.get('name')} ({suggested.get('id')})"
+
+    @staticmethod
+    def _format_guild_apply_text(payload: dict[str, Any]) -> str:
+        lines = [
+            "Guild Auto-Apply",
+            f"Guild ID: {payload['guild_id']}",
+            f"Guild Name: {payload.get('guild_name') or '(unknown)'}",
+            "Selected: "
+            + (
+                ", ".join(payload.get("selected_fields", []))
+                if payload.get("selected_fields")
+                else "all"
+            ),
+        ]
+        applied = payload.get("applied") or []
+        skipped = payload.get("skipped") or []
+
+        lines.append("")
+        lines.append("Applied")
+        if not applied:
+            lines.append("- nothing changed")
+        else:
+            for entry in applied:
+                prefix = "#" if entry.get("target_type") == "channel" else "@"
+                lines.append(
+                    f"- {entry['label']}: {prefix}{entry['target_name']} ({entry['target_id']})"
+                )
+
+        lines.append("")
+        lines.append("Skipped")
+        if not skipped:
+            lines.append("- nothing skipped")
+        else:
+            for entry in skipped:
+                if entry["reason"] == "already_matches":
+                    lines.append(
+                        f"- {entry['label']}: already matches {entry['target_name']} ({entry['target_id']})"
+                    )
+                elif entry["reason"] == "no_suggestion":
+                    lines.append(f"- {entry['label']}: no obvious match found")
+                else:
+                    lines.append(f"- {entry['label']}: {entry['reason']}")
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_guild_achievement_reset_text(payload: dict[str, Any]) -> str:
+        return "\n".join(
+            [
+                "Guild Achievement Reset",
+                f"Guild ID: {payload['guild_id']}",
+                f"Unlocked rows removed: {payload['unlocks_deleted']}",
+                f"Event rows removed: {payload['events_deleted']}",
+            ]
+        )
+
+    @staticmethod
+    def _format_invalid_scan_options_text(payload: dict[str, Any]) -> str:
+        return "\n".join(
+            [
+                "Guild Auto-Apply",
+                "Invalid option list.",
+                "Invalid: " + ", ".join(payload.get("invalid_options", [])),
+                "Valid: " + ", ".join(payload.get("valid_options", [])),
+            ]
+        )
 
     @staticmethod
     def _match_guild_id(request: web.Request) -> int | None:

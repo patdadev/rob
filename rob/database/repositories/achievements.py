@@ -161,3 +161,41 @@ class AchievementsRepository:
                 source,
                 json.dumps(metadata or {}),
             )
+
+    async def reset_for_guild(self, *, guild_id: int) -> dict[str, int]:
+        async with self.database.acquire() as connection:
+            unlocks_deleted = int(
+                await connection.fetchval(
+                    """
+                    WITH deleted AS (
+                        DELETE FROM user_achievements
+                        WHERE guild_id = $1
+                        RETURNING 1
+                    )
+                    SELECT COUNT(*)
+                    FROM deleted
+                    """,
+                    guild_id,
+                )
+                or 0
+            )
+            events_deleted = int(
+                await connection.fetchval(
+                    """
+                    WITH deleted AS (
+                        DELETE FROM achievement_events
+                        WHERE guild_id = $1
+                        RETURNING 1
+                    )
+                    SELECT COUNT(*)
+                    FROM deleted
+                    """,
+                    guild_id,
+                )
+                or 0
+            )
+        return {
+            "guild_id": guild_id,
+            "unlocks_deleted": unlocks_deleted,
+            "events_deleted": events_deleted,
+        }

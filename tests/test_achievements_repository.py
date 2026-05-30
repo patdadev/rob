@@ -11,6 +11,7 @@ class _FakeConnection:
     def __init__(self):
         self.fetchrow_calls: list[tuple[str, tuple]] = []
         self.fetch_calls: list[tuple[str, tuple]] = []
+        self.fetchval_calls: list[tuple[str, tuple]] = []
         self.execute_calls: list[tuple[str, tuple]] = []
         self.return_row = {"id": 1}
 
@@ -23,6 +24,7 @@ class _FakeConnection:
         return [{"achievement_key": "count_10"}]
 
     async def fetchval(self, _query: str, *_params):
+        self.fetchval_calls.append((_query, _params))
         return 1
 
     async def execute(self, query: str, *params):
@@ -82,3 +84,16 @@ def test_list_keys_and_event_recording():
     _, params = connection.execute_calls[0]
     assert isinstance(params[5], str)
     assert json.loads(params[5]) == {}
+
+
+def test_reset_for_guild_deletes_unlocks_and_events():
+    connection = _FakeConnection()
+    repo = AchievementsRepository(_FakeDatabase(connection))  # type: ignore[arg-type]
+
+    result = asyncio.run(repo.reset_for_guild(guild_id=99))
+
+    assert result == {"guild_id": 99, "unlocks_deleted": 1, "events_deleted": 1}
+    assert len(connection.fetchval_calls) == 2
+    assert "DELETE FROM user_achievements" in connection.fetchval_calls[0][0]
+    assert connection.fetchval_calls[0][1] == (99,)
+    assert "DELETE FROM achievement_events" in connection.fetchval_calls[1][0]
