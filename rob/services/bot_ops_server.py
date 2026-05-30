@@ -436,7 +436,13 @@ class BotOpsServer:
             await self.bot.maintenance_service.disable()
 
         state = await self.bot.maintenance_service.get_state()
-        return web.json_response({"ok": True, "enabled": state.enabled, "reason": state.reason or ""})
+        payload = {"ok": True, "enabled": state.enabled, "reason": state.reason or ""}
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_maintenance_text(payload),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
 
     async def _handle_get_maintenance(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
@@ -444,7 +450,13 @@ class BotOpsServer:
         if not hasattr(self.bot, "maintenance_service"):
             return web.json_response({"error": "maintenance_service_unavailable"}, status=500)
         state = await self.bot.maintenance_service.get_state()
-        return web.json_response({"ok": True, "enabled": state.enabled, "reason": state.reason or ""})
+        payload = {"ok": True, "enabled": state.enabled, "reason": state.reason or ""}
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_maintenance_text(payload),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
 
     async def _handle_get_count(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
@@ -455,16 +467,20 @@ class BotOpsServer:
         if guild_id is None:
             return web.json_response({"error": "invalid_guild_id"}, status=400)
         state = await self.bot.counting_service.get_or_create_state(guild_id)
-        return web.json_response(
-            {
-                "ok": True,
-                "guild_id": guild_id,
-                "current_number": state.current_number,
-                "channel_id": state.channel_id,
-                "is_enabled": state.is_enabled,
-                "pending_restore": state.pending_restore,
-            }
-        )
+        payload = {
+            "ok": True,
+            "guild_id": guild_id,
+            "current_number": state.current_number,
+            "channel_id": state.channel_id,
+            "is_enabled": state.is_enabled,
+            "pending_restore": state.pending_restore,
+        }
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_count_text(payload, label="Count Status"),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
 
     async def _handle_set_count(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
@@ -480,15 +496,19 @@ class BotOpsServer:
         except (TypeError, ValueError):
             return web.json_response({"error": "invalid_number"}, status=400)
         state = await self.bot.counting_service.set_current_number(guild_id, number)
-        return web.json_response(
-            {
-                "ok": True,
-                "guild_id": guild_id,
-                "current_number": state.current_number,
-                "channel_id": state.channel_id,
-                "is_enabled": state.is_enabled,
-            }
-        )
+        payload = {
+            "ok": True,
+            "guild_id": guild_id,
+            "current_number": state.current_number,
+            "channel_id": state.channel_id,
+            "is_enabled": state.is_enabled,
+        }
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_count_text(payload, label="Count Updated"),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
 
     async def _handle_add_domme(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
@@ -514,17 +534,21 @@ class BotOpsServer:
         except ValueError as exc:
             return web.json_response({"error": str(exc)}, status=400)
         await self._refresh_guild(guild_id)
-        return web.json_response(
-            {
-                "ok": True,
-                "guild_id": guild_id,
-                "discord_user_id": result.domme.discord_user_id,
-                "domme_id": result.domme.id,
-                "throne_handle": result.domme.throne_handle,
-                "throne_creator_id": result.domme.throne_creator_id,
-                "webhook_url": result.webhook_url,
-            }
-        )
+        payload = {
+            "ok": True,
+            "guild_id": guild_id,
+            "discord_user_id": result.domme.discord_user_id,
+            "domme_id": result.domme.id,
+            "throne_handle": result.domme.throne_handle,
+            "throne_creator_id": result.domme.throne_creator_id,
+            "webhook_url": result.webhook_url,
+        }
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_domme_change_text(payload, added=True),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
 
     async def _handle_remove_domme(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
@@ -545,14 +569,18 @@ class BotOpsServer:
         if removed is None:
             return web.json_response({"error": "domme_not_found"}, status=404)
         await self._refresh_guild(guild_id)
-        return web.json_response(
-            {
-                "ok": True,
-                "guild_id": guild_id,
-                "discord_user_id": removed.discord_user_id,
-                "throne_handle": removed.throne_handle,
-            }
-        )
+        payload = {
+            "ok": True,
+            "guild_id": guild_id,
+            "discord_user_id": removed.discord_user_id,
+            "throne_handle": removed.throne_handle,
+        }
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_domme_change_text(payload, added=False),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
 
     async def _handle_add_sub(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
@@ -578,15 +606,19 @@ class BotOpsServer:
         except ValueError as exc:
             return web.json_response({"error": str(exc)}, status=400)
         await self._refresh_guild(guild_id)
-        return web.json_response(
-            {
-                "ok": True,
-                "guild_id": guild_id,
-                "discord_user_id": result.sub.discord_user_id,
-                "sub_id": result.sub.id,
-                "send_names": list(result.send_names),
-            }
-        )
+        payload = {
+            "ok": True,
+            "guild_id": guild_id,
+            "discord_user_id": result.sub.discord_user_id,
+            "sub_id": result.sub.id,
+            "send_names": list(result.send_names),
+        }
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_sub_change_text(payload, added=True),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
 
     async def _handle_remove_sub(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
@@ -608,14 +640,18 @@ class BotOpsServer:
         if removed is None:
             return web.json_response({"error": "sub_not_found"}, status=404)
         await self._refresh_guild(guild_id)
-        return web.json_response(
-            {
-                "ok": True,
-                "guild_id": guild_id,
-                "discord_user_id": removed.discord_user_id,
-                "send_name": removed.send_name,
-            }
-        )
+        payload = {
+            "ok": True,
+            "guild_id": guild_id,
+            "discord_user_id": removed.discord_user_id,
+            "send_name": removed.send_name,
+        }
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_sub_change_text(payload, added=False),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
 
     async def _handle_request_send_add(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
@@ -659,15 +695,19 @@ class BotOpsServer:
                 {"error": "Rob could not create the send approval request just now."},
                 status=500,
             )
-        return web.json_response(
-            {
-                "ok": True,
-                "request_id": change_request.id,
-                "action": change_request.action,
-                "status": change_request.status,
-                "domme_user_id": change_request.domme_user_id,
-            }
-        )
+        payload = {
+            "ok": True,
+            "request_id": change_request.id,
+            "action": change_request.action,
+            "status": change_request.status,
+            "domme_user_id": change_request.domme_user_id,
+        }
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_send_request_text(payload),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
 
     async def _handle_request_send_remove(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
@@ -706,16 +746,20 @@ class BotOpsServer:
                 {"error": "Rob could not create the send removal approval request just now."},
                 status=500,
             )
-        return web.json_response(
-            {
-                "ok": True,
-                "request_id": change_request.id,
-                "action": change_request.action,
-                "status": change_request.status,
-                "domme_user_id": change_request.domme_user_id,
-                "target_send_id": change_request.target_send_id,
-            }
-        )
+        payload = {
+            "ok": True,
+            "request_id": change_request.id,
+            "action": change_request.action,
+            "status": change_request.status,
+            "domme_user_id": change_request.domme_user_id,
+            "target_send_id": change_request.target_send_id,
+        }
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_send_request_text(payload),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
 
     async def _handle_block_user(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
@@ -733,7 +777,13 @@ class BotOpsServer:
             created_by=None,
             guild_id=0,
         )
-        return web.json_response({"ok": True, "discord_user_id": discord_user_id, "blocked": True})
+        payload = {"ok": True, "discord_user_id": discord_user_id, "blocked": True}
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_block_text(payload),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
 
     async def _handle_unblock_user(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
@@ -745,7 +795,13 @@ class BotOpsServer:
         if discord_user_id is None:
             return web.json_response({"error": "invalid_discord_user_id"}, status=400)
         await self.bot.blacklist_repo.remove(discord_user_id)
-        return web.json_response({"ok": True, "discord_user_id": discord_user_id, "blocked": False})
+        payload = {"ok": True, "discord_user_id": discord_user_id, "blocked": False}
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_block_text(payload),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
 
     async def _build_guild_scan_payload(self, guild_id: int) -> tuple[dict[str, Any], int]:
         guild = self.bot.get_guild(guild_id)
@@ -1002,6 +1058,88 @@ class BotOpsServer:
                 f"Guild ID: {payload['guild_id']}",
                 f"Unlocked rows removed: {payload['unlocks_deleted']}",
                 f"Event rows removed: {payload['events_deleted']}",
+            ]
+        )
+
+    @staticmethod
+    def _format_count_text(payload: dict[str, Any], *, label: str) -> str:
+        lines = [
+            label,
+            f"Guild ID: {payload['guild_id']}",
+            f"Current Number: {payload['current_number']}",
+            f"Counting Enabled: {'yes' if payload.get('is_enabled') else 'no'}",
+            "Counting Channel: "
+            + (
+                f"{payload['channel_id']}"
+                if payload.get("channel_id") is not None
+                else "(not configured)"
+            ),
+        ]
+        if "pending_restore" in payload:
+            lines.append(
+                f"Recovery Window Active: {'yes' if payload.get('pending_restore') else 'no'}"
+            )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_maintenance_text(payload: dict[str, Any]) -> str:
+        return "\n".join(
+            [
+                "Maintenance Status",
+                f"Enabled: {'yes' if payload.get('enabled') else 'no'}",
+                "Reason: " + (payload.get("reason") or "(none)"),
+            ]
+        )
+
+    @staticmethod
+    def _format_domme_change_text(payload: dict[str, Any], *, added: bool) -> str:
+        lines = [
+            "Dom/me Added" if added else "Dom/me Removed",
+            f"Guild ID: {payload['guild_id']}",
+            f"Discord User ID: {payload['discord_user_id']}",
+            "Throne Handle: " + (payload.get("throne_handle") or "(not set)"),
+        ]
+        if added:
+            lines.append(f"Dom/me ID: {payload['domme_id']}")
+            lines.append("Creator ID: " + (payload.get("throne_creator_id") or "(not set)"))
+            if payload.get("webhook_url"):
+                lines.append("Webhook URL: generated")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_sub_change_text(payload: dict[str, Any], *, added: bool) -> str:
+        lines = [
+            "Sub Added" if added else "Sub Removed",
+            f"Guild ID: {payload['guild_id']}",
+            f"Discord User ID: {payload['discord_user_id']}",
+        ]
+        if added:
+            lines.append(f"Sub ID: {payload['sub_id']}")
+            lines.append("Tracked Names: " + ", ".join(payload.get("send_names") or []))
+        else:
+            lines.append("Primary Send Name: " + (payload.get("send_name") or "(unknown)"))
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_send_request_text(payload: dict[str, Any]) -> str:
+        lines = [
+            "Send Approval Requested",
+            f"Request ID: {payload['request_id']}",
+            f"Action: {payload['action']}",
+            f"Status: {payload['status']}",
+            f"Dom/me User ID: {payload['domme_user_id']}",
+        ]
+        if payload.get("target_send_id") is not None:
+            lines.append(f"Target Send ID: {payload['target_send_id']}")
+        lines.append("Next Step: the target Dom/me must approve this change in Discord.")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_block_text(payload: dict[str, Any]) -> str:
+        return "\n".join(
+            [
+                "User Blocked" if payload.get("blocked") else "User Unblocked",
+                f"Discord User ID: {payload['discord_user_id']}",
             ]
         )
 

@@ -87,6 +87,19 @@ def _service(*, bot_state: _FakeBotState, inactive_role_id: int | None):
     )
 
 
+def _view_text(payload: dict[str, object]) -> str:
+    view = payload.get("view")
+    if view is None:
+        return str(payload.get("content", ""))
+    chunks: list[str] = []
+    for top_level in getattr(view, "children", []):
+        for child in getattr(top_level, "children", []):
+            content = getattr(child, "content", None)
+            if content:
+                chunks.append(str(content))
+    return "\n".join(chunks)
+
+
 def test_new_member_grace_no_immediate_warning():
     joined_at = datetime.now(timezone.utc)
     member = _FakeMember(10, joined_at=joined_at)
@@ -112,6 +125,35 @@ def test_new_member_warning_after_seven_days_contains_timestamps():
     asyncio.run(service.process_guild(guild, send_notifications=True, perform_kicks=False))
 
     assert len(member.dm_messages) == 1
+    rendered = _view_text(member.dm_messages[0])
+    assert "Hello? Anyone there" in rendered
+    assert "marked as inactive" in rendered
+    assert "We'll send another reminder" in rendered
+    assert "<t:" in rendered
+
+
+def test_final_inactivity_warning_uses_week_two_copy():
+    member = _FakeMember(10)
+    guild = _FakeGuild(1, _FakeRole(99, [member]))
+    bot_state = _FakeBotState()
+    service = _service(bot_state=bot_state, inactive_role_id=99)
+    asyncio.run(service.set_enabled(1, True))
+
+    now = datetime.now(timezone.utc)
+    key_prefix = "inactivity:1:user:10"
+    bot_state.values[f"{key_prefix}:assigned_at"] = (now - timedelta(days=14)).isoformat()
+    bot_state.values[f"{key_prefix}:remove_at"] = (now + timedelta(days=6)).isoformat()
+    bot_state.values[f"{key_prefix}:initial_notice_sent"] = "true"
+    bot_state.values[f"{key_prefix}:final_notice_sent"] = "false"
+    bot_state.values["inactivity:1:bootstrapped_at"] = (now - timedelta(days=14)).isoformat()
+
+    asyncio.run(service.process_guild(guild, send_notifications=True, perform_kicks=False))
+
+    assert len(member.dm_messages) == 1
+    rendered = _view_text(member.dm_messages[0])
+    assert "I don't miss you, I swear" in rendered
+    assert "You're on week 2 right now" in rendered
+    assert "clears automatically" in rendered
 
 
 def test_inactivity_kicks_when_expired():

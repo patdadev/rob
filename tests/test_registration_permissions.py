@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import discord
 
-from rob.discord.cogs.registration import RegistrationCog
+from rob.discord.cogs.registration import RegistrationCog, YesButton
 
 
 class _FakeResponse:
@@ -14,6 +14,7 @@ class _FakeResponse:
         self.messages: list[dict] = []
         self.deferred = False
         self.modal = None
+        self.edits: list[dict] = []
 
     async def send_message(self, **kwargs):
         self.messages.append(kwargs)
@@ -23,6 +24,9 @@ class _FakeResponse:
 
     async def send_modal(self, modal):
         self.modal = modal
+
+    async def edit_message(self, **kwargs):
+        self.edits.append(kwargs)
 
 
 class _FakeFollowup:
@@ -69,13 +73,21 @@ class _FakeUser:
 
 
 class _FakeInteraction:
-    def __init__(self, *, user: _FakeUser | None = None, channel: _FakeChannel | None = None, message_id: int | None = None):
+    def __init__(
+        self,
+        *,
+        user: _FakeUser | None = None,
+        channel: _FakeChannel | None = None,
+        message_id: int | None = None,
+        client=None,
+    ):
         self.guild = SimpleNamespace(id=1)
         self.user = user or _FakeUser()
         self.channel = channel or _FakeChannel()
         self.message = SimpleNamespace(id=message_id) if message_id is not None else None
         self.response = _FakeResponse()
         self.followup = _FakeFollowup()
+        self.client = client
 
 
 class _FakeRegistrationService:
@@ -153,7 +165,7 @@ def test_register_domme_allowed_sends_dm_setup_flow(monkeypatch):
     assert len(interaction.user.sent_messages) == 1
     dm_view = interaction.user.sent_messages[0]["view"]
     assert type(dm_view.children[1]).__name__ == "ActionRow"
-    assert dm_view.children[1].children[0].label == "Enter Throne Profile"
+    assert dm_view.children[1].children[0].label == "Continue Setup"
     assert interaction.response.messages[0]["ephemeral"] is True
     assert bot.registration_service.domme_calls == []
 
@@ -197,6 +209,24 @@ def test_domme_setup_button_opens_modal_and_submit_registers_once(monkeypatch):
     assert len(setup_message.edits) == 1
     assert "Throne Tracking Setup!" in _view_text(setup_message.edits[0])
     assert submit_interaction.followup.messages == []
+
+
+def test_domme_webhook_success_edits_same_message_without_followup_spam():
+    user = _FakeUser(user_id=123)
+    channel = _FakeChannel()
+    bot = _FakeBot(SimpleNamespace(domme_role_id=11, sub_role_id=22, send_track_channel_id=77))
+    async def _get_domme(_domme_id: int):
+        return SimpleNamespace(webhook_connected_at=True, last_successful_event_at=None)
+
+    bot.dommes_repo = SimpleNamespace(get=_get_domme)
+    interaction = _FakeInteraction(user=user, channel=channel, message_id=555, client=bot)
+    yes_button = YesButton(domme_id=99, send_track_channel_id=77)
+
+    asyncio.run(yes_button.callback(interaction))
+
+    assert interaction.followup.messages == []
+    assert interaction.response.edits
+    assert "What Rob collects" in _view_text(interaction.response.edits[0])
 
 
 def test_domme_modal_double_submit_is_guarded(monkeypatch):

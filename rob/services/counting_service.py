@@ -178,10 +178,22 @@ class CountingService:
             log.exception("Count recovery ticker failed.")
 
     async def get_or_create_state(self, guild_id: int):
+        settings = await self.guild_settings.get(guild_id)
         state = await self.counting.get(guild_id)
         if state is not None:
+            configured_channel_id = settings.counting_channel_id if settings is not None else None
+            if configured_channel_id is not None and (
+                state.channel_id != configured_channel_id or not state.is_enabled
+            ):
+                return await self.counting.upsert(
+                    guild_id=guild_id,
+                    channel_id=configured_channel_id,
+                    current_number=state.current_number,
+                    last_user_id=state.last_user_id,
+                    is_enabled=True,
+                    pending_restore=state.pending_restore,
+                )
             return state
-        settings = await self.guild_settings.get(guild_id)
         channel_id = settings.counting_channel_id if settings is not None else None
         return await self.counting.upsert(
             guild_id=guild_id,

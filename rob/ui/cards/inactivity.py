@@ -6,22 +6,25 @@ from rob.ui.theme import COLOR_PRIMARY
 
 
 def _remove_time_text(remove_at_unix: int) -> str:
-    return f"<t:{remove_at_unix}:R> / <t:{remove_at_unix}:f>"
+    return f"<t:{remove_at_unix}:R>"
 
 
 def first_inactivity_warning_card(*, display_name: str, server_name: str, remove_at_unix: int, main_chat_channel: str) -> RenderedMessage:
     return render(
         make_card(
-            title="Inactivity Warning",
+            title="🤔 Hello? Anyone there",
             body=(
                 f"Hey **{display_name}**,\n\n"
-                f"You are receiving this notice because you have been inactive in **{server_name}** for over a week.\n\n"
-                "To help keep the server active, members may be automatically removed after **3 weeks of inactivity**.\n\n"
-                "At the current schedule, if you do not become active again, "
-                f"you will be removed {_remove_time_text(remove_at_unix)}."
+                f"We're sending a heads up that you've been marked as inactive in **{server_name}** for around a week. "
+                "Don't stress, you're not being removed yet.\n\n"
+                "Rob automatically sends these notices and removes inactive members after **3 weeks of inactivity**. "
+                f"If you remain inactive, you would be removed {_remove_time_text(remove_at_unix)}.\n\n"
+                "We'll send another reminder in about a week if you're still inactive.\n\n"
+                f"If you want this to clear, just become active again in {main_chat_channel}.\n\n"
+                "Have a great day!"
             ),
             color=COLOR_PRIMARY,
-            callout=f"If you do not wish to be removed, please become active again in {main_chat_channel}.",
+            callout="This is automated, so there is no need to reply.",
             variant="warning",
         )
     )
@@ -30,18 +33,17 @@ def first_inactivity_warning_card(*, display_name: str, server_name: str, remove
 def final_inactivity_warning_card(*, display_name: str, server_name: str, remove_at_unix: int, main_chat_channel: str) -> RenderedMessage:
     return render(
         make_card(
-            title="Final Inactivity Notice",
+            title="🥹 I don't miss you, I swear",
             body=(
                 f"Hey **{display_name}**,\n\n"
-                f"This is your final inactivity notice before removal from **{server_name}**.\n\n"
-                "At the current schedule, if you do not become active again, "
-                f"you will be removed {_remove_time_text(remove_at_unix)}."
+                f"We haven't seen you in a while in **{server_name}** and just wanted to remind you what happens if you're inactive for 3 weeks.\n\n"
+                "You're on week 2 right now, and Rob will automatically remove you from VIB "
+                f"{_remove_time_text(remove_at_unix)} if you remain inactive.\n\n"
+                f"If you become active again in {main_chat_channel} before then, this clears automatically.\n\n"
+                "Have a great day!"
             ),
             color=COLOR_PRIMARY,
-            callout=(
-                f"If you wish to remain in the server, please become active again in {main_chat_channel}.\n\n"
-                "-# This is a server removal only. It is not a ban."
-            ),
+            callout="This is automated, so there is no need to reply.",
             variant="warning",
         )
     )

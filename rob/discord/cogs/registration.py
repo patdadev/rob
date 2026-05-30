@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-SUCCESS_GIF_URL = "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExMDN5OW9vZTYyODl4MnRmd3A5aGVxeWVkNWF2eTY4ZnhwdXVpeW4wYyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/uLiEXaouJVkuA/giphy.gif"
 _RESERVED_SUB_NAMES = {"anonymous", "anon", "private", "hidden"}
 
 
@@ -51,23 +50,39 @@ class YesButton(discord.ui.Button):
         domme = await bot.dommes_repo.get(self.domme_id)
         if domme and (domme.webhook_connected_at or domme.last_successful_event_at):
             destination = f"<#{self.send_track_channel_id}>" if self.send_track_channel_id else "the send tracking channel"
-            success_msg = throne_setup_card(
-                "That worked!\n\n"
-                f"Your Throne sends will now appear in {destination} as soon as you receive them.\n\n"
-                "Please read the information below so you know what Rob collects and how it's used.",
-                image_url=SUCCESS_GIF_URL,
+            success_msg = registration_card(
+                title="Rob | Dom/me Setup",
+                summary=(
+                    "Your Throne profile has been saved and your webhook is now connected.\n\n"
+                    f"Your Throne sends will appear in {destination} as soon as Rob receives them."
+                ),
+                details=[
+                    (
+                        "What Rob collects",
+                        "- Your Discord user ID\n"
+                        "- Your Throne handle and creator ID\n"
+                        "- Public wishlist item names and prices\n"
+                        "- Item images when Throne includes them\n"
+                        "- Send amounts and sender names from webhook events\n"
+                        "- Webhook delivery status for troubleshooting",
+                    ),
+                    (
+                        "How Rob uses it",
+                        "- To post send notifications in the configured channel\n"
+                        "- To update Dom/me and Sub leaderboards\n"
+                        "- To prevent duplicate webhook events from counting twice\n"
+                        "- To help rotate or rebuild your webhook URL when needed",
+                    ),
+                    (
+                        "Important notes",
+                        "- Rob never needs your Throne password\n"
+                        "- Your webhook URL should be treated like a secret\n"
+                        "- If you think the URL was shared, ask staff to rebuild it",
+                    ),
+                ],
+                footer="Setup complete. No response needed here unless you want to rerun setup later.",
             )
             await interaction.response.edit_message(**success_msg.edit_kwargs())
-            info_msg = registration_card(
-                title="What Rob Collects",
-                summary="Rob only stores the information needed to track and display Throne sends inside this Discord server.",
-                details=[
-                    ("Collected information", "- Your Discord user ID\n- Your Throne handle and creator ID\n- Public wishlist item names\n- Public wishlist item prices\n- Public wishlist item images, when available\n- Send/purchase amounts provided by Throne webhook events\n- Item names and item images from send events\n- Sender/display names provided by Throne, when available\n- Webhook status details, such as when Rob last received a successful event"),
-                    ("How it is used", "- To post send notifications in the configured send tracking channel\n- To update Dom/me/Sub leaderboards\n- To prevent duplicate webhook events being counted twice\n- To help server staff troubleshoot tracking issues\n- To let you rebuild your webhook URL if it needs to be rotated"),
-                    ("Important notes", "- Rob does not need your Throne password.\n- Rob cannot access private Throne account settings.\n- Your webhook URL should be treated like a secret.\n- If you think your webhook URL was shared accidentally, ask staff to rebuild it."),
-                ],
-            )
-            await interaction.followup.send(**info_msg.send_kwargs())
             return
 
         msg = throne_setup_card(
@@ -135,13 +150,10 @@ class RegistrationCog(commands.Cog):
             invite = registration_card(
                 title="Rob | Dom/me Setup",
                 summary=(
-                    "Use the button below to continue setup in DMs.\n"
-                    "Rob will ask for your Throne username/profile in a secure modal."
+                    "Let's get your Throne profile connected to Rob.\n"
+                    "Rob will use it to match sends, keep leaderboard data tidy, and build your webhook setup steps."
                 ),
-                details=[
-                    ("Next step", "Click **Enter Throne Profile** and submit your Throne username or profile URL."),
-                    ("After that", "Rob will send your webhook setup steps and setup buttons."),
-                ],
+                details=[("Next step", "Click **Continue Setup** and submit your Throne username or profile URL.")],
             )
             add_card_actions(
                 invite.view,
@@ -173,7 +185,7 @@ class RegistrationCog(commands.Cog):
         await interaction.response.send_message(
             **registration_card(
                 title="Rob | Setup Sent",
-                summary="I sent your Dom/me setup flow in DMs. Open that DM and press **Enter Throne Profile**.",
+                summary="I've sent your setup to DMs. Open that message and press **Continue Setup**.",
             ).send_kwargs(),
             ephemeral=True,
         )
@@ -294,7 +306,7 @@ class _DommeSetupStartButton(discord.ui.Button):
         discord_user_id: int,
         send_track_channel_id: int | None,
     ) -> None:
-        super().__init__(label="Enter Throne Profile", style=discord.ButtonStyle.primary)
+        super().__init__(label="Continue Setup", style=discord.ButtonStyle.primary)
         self.cog = cog
         self.guild_id = guild_id
         self.discord_user_id = discord_user_id

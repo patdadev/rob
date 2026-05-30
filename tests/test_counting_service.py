@@ -336,6 +336,23 @@ def test_non_numeric_and_invalid_math_messages_are_ignored():
     assert repo.state.current_number == 3
 
 
+def test_existing_stale_count_state_auto_syncs_to_configured_channel():
+    service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub = _make_setup()
+    repo.state = CountingState(1, None, 0, None, False, False, datetime.now(timezone.utc))
+
+    result = asyncio.run(
+        service.process_message(
+            _FakeMessageEvent(guild=guild, author=sub, content="1", channel=guild.get_channel(100))
+        )
+    )
+
+    assert result is not None
+    assert result.success is True
+    assert repo.state.channel_id == 100
+    assert repo.state.is_enabled is True
+    assert repo.state.current_number == 1
+
+
 def test_successful_count_returns_standard_high_score_and_special_reactions():
     service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub = _make_setup()
     repo.state = CountingState(1, 100, 66, 9, True, False, datetime.now(timezone.utc))

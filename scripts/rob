@@ -132,11 +132,20 @@ resolve_ops_base_url() {
 }
 
 request_actor() {
+  if [[ -n "${ROB_ACTOR_NAME:-}" ]]; then
+    printf '%s' "${ROB_ACTOR_NAME}"
+    return
+  fi
   local user_name
-  local host_name
   user_name="${USER:-$(id -un 2>/dev/null || echo unknown)}"
-  host_name="$(hostname -s 2>/dev/null || echo local)"
-  printf '%s@%s' "${user_name}" "${host_name}"
+  case "${user_name}" in
+    pfaint)
+      printf 'Pat'
+      ;;
+    *)
+      printf '%s' "${user_name}"
+      ;;
+  esac
 }
 
 http_request() {
@@ -248,6 +257,21 @@ print_table() {
   fi
 }
 
+print_heading() {
+  local title="$1"
+  printf '%s\n' "${title}"
+  printf '%*s\n' "${#title}" '' | tr ' ' '='
+}
+
+count_rows() {
+  local rows="$1"
+  if [[ -z "${rows}" ]]; then
+    printf '0'
+    return
+  fi
+  awk 'END { print NR }' <<< "${rows}"
+}
+
 require_local_services() {
   LOCAL_SERVICES=()
   if command -v systemctl >/dev/null 2>&1; then
@@ -317,7 +341,7 @@ dommes_command() {
       [[ $# -eq 2 ]] || die "usage: rob dommes add <discord_user_id> <throne_input> --guild <guild_id>"
       [[ "$1" =~ ^[0-9]+$ ]] || die "discord_user_id must be numeric."
       ops_post_form \
-        "/guilds/${GUILD_ID}/dommes" \
+        "/guilds/${GUILD_ID}/dommes?format=text" \
         "discord_user_id=$1" \
         "throne_input=$2"
       ;;
@@ -329,7 +353,7 @@ dommes_command() {
         set --
       fi
       [[ $# -eq 1 ]] || die "usage: rob dommes remove <domme_lookup> --guild <guild_id>"
-      ops_post_form "/guilds/${GUILD_ID}/dommes/remove" "target=$1"
+      ops_post_form "/guilds/${GUILD_ID}/dommes/remove?format=text" "target=$1"
       ;;
     list)
       collect_guild_option "$@"
@@ -348,8 +372,11 @@ dommes_command() {
         printf 'No Dom/mes found for guild %s.\n' "${GUILD_ID}"
         return
       fi
+      print_heading "Dom/me List"
+      printf 'Guild ID: %s\n' "${GUILD_ID}"
+      printf 'Total Registered: %s\n\n' "$(count_rows "${rows}")"
       {
-        printf 'discord_user_id\tpublic_display_name\tthrone_handle\ttracking_status\tprofile_status\n'
+        printf 'discord_user_id\tpublic_name\tthrone_handle\ttracking\tprofile\n'
         printf '%s\n' "${rows}"
       } | print_table
       ;;
@@ -378,7 +405,7 @@ subs_command() {
       local send_names
       send_names="$(IFS=,; printf '%s' "$*")"
       ops_post_form \
-        "/guilds/${GUILD_ID}/subs" \
+        "/guilds/${GUILD_ID}/subs?format=text" \
         "discord_user_id=${discord_user_id}" \
         "send_names=${send_names}"
       ;;
@@ -390,7 +417,7 @@ subs_command() {
         set --
       fi
       [[ $# -eq 1 ]] || die "usage: rob subs remove <sub_lookup> --guild <guild_id>"
-      ops_post_form "/guilds/${GUILD_ID}/subs/remove" "target=$1"
+      ops_post_form "/guilds/${GUILD_ID}/subs/remove?format=text" "target=$1"
       ;;
     list)
       collect_guild_option "$@"
@@ -409,8 +436,11 @@ subs_command() {
         printf 'No Subs found for guild %s.\n' "${GUILD_ID}"
         return
       fi
+      print_heading "Sub List"
+      printf 'Guild ID: %s\n' "${GUILD_ID}"
+      printf 'Total Registered: %s\n\n' "$(count_rows "${rows}")"
       {
-        printf 'discord_user_id\tprimary_send_name\tregistered_send_names\n'
+        printf 'discord_user_id\tprimary_name\tregistered_names\n'
         printf '%s\n' "${rows}"
       } | print_table
       ;;
@@ -442,6 +472,10 @@ sends_lookup_command() {
     return
   fi
 
+  print_heading "Recent Sends"
+  printf 'Guild ID: %s\n' "${GUILD_ID}"
+  printf 'Dom/me Lookup: %s\n' "$1"
+  printf 'Rows Shown: %s\n\n' "$(count_rows "${rows}")"
   {
     printf 'send_id\tsent_at_utc\tamount\tsub_name\tsource\tstatus\n'
     printf '%s\n' "${rows}"
@@ -462,13 +496,12 @@ send_command() {
       fi
       (( $# == 2 || $# == 3 )) || die "usage: rob send add <domme_lookup> <amount> [sub_send_name] --guild <guild_id>"
       local domme_lookup="$1"
-      local amount_cents
-      amount_cents="$(amount_to_cents "$2")"
+      amount_to_cents "$2" >/dev/null
       local response
       if [[ $# -eq 3 ]]; then
         response="$(
           ops_post_form \
-            "/guilds/${GUILD_ID}/send-requests/add" \
+            "/guilds/${GUILD_ID}/send-requests/add?format=text" \
             "domme_lookup=${domme_lookup}" \
             "amount=${2}" \
             "sub_name=${3}" \
@@ -477,13 +510,12 @@ send_command() {
       else
         response="$(
           ops_post_form \
-            "/guilds/${GUILD_ID}/send-requests/add" \
+            "/guilds/${GUILD_ID}/send-requests/add?format=text" \
             "domme_lookup=${domme_lookup}" \
             "amount=${2}" \
             "requested_by=$(request_actor)"
         )"
       fi
-      printf 'Approval request created for a %s-cent send change.\n' "${amount_cents}"
       printf '%s\n' "${response}"
       ;;
     remove)
@@ -495,9 +527,8 @@ send_command() {
       fi
       [[ $# -eq 2 ]] || die "usage: rob send remove <domme_lookup> <send_id> --guild <guild_id>"
       [[ "$2" =~ ^[0-9]+$ ]] || die "send_id must be numeric."
-      printf 'Approval request created for send removal.\n'
       ops_post_form \
-        "/guilds/${GUILD_ID}/send-requests/remove" \
+        "/guilds/${GUILD_ID}/send-requests/remove?format=text" \
         "domme_lookup=$1" \
         "send_id=$2" \
         "requested_by=$(request_actor)"
@@ -522,7 +553,7 @@ count_command() {
       fi
       [[ $# -eq 1 ]] || die "usage: rob count set <number> --guild <guild_id>"
       [[ "$1" =~ ^[0-9]+$ ]] || die "count must be numeric."
-      ops_post_form "/guilds/${GUILD_ID}/count" "number=$1"
+      ops_post_form "/guilds/${GUILD_ID}/count?format=text" "number=$1"
       ;;
     status)
       collect_guild_option "$@"
@@ -532,7 +563,7 @@ count_command() {
         set --
       fi
       [[ $# -eq 0 ]] || die "usage: rob count status --guild <guild_id>"
-      ops_get "/guilds/${GUILD_ID}/count"
+      ops_get "/guilds/${GUILD_ID}/count?format=text"
       ;;
     *)
       die "usage: rob count set|status ..."
@@ -590,17 +621,17 @@ maintenance_command() {
 
   case "${action}" in
     status)
-      ops_get "/maintenance"
+      ops_get "/maintenance?format=text"
       ;;
     on)
       local reason="Enabled via rob CLI"
       if (($#)); then
         reason="$*"
       fi
-      ops_post_form "/maintenance" "enabled=true" "reason=${reason}"
+      ops_post_form "/maintenance?format=text" "enabled=true" "reason=${reason}"
       ;;
     off)
-      ops_post_form "/maintenance" "enabled=false"
+      ops_post_form "/maintenance?format=text" "enabled=false"
       ;;
     *)
       die "usage: rob maintenance on|off|status"
@@ -611,13 +642,13 @@ maintenance_command() {
 block_command() {
   [[ $# -eq 1 ]] || die "usage: rob block <discord_user_id>"
   [[ "$1" =~ ^[0-9]+$ ]] || die "discord_user_id must be numeric."
-  ops_post_form "/block" "discord_user_id=$1" "reason=blocked via rob CLI"
+  ops_post_form "/block?format=text" "discord_user_id=$1" "reason=blocked via rob CLI"
 }
 
 unblock_command() {
   [[ $# -eq 1 ]] || die "usage: rob unblock <discord_user_id>"
   [[ "$1" =~ ^[0-9]+$ ]] || die "discord_user_id must be numeric."
-  ops_post_form "/unblock" "discord_user_id=$1"
+  ops_post_form "/unblock?format=text" "discord_user_id=$1"
 }
 
 restart_command() {

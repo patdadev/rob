@@ -68,6 +68,8 @@ def test_rob_wrapper_lists_dommes_via_psql_without_python(tmp_path: Path):
         env=env,
     )
 
+    assert "Dom/me List" in result.stdout
+    assert "Total Registered: 1" in result.stdout
     assert "Mistress" in result.stdout
     assert "WHERE guild_id = 42" in log_path.read_text(encoding="utf-8")
 
@@ -190,3 +192,31 @@ def test_rob_wrapper_can_reset_guild_achievements(tmp_path: Path):
 
     assert "Guild Achievement Reset" in result.stdout
     assert "/guilds/42/achievements/reset?format=text" in log_path.read_text(encoding="utf-8")
+
+
+def test_rob_wrapper_send_add_uses_pat_actor_alias(tmp_path: Path):
+    log_path = tmp_path / "curl.log"
+    _write_fake_command(
+        tmp_path,
+        "curl",
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$*\" >> \"$ROB_TEST_LOG\"\n"
+        "printf 'Send Approval Requested\\n200'\n",
+    )
+    symlink_path = tmp_path / "rob"
+    symlink_path.symlink_to(REPO_ROOT / "scripts" / "rob")
+
+    env = os.environ.copy()
+    env["PATH"] = f"{tmp_path}:{env['PATH']}"
+    env["ROB_TEST_LOG"] = str(log_path)
+    env["USER"] = "pfaint"
+
+    subprocess.run(
+        [str(symlink_path), "send", "add", "missadore", "10.00", "--guild", "42"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert "requested_by=Pat" in log_path.read_text(encoding="utf-8")
