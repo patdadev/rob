@@ -9,8 +9,21 @@ from rob.ui.theme import COLOR_ROB_PURPLE, COLOR_SUCCESS
 _ENTRIES_PER_PAGE = 10
 
 
+def achievement_icon(achievement: AchievementDefinition, *, unlocked: bool) -> str:
+    if not unlocked and achievement.hidden:
+        return "⚪"
+    return {
+        "common": "🏆",
+        "uncommon": "🥉",
+        "rare": "🥈",
+        "epic": "🥇",
+        "legendary": "👑",
+        "secret": "❔",
+    }.get(achievement.rarity, "🏆")
+
+
 def _catalogue_entry(achievement: AchievementDefinition) -> str:
-    return f"**{achievement.title}**\n{achievement.description}"
+    return f"{achievement_icon(achievement, unlocked=True)} **{achievement.title}**\n{achievement.description}"
 
 
 def achievement_unlocked_card(
@@ -21,8 +34,9 @@ def achievement_unlocked_card(
 ) -> RenderedMessage:
     require_components_v2()
     view = discord.ui.LayoutView(timeout=1800)
+    title_icon = achievement_icon(achievement, unlocked=True)
     children: list[discord.ui.Item] = [
-        discord.ui.TextDisplay(f"### {achievement.title}"),
+        discord.ui.TextDisplay(f"## {title_icon} {achievement.title}"),
         discord.ui.Separator(),
         discord.ui.TextDisplay(achievement.description),
     ]
@@ -63,7 +77,7 @@ def achievements_overview_cards(
     else:
         pages.append([])
 
-    summary_line = f"Unlocked: **{len(known_unlocked)}/{len(ENABLED_ACHIEVEMENTS)}**"
+    summary_line = f"Achievements unlocked: **{len(known_unlocked)}/{len(ENABLED_ACHIEVEMENTS)}**"
     if newly_unlocked_count and newly_unlocked_count > 0:
         summary_line = f"{summary_line} +{newly_unlocked_count}"
     subtitle = "-# Your unlocked achievements" if for_self else f"-# Viewing: {display_name}"
@@ -72,17 +86,14 @@ def achievements_overview_cards(
     for index, page in enumerate(pages):
         view = discord.ui.LayoutView(timeout=1800)
         children: list[discord.ui.Item] = [
-            discord.ui.TextDisplay("### Rob Achievements"),
+            discord.ui.TextDisplay("## Rob Achievements"),
             discord.ui.Separator(),
             discord.ui.TextDisplay(f"{summary_line}\n{subtitle}"),
             discord.ui.Separator(),
         ]
 
         if page:
-            for item_index, entry in enumerate(page):
-                if item_index:
-                    children.append(discord.ui.Separator())
-                children.append(discord.ui.TextDisplay(entry))
+            children.append(discord.ui.TextDisplay("\n\n".join(page)))
         elif for_self:
             children.append(
                 discord.ui.TextDisplay(

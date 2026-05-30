@@ -41,6 +41,19 @@ The webhook server is the HTTP-only side of Rob.
 
 `DISCORD_TOKEN` is not required here.
 
+## Bot notification checklist
+
+For sends to appear in Discord without bot-side polling, the webhook server needs:
+
+```env
+ROB_BOT_NOTIFY_URL=https://bot-01.robthebot.com/ops/sends/process
+ROB_OPS_SECRET=<same value as the bot server>
+```
+
+That URL must be reachable from the webhook server and must proxy to the bot server's local ops bridge.
+If `curl -fsS https://bot-01.robthebot.com/ops/sends/process` returns a route/proxy error, Nginx or Cloudflare is not wired yet.
+The endpoint is `POST` only, so a plain `GET` may return `405`; that still proves the route exists.
+
 ## `THRONE_WEBHOOK_REQUIRE_SIGNATURE`
 
 - When `THRONE_WEBHOOK_REQUIRE_SIGNATURE=true`, the webhook rejects requests with `401` if the timestamp is invalid, the public key is missing, or the Ed25519 signature check fails.

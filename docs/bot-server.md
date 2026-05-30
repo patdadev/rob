@@ -34,3 +34,24 @@ The bot server is the Discord-only side of Rob.
 - `ROB_OPS_SECRET`
 
 The bot does not host the Throne webhook HTTP server.
+
+## Webhook-to-bot send notifications
+
+The bot ops bridge listens on `ROB_OPS_HOST:ROB_OPS_PORT`, usually `127.0.0.1:8811`.
+Because that address is local to the bot server, the webhook server cannot reach it unless the bot server exposes a small, protected reverse proxy route.
+
+Recommended Nginx route on `bot-01.robthebot.com`:
+
+```nginx
+location = /ops/sends/process {
+    proxy_pass http://127.0.0.1:8811/ops/sends/process;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Keep the bot ops bridge itself bound to `127.0.0.1`. Do not open port `8811` publicly.
+The webhook must send the matching `ROB_OPS_SECRET` header through `ROB_BOT_NOTIFY_URL`.

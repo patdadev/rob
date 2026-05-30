@@ -141,7 +141,6 @@ def test_achievements_command_shows_only_unlocked_achievements():
     assert "Rob Achievements" in text
     assert "Double Digits" in text
     assert "Secret Achievement" not in text
-    assert "🏆" not in text
     assert "???" not in text
 
 
