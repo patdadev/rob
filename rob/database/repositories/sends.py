@@ -307,6 +307,30 @@ class SendsRepository:
             ignored=counts["ignored"],
         )
 
+    async def count_for_guild(self, guild_id: int) -> int:
+        async with self.database.acquire() as connection:
+            value = await connection.fetchval(
+                """
+                SELECT COUNT(*)
+                FROM sends
+                WHERE guild_id = $1
+                """,
+                guild_id,
+            )
+        return int(value or 0)
+
+    async def total_cents_for_guild(self, guild_id: int) -> int:
+        async with self.database.acquire() as connection:
+            value = await connection.fetchval(
+                """
+                SELECT COALESCE(SUM(amount_cents), 0)
+                FROM sends
+                WHERE guild_id = $1
+                """,
+                guild_id,
+            )
+        return int(value or 0)
+
     async def list_sends(
         self,
         *,

@@ -230,3 +230,47 @@ class DommesRepository:
                 """,
                 domme_id,
             )
+
+    async def rotate_webhook_secret(
+        self,
+        *,
+        guild_id: int,
+        discord_user_id: int,
+        webhook_secret: str,
+        webhook_secret_hash: str,
+        throne_url: str | None = None,
+        throne_handle: str | None = None,
+        throne_creator_id: str | None = None,
+        hide_own_purchases: bool | None = None,
+    ) -> Domme:
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                UPDATE dommes
+                SET
+                    throne_url = COALESCE($3, throne_url),
+                    throne_handle = COALESCE($4, throne_handle),
+                    throne_creator_id = COALESCE($5, throne_creator_id),
+                    hide_own_purchases = COALESCE($6, hide_own_purchases),
+                    webhook_secret = $7,
+                    webhook_secret_hash = $8,
+                    webhook_connected_at = NULL,
+                    last_successful_event_at = NULL,
+                    tracking_status = 'disabled',
+                    updated_at = now()
+                WHERE guild_id = $1
+                  AND discord_user_id = $2
+                RETURNING *
+                """,
+                guild_id,
+                discord_user_id,
+                throne_url,
+                throne_handle,
+                throne_creator_id,
+                hide_own_purchases,
+                webhook_secret,
+                webhook_secret_hash,
+            )
+        if row is None:
+            raise ValueError("That Dom/me is no longer registered.")
+        return _build_domme(row)

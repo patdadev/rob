@@ -8,6 +8,7 @@ import discord
 
 from rob.database.repositories.bot_state import BotStateRepository
 from rob.database.repositories.guild_settings import GuildSettingsRepository
+from rob.services.maintenance_service import MaintenanceService
 from rob.ui.cards.inactivity import final_inactivity_warning_card, first_inactivity_warning_card
 
 log = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ class InactivityService:
         bootstrap_grace_days: int,
         final_notice_days: int,
         notice_channel_id: int | None,
+        maintenance: MaintenanceService | None = None,
     ) -> None:
         self.bot_state = bot_state
         self.guild_settings = guild_settings
@@ -42,6 +44,7 @@ class InactivityService:
         self.bootstrap_grace = timedelta(days=max(1, bootstrap_grace_days))
         self.final_notice_window = timedelta(days=max(1, final_notice_days))
         self.notice_channel_id = notice_channel_id
+        self.maintenance = maintenance
 
     def _enabled_key(self, guild_id: int) -> str:
         return f"inactivity:{guild_id}:enabled"
@@ -162,6 +165,9 @@ class InactivityService:
         guild_id = guild.id
         if not await self.is_enabled(guild_id):
             return []
+        if self.maintenance is not None and await self.maintenance.notifications_suppressed():
+            send_notifications = False
+            perform_kicks = False
 
         settings = await self.guild_settings.get(guild_id)
         if settings is None or settings.inactive_role_id is None:

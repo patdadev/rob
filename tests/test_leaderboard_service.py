@@ -167,7 +167,9 @@ def test_refresh_shows_maintenance_status_when_enabled(monkeypatch: pytest.Monke
     asyncio.run(service.refresh_guild(1))
 
     first_text = "\n".join(str(getattr(x, "content", "")) for x in channel.sends[0]["view"].children[0].children)
-    assert "-# 🟠 Paused (Maintenance)" in first_text
+    second_text = "\n".join(str(getattr(x, "content", "")) for x in channel.sends[1]["view"].children[0].children)
+    assert "-# 🟠 Paused | Under Maintenance" in first_text
+    assert "Rob is currently under maintenance" in second_text
 
 
 def test_refresh_uses_new_message_keys_for_upsert(monkeypatch: pytest.MonkeyPatch):

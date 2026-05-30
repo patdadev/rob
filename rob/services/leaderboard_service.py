@@ -107,13 +107,18 @@ class LeaderboardService:
                 min(self.leaderboard_limit, 10),
                 guild_id,
             )
+            maintenance_enabled = await self.maintenance.is_enabled()
             dommes_msg = leaderboard_card(
                 title="ignored",
                 entries=dommes,
                 summary=summary,
                 status=await self.maintenance.get_leaderboard_status(),
             )
-            stats_msg = leaderboard_stats_card(summary, dommes)
+            stats_msg = leaderboard_stats_card(
+                summary,
+                dommes,
+                maintenance_enabled=maintenance_enabled,
+            )
 
             main_ok = await self._ensure_message(
                 guild_id=guild_id,

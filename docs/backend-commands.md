@@ -50,7 +50,30 @@ rob count set <number>
 rob inactivity status --guild-id <guild_id>
 rob inactivity on --guild-id <guild_id>
 rob inactivity off --guild-id <guild_id>
+
+rob migration audit --guild <guild_id>
+rob webhook preview --guild <guild_id>
+rob webhook send --guild <guild_id> --all --limit 10
+rob webhook send --guild <guild_id> --discord-user-id <discord_user_id>
+
+rob clear rob_dev_v2
 ```
+
+## Migration rehearsal commands
+
+```bash
+rob migration audit --guild <guild_id>
+rob webhook preview --guild <guild_id>
+rob webhook send --guild <guild_id> --all
+rob webhook send --guild <guild_id> --all --limit 10
+rob webhook send --guild <guild_id> --discord-user-id <discord_user_id>
+rob clear rob_dev_v2
+```
+
+- `rob migration audit` prints a guild-level rehearsal summary for imported Dom/mes, Subs, sends, count state, leaderboard refs, maintenance state, and webhook reconnect readiness.
+- `rob webhook preview` is read-only and shows which Dom/mes would be reissued a new webhook URL.
+- `rob webhook send` rotates webhook secrets, rebuilds the URL from `THRONE_WEBHOOK_BASE_URL`, and DMs the guided reconnect flow.
+- `rob clear rob_dev_v2` only prints SQL for manual review. It does not execute anything and preserves `db_build_version`.
 
 ## DB build vs data migration
 
@@ -58,6 +81,17 @@ rob inactivity off --guild-id <guild_id>
 - Runtime grants are environment-specific SQL in `scripts/db/grants/`.
 - SQLite -> PostgreSQL data migration tooling is in `scripts/data_migration/`.
 - Deploy scripts do not run schema build SQL.
+
+## Maintenance behavior
+
+During maintenance:
+
+- send tracker posting is paused;
+- leaderboard refresh/posting is paused;
+- webhook/manual sends still enter the DB as queued work;
+- counting remains active;
+- manual send-add admin actions remain allowed;
+- `/register domme` and `/register sub` are blocked until maintenance ends.
 
 ## Deploy gate
 

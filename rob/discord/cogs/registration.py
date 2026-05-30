@@ -128,10 +128,27 @@ class RegistrationCog(commands.Cog):
             return False
         return True
 
+    async def _require_registration_available(self, interaction: discord.Interaction) -> bool:
+        maintenance = getattr(self.bot, "maintenance_service", None)
+        if maintenance is None:
+            return True
+        if not await maintenance.registrations_blocked():
+            return True
+        await interaction.response.send_message(
+            **error_card(
+                "Rob is under maintenance right now.",
+                "Dom/me and Sub registration are paused until the maintenance window is over. Counting and approved manual send work can still continue.",
+            ).send_kwargs(),
+            ephemeral=True,
+        )
+        return False
+
     @register_group.command(name="domme", description="Register a Dom/me Throne profile.")
     async def register_domme(self, interaction: discord.Interaction) -> None:
         if interaction.guild is None or interaction.user is None:
             await interaction.response.send_message(**error_card("This command can only be used in a server.").send_kwargs(), ephemeral=True)
+            return
+        if not await self._require_registration_available(interaction):
             return
         log.info(
             "/register domme invoked guild_id=%s discord_user_id=%s",
@@ -200,6 +217,15 @@ class RegistrationCog(commands.Cog):
         throne_input: str,
         setup_message_id: int | None = None,
     ) -> None:
+        maintenance = getattr(self.bot, "maintenance_service", None)
+        if maintenance is not None and await maintenance.registrations_blocked():
+            await interaction.followup.send(
+                **error_card(
+                    "Rob is under maintenance right now.",
+                    "Dom/me registration is paused until the maintenance window is over.",
+                ).send_kwargs()
+            )
+            return
         try:
             result = await self.bot.registration_service.register_domme(
                 guild_id=guild_id,
@@ -258,6 +284,7 @@ class RegistrationCog(commands.Cog):
                         **achievement_unlocked_card(
                             achievement,
                             unlocked_by_display_name=display_name,
+                            unlocked_by_user_id=discord_user_id,
                         ).send_kwargs()
                     )
 
@@ -279,6 +306,8 @@ class RegistrationCog(commands.Cog):
     async def register_sub(self, interaction: discord.Interaction) -> None:
         if interaction.guild is None or interaction.user is None:
             await interaction.response.send_message(**error_card("This command can only be used in a server.").send_kwargs(), ephemeral=True)
+            return
+        if not await self._require_registration_available(interaction):
             return
 
         settings = await self.bot.guild_settings_repo.get(interaction.guild.id)
@@ -476,6 +505,16 @@ class _SubRegistrationModal(discord.ui.Modal, title="Rob | Sub Registration"):
             seen.add(lowered)
 
         await interaction.response.defer(ephemeral=True)
+        maintenance = getattr(self.cog.bot, "maintenance_service", None)
+        if maintenance is not None and await maintenance.registrations_blocked():
+            await interaction.followup.send(
+                **error_card(
+                    "Rob is under maintenance right now.",
+                    "Sub registration is paused until the maintenance window is over.",
+                ).send_kwargs(),
+                ephemeral=True,
+            )
+            return
         try:
             result = await self.cog.bot.registration_service.register_sub(
                 guild_id=self.guild_id,

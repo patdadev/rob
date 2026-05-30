@@ -40,5 +40,6 @@
 ## Notes
 
 - Registration role checks are runtime-validated from `vib_settings`.
+- During maintenance, `/register domme` and `/register sub` are intentionally unavailable while counting stays active.
 - `/leaderboard` is for user-facing stats and should not create schema changes or admin side effects.
 - After deploy, Discord command sync removes retired commands. Guild removals usually appear quickly; global command removal can take longer to propagate.

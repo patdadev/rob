@@ -70,3 +70,5 @@ def test_leaderboard_status_returns_maintenance_or_live():
 
     asyncio.run(service.enable(reason=None))
     assert asyncio.run(service.get_leaderboard_status()) == LeaderboardStatus.MAINTENANCE
+    assert asyncio.run(service.registrations_blocked()) is True
+    assert asyncio.run(service.notifications_suppressed()) is True

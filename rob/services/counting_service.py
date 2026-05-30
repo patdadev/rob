@@ -756,6 +756,7 @@ class CountingService:
                 **achievement_unlocked_card(
                     achievement,
                     unlocked_by_display_name=display_name,
+                    unlocked_by_user_id=unlocked_by_user_id,
                 ).send_kwargs()
             )
 

@@ -114,6 +114,84 @@ class _FakeAchievementsRepo:
         return {"guild_id": guild_id, "unlocks_deleted": 4, "events_deleted": 9}
 
 
+class _FakeBotSettingsRepo:
+    def __init__(self):
+        self.values: dict[str, str] = {}
+
+    async def get_text(self, key: str):
+        return self.values.get(key)
+
+    async def set_value(self, key: str, value: str):
+        self.values[key] = value
+
+
+class _FakeDommesRepo:
+    def __init__(self, dommes: list[SimpleNamespace]):
+        self.dommes = dommes
+
+    async def list_for_guild(self, guild_id: int):
+        return [domme for domme in self.dommes if domme.guild_id == guild_id]
+
+    async def count(self, guild_id: int):
+        return len(await self.list_for_guild(guild_id))
+
+
+class _FakeSendsRepoSummary:
+    async def count_for_guild(self, guild_id: int):
+        assert guild_id == 99
+        return 207
+
+    async def total_cents_for_guild(self, guild_id: int):
+        assert guild_id == 99
+        return 647264
+
+
+class _FakeLeaderboardsRepoSummary:
+    async def get_summary(self, guild_id: int):
+        assert guild_id == 99
+        return SimpleNamespace(send_count=207, total_cents=647264)
+
+    async def get_message(self, guild_id: int, message_key: str):
+        assert guild_id == 99
+        if message_key == "leaderboard":
+            return SimpleNamespace(channel_id=22, message_id=111)
+        if message_key == "leaderboard_stats":
+            return SimpleNamespace(channel_id=22, message_id=222)
+        return None
+
+
+class _FakeCountingService:
+    async def get_or_create_state(self, guild_id: int):
+        assert guild_id == 99
+        return SimpleNamespace(current_number=4321, channel_id=44, is_enabled=True)
+
+
+class _FakeMaintenanceService:
+    async def get_state(self):
+        return SimpleNamespace(enabled=False, reason=None)
+
+
+class _FakeRegistrationServiceReissue:
+    def __init__(self):
+        self.calls: list[tuple[int, int]] = []
+
+    async def reissue_domme_webhook(self, *, guild_id: int, discord_user_id: int):
+        self.calls.append((guild_id, discord_user_id))
+        return SimpleNamespace(
+            domme=SimpleNamespace(id=88, throne_handle="missadore"),
+            webhook_url="https://throne.robthebot.com/webhook/creator/secret",
+        )
+
+
+class _FakeDmUser:
+    def __init__(self):
+        self.messages: list[dict] = []
+
+    async def send(self, **kwargs):
+        self.messages.append(kwargs)
+        return SimpleNamespace(id=77, channel=SimpleNamespace(id=66))
+
+
 def _make_fake_guild():
     leaderboard = MagicMock(spec=discord.TextChannel)
     leaderboard.id = 22
@@ -304,3 +382,130 @@ def test_bot_ops_guild_achievement_reset_endpoint_returns_deleted_counts():
     body = json.loads(response.text)
     assert body["unlocks_deleted"] == 4
     assert body["events_deleted"] == 9
+
+
+def test_bot_ops_migration_audit_endpoint_returns_text_summary():
+    dommes = [
+        SimpleNamespace(
+            guild_id=99,
+            discord_user_id=555,
+            throne_handle="missadore",
+            tracking_status="active",
+            profile_status="active",
+            webhook_connected_at=None,
+            last_successful_event_at=None,
+        )
+    ]
+    async def _list_subs(guild_id: int):
+        assert guild_id == 99
+        return [SimpleNamespace(id=1)]
+
+    bot = SimpleNamespace(
+        get_guild=lambda guild_id: _make_fake_guild() if guild_id == 99 else None,
+        dommes_repo=_FakeDommesRepo(dommes),
+        subs_repo=SimpleNamespace(list_for_guild=_list_subs),
+        sends_repo=_FakeSendsRepoSummary(),
+        leaderboards_repo=_FakeLeaderboardsRepoSummary(),
+        counting_service=_FakeCountingService(),
+        maintenance_service=_FakeMaintenanceService(),
+        bot_settings_repo=_FakeBotSettingsRepo(),
+        user=SimpleNamespace(id=123),
+    )
+    server = BotOpsServer(bot=bot, host="127.0.0.1", port=8811, secret="shared")
+    request = _FakeRequest(headers={"X-Rob-Ops-Secret": "shared"}, query={"format": "text"})
+    request.match_info["guild_id"] = "99"
+
+    response = asyncio.run(server._handle_migration_audit(request))
+
+    assert response.status == 200
+    assert "Migration Audit" in response.text
+    assert "Tracked Sends: 207" in response.text
+    assert "Webhook Reissue Pending: 1" in response.text
+
+
+def test_bot_ops_webhook_preview_endpoint_marks_already_reissued_users():
+    dommes = [
+        SimpleNamespace(
+            guild_id=99,
+            discord_user_id=555,
+            throne_handle="missadore",
+            tracking_status="active",
+            profile_status="active",
+            webhook_connected_at=None,
+            last_successful_event_at=None,
+        ),
+        SimpleNamespace(
+            guild_id=99,
+            discord_user_id=777,
+            throne_handle="mistress",
+            tracking_status="active",
+            profile_status="active",
+            webhook_connected_at=object(),
+            last_successful_event_at=object(),
+        ),
+    ]
+    settings_repo = _FakeBotSettingsRepo()
+    settings_repo.values["migration:webhook_reissue:99:777"] = "2026-05-30T00:00:00+00:00"
+    bot = SimpleNamespace(
+        get_guild=lambda guild_id: _make_fake_guild() if guild_id == 99 else None,
+        dommes_repo=_FakeDommesRepo(dommes),
+        bot_settings_repo=settings_repo,
+        user=SimpleNamespace(id=123),
+    )
+    server = BotOpsServer(bot=bot, host="127.0.0.1", port=8811, secret="shared")
+    request = _FakeRequest(headers={"X-Rob-Ops-Secret": "shared"})
+    request.match_info["guild_id"] = "99"
+
+    response = asyncio.run(server._handle_webhook_reissue_preview(request))
+
+    body = json.loads(response.text)
+    assert response.status == 200
+    assert body["pending_reissue_count"] == 1
+    assert body["already_reissued_count"] == 1
+    skipped = next(row for row in body["dommes"] if row["discord_user_id"] == 777)
+    assert skipped["will_send"] is False
+
+
+def test_bot_ops_webhook_send_rotates_and_marks_reissue_sent():
+    dm_user = _FakeDmUser()
+    dommes = [
+        SimpleNamespace(
+            guild_id=99,
+            discord_user_id=555,
+            throne_handle="missadore",
+            tracking_status="active",
+            profile_status="active",
+            webhook_connected_at=None,
+            last_successful_event_at=None,
+        )
+    ]
+    settings_repo = _FakeBotSettingsRepo()
+    registration_service = _FakeRegistrationServiceReissue()
+    async def _get_settings(guild_id: int):
+        assert guild_id == 99
+        return SimpleNamespace(send_track_channel_id=33)
+
+    bot = SimpleNamespace(
+        get_guild=lambda guild_id: _make_fake_guild() if guild_id == 99 else None,
+        get_user=lambda user_id: dm_user if user_id == 555 else None,
+        guild_settings_repo=SimpleNamespace(get=_get_settings),
+        registration_service=registration_service,
+        dommes_repo=_FakeDommesRepo(dommes),
+        bot_settings_repo=settings_repo,
+        user=SimpleNamespace(id=123),
+    )
+    server = BotOpsServer(bot=bot, host="127.0.0.1", port=8811, secret="shared")
+    request = _FakeRequest(
+        payload={"all": "true"},
+        headers={"X-Rob-Ops-Secret": "shared"},
+        query={"format": "text"},
+    )
+    request.match_info["guild_id"] = "99"
+
+    response = asyncio.run(server._handle_webhook_reissue_send(request))
+
+    assert response.status == 200
+    assert registration_service.calls == [(99, 555)]
+    assert dm_user.messages
+    assert settings_repo.values["migration:webhook_reissue:99:555"]
+    assert "Delivered: 1" in response.text

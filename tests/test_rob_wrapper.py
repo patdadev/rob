@@ -194,6 +194,103 @@ def test_rob_wrapper_can_reset_guild_achievements(tmp_path: Path):
     assert "/guilds/42/achievements/reset?format=text" in log_path.read_text(encoding="utf-8")
 
 
+def test_rob_wrapper_migration_audit_uses_text_endpoint(tmp_path: Path):
+    log_path = tmp_path / "curl.log"
+    _write_fake_command(
+        tmp_path,
+        "curl",
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$*\" >> \"$ROB_TEST_LOG\"\n"
+        "printf 'Migration Audit\\n200'\n",
+    )
+    symlink_path = tmp_path / "rob"
+    symlink_path.symlink_to(REPO_ROOT / "scripts" / "rob")
+
+    env = os.environ.copy()
+    env["PATH"] = f"{tmp_path}:{env['PATH']}"
+    env["ROB_TEST_LOG"] = str(log_path)
+
+    result = subprocess.run(
+        [str(symlink_path), "migration", "audit", "--guild", "42"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert "Migration Audit" in result.stdout
+    assert "/guilds/42/migration/audit?format=text" in log_path.read_text(encoding="utf-8")
+
+
+def test_rob_wrapper_webhook_preview_and_send_use_text_endpoints(tmp_path: Path):
+    log_path = tmp_path / "curl.log"
+    _write_fake_command(
+        tmp_path,
+        "curl",
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$*\" >> \"$ROB_TEST_LOG\"\n"
+        "printf 'Webhook Reissue Preview\\n200'\n",
+    )
+    symlink_path = tmp_path / "rob"
+    symlink_path.symlink_to(REPO_ROOT / "scripts" / "rob")
+
+    env = os.environ.copy()
+    env["PATH"] = f"{tmp_path}:{env['PATH']}"
+    env["ROB_TEST_LOG"] = str(log_path)
+
+    subprocess.run(
+        [str(symlink_path), "webhook", "preview", "--guild", "42"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    subprocess.run(
+        [str(symlink_path), "webhook", "send", "--guild", "42", "--all", "--limit", "2"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    log_text = log_path.read_text(encoding="utf-8")
+    assert "/guilds/42/webhook/reissue/preview?format=text" in log_text
+    assert "/guilds/42/webhook/reissue/send?format=text" in log_text
+    assert "all=true" in log_text
+    assert "limit=2" in log_text
+
+
+def test_rob_wrapper_clear_rob_dev_v2_prints_sql_only(tmp_path: Path):
+    log_path = tmp_path / "psql.log"
+    _write_fake_command(
+        tmp_path,
+        "psql",
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$*\" >> \"$ROB_TEST_LOG\"\n"
+        "if printf '%s\\n' \"$*\" | grep -q \"COUNT(*) FROM\"; then printf '3\\n'; else printf 'ok\\n'; fi\n",
+    )
+    symlink_path = tmp_path / "rob"
+    symlink_path.symlink_to(REPO_ROOT / "scripts" / "rob")
+
+    env = os.environ.copy()
+    env["PATH"] = f"{tmp_path}:{env['PATH']}"
+    env["ROB_TEST_LOG"] = str(log_path)
+    env["DATABASE_URL"] = "postgresql://runtime/rob_dev_v2"
+
+    result = subprocess.run(
+        [str(symlink_path), "clear", "rob_dev_v2"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert "Rehearsal DB Clear Preview" in result.stdout
+    assert "TRUNCATE TABLE" in result.stdout
+    assert "db_build_version: preserved" in result.stdout
+    assert "COUNT(*) FROM send_change_requests" in log_path.read_text(encoding="utf-8")
+
+
 def test_rob_wrapper_send_add_uses_pat_actor_alias(tmp_path: Path):
     log_path = tmp_path / "curl.log"
     _write_fake_command(

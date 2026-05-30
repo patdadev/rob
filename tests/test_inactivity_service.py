@@ -36,6 +36,14 @@ class _FakeGuildSettingsRepo:
         return SimpleNamespace(inactive_role_id=self.inactive_role_id)
 
 
+class _FakeMaintenance:
+    def __init__(self, enabled: bool = False):
+        self.enabled = enabled
+
+    async def notifications_suppressed(self) -> bool:
+        return self.enabled
+
+
 class _FakeMember:
     def __init__(self, user_id: int, *, joined_at: datetime | None = None):
         self.id = user_id
@@ -74,7 +82,7 @@ class _FakeGuild:
         return None
 
 
-def _service(*, bot_state: _FakeBotState, inactive_role_id: int | None):
+def _service(*, bot_state: _FakeBotState, inactive_role_id: int | None, maintenance: _FakeMaintenance | None = None):
     return InactivityService(
         bot_state=bot_state,
         guild_settings=_FakeGuildSettingsRepo(inactive_role_id),
@@ -84,6 +92,7 @@ def _service(*, bot_state: _FakeBotState, inactive_role_id: int | None):
         bootstrap_grace_days=21,
         final_notice_days=7,
         notice_channel_id=None,
+        maintenance=maintenance,
     )
 
 
@@ -175,3 +184,29 @@ def test_inactivity_kicks_when_expired():
 
     assert snapshots == []
     assert member.kicked is True
+
+
+def test_inactivity_maintenance_suppresses_dms_and_kicks():
+    member = _FakeMember(10)
+    guild = _FakeGuild(1, _FakeRole(99, [member]))
+    bot_state = _FakeBotState()
+    service = _service(
+        bot_state=bot_state,
+        inactive_role_id=99,
+        maintenance=_FakeMaintenance(enabled=True),
+    )
+    asyncio.run(service.set_enabled(1, True))
+
+    now = datetime.now(timezone.utc)
+    key_prefix = "inactivity:1:user:10"
+    bot_state.values[f"{key_prefix}:assigned_at"] = (now - timedelta(days=14)).isoformat()
+    bot_state.values[f"{key_prefix}:remove_at"] = (now - timedelta(minutes=5)).isoformat()
+    bot_state.values[f"{key_prefix}:initial_notice_sent"] = "false"
+    bot_state.values[f"{key_prefix}:final_notice_sent"] = "false"
+    bot_state.values["inactivity:1:bootstrapped_at"] = (now - timedelta(days=14)).isoformat()
+
+    snapshots = asyncio.run(service.process_guild(guild, send_notifications=True, perform_kicks=True))
+
+    assert len(snapshots) == 1
+    assert member.dm_messages == []
+    assert member.kicked is False

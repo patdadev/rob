@@ -34,6 +34,12 @@ class MaintenanceService:
             return LeaderboardStatus.MAINTENANCE
         return LeaderboardStatus.LIVE
 
+    async def registrations_blocked(self) -> bool:
+        return await self.is_enabled()
+
+    async def notifications_suppressed(self) -> bool:
+        return await self.is_enabled()
+
     async def enable(self, *, reason: str | None) -> None:
         await self.bot_state.set_values(
             {

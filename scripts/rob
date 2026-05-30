@@ -92,6 +92,11 @@ Usage:
   rob scan --guild <guild_id>
   rob auto-apply --guild <guild_id> [all|channels|roles|field_a,field_b]
   rob achievement reset --guild <guild_id>
+  rob migration audit --guild <guild_id>
+  rob webhook preview --guild <guild_id>
+  rob webhook send --guild <guild_id> --all [--limit <n>]
+  rob webhook send --guild <guild_id> --discord-user-id <id>
+  rob clear rob_dev_v2
 
   rob block <discord_user_id>
   rob unblock <discord_user_id>
@@ -106,6 +111,7 @@ Notes:
   - ROB_DEFAULT_GUILD_ID or DISCORD_GUILD_ID can be used as a fallback.
   - Send additions/removals are approval-gated: the target Dom/me must approve
     them in Discord before Rob changes tracked totals.
+  - rob clear rob_dev_v2 only prints SQL. It does not execute it.
 EOF
 }
 
@@ -247,6 +253,13 @@ sql_quote_literal() {
   local value="$1"
   value="${value//\'/\'\'}"
   printf "'%s'" "${value}"
+}
+
+database_name_from_url() {
+  require_database_url
+  local cleaned="${DATABASE_URL%%\?*}"
+  cleaned="${cleaned##*/}"
+  printf '%s' "${cleaned}"
 }
 
 print_table() {
@@ -615,6 +628,176 @@ achievement_command() {
   esac
 }
 
+migration_command() {
+  local action="${1:-}"
+  shift || true
+
+  case "${action}" in
+    audit)
+      collect_guild_option "$@"
+      if ((${#REMAINING_ARGS[@]})); then
+        set -- "${REMAINING_ARGS[@]}"
+      else
+        set --
+      fi
+      [[ $# -eq 0 ]] || die "usage: rob migration audit --guild <guild_id>"
+      ops_get "/guilds/${GUILD_ID}/migration/audit?format=text"
+      ;;
+    *)
+      die "usage: rob migration audit --guild <guild_id>"
+      ;;
+  esac
+}
+
+webhook_command() {
+  local action="${1:-}"
+  shift || true
+
+  case "${action}" in
+    preview)
+      collect_guild_option "$@"
+      if ((${#REMAINING_ARGS[@]})); then
+        set -- "${REMAINING_ARGS[@]}"
+      else
+        set --
+      fi
+      [[ $# -eq 0 ]] || die "usage: rob webhook preview --guild <guild_id>"
+      ops_get "/guilds/${GUILD_ID}/webhook/reissue/preview?format=text"
+      ;;
+    send)
+      collect_guild_option "$@"
+      if ((${#REMAINING_ARGS[@]})); then
+        set -- "${REMAINING_ARGS[@]}"
+      else
+        set --
+      fi
+      local send_all="false"
+      local target_user_id=""
+      local limit=""
+      while (($#)); do
+        case "$1" in
+          --all)
+            send_all="true"
+            ;;
+          --discord-user-id)
+            shift
+            (($#)) || die "missing value for --discord-user-id"
+            target_user_id="$1"
+            ;;
+          --discord-user-id=*)
+            target_user_id="${1#*=}"
+            ;;
+          --limit)
+            shift
+            (($#)) || die "missing value for --limit"
+            limit="$1"
+            ;;
+          --limit=*)
+            limit="${1#*=}"
+            ;;
+          *)
+            die "usage: rob webhook send --guild <guild_id> --all [--limit <n>] | --discord-user-id <id>"
+            ;;
+        esac
+        shift || true
+      done
+      if [[ "${send_all}" != "true" && -z "${target_user_id}" ]]; then
+        die "usage: rob webhook send --guild <guild_id> --all [--limit <n>] | --discord-user-id <id>"
+      fi
+      if [[ -n "${target_user_id}" && ! "${target_user_id}" =~ ^[0-9]+$ ]]; then
+        die "discord user id must be numeric."
+      fi
+      if [[ -n "${limit}" && ! "${limit}" =~ ^[0-9]+$ ]]; then
+        die "limit must be numeric."
+      fi
+      local -a form_args
+      form_args=()
+      if [[ "${send_all}" == "true" ]]; then
+        form_args+=("all=true")
+      fi
+      if [[ -n "${target_user_id}" ]]; then
+        form_args+=("discord_user_id=${target_user_id}")
+      fi
+      if [[ -n "${limit}" ]]; then
+        form_args+=("limit=${limit}")
+      fi
+      ops_post_form "/guilds/${GUILD_ID}/webhook/reissue/send?format=text" "${form_args[@]}"
+      ;;
+    *)
+      die "usage: rob webhook preview|send ..."
+      ;;
+  esac
+}
+
+clear_command() {
+  [[ $# -eq 1 ]] || die "usage: rob clear rob_dev_v2"
+  [[ "$1" == "rob_dev_v2" ]] || die "usage: rob clear rob_dev_v2"
+  require_database_url
+
+  local current_db
+  current_db="$(database_name_from_url)"
+  local tables=(
+    send_change_requests
+    achievement_events
+    user_achievements
+    count_blocks
+    count_recovery_windows
+    sub_send_names
+    inactive_users
+    vib_leaderboard
+    sends
+    subs
+    dommes
+    bot_users
+    the_count
+    vib_settings
+    bot_settings
+  )
+
+  print_heading "Rehearsal DB Clear Preview"
+  printf 'Target Database: %s\n' "${current_db}"
+  printf 'Mode: SQL preview only (nothing will be executed)\n'
+  printf 'Schema: preserved\n'
+  printf 'Indexes: preserved\n'
+  printf 'db_build_version: preserved\n'
+  printf 'Intended Database: rob_dev_v2\n'
+  if [[ "${current_db}" != "rob_dev_v2" ]]; then
+    printf 'WARNING: DATABASE_URL currently points at %s, not rob_dev_v2.\n' "${current_db}"
+  fi
+  printf '\nRows that would be cleared\n'
+  printf '%s\n' '========================='
+  local table
+  for table in "${tables[@]}"; do
+    local count
+    count="$(psql_query "SELECT COUNT(*) FROM ${table}")"
+    printf -- '- %s: %s\n' "${table}" "${count:-0}"
+  done
+  printf '\nSQL to run manually as doadmin\n'
+  printf '%s\n' '============================='
+  cat <<'EOF'
+-- Rehearsal DB only.
+-- Preserves schema, indexes, and db_build_version.
+-- Review before running. Do not use this on prod.
+TRUNCATE TABLE
+    send_change_requests,
+    achievement_events,
+    user_achievements,
+    count_blocks,
+    count_recovery_windows,
+    sub_send_names,
+    inactive_users,
+    vib_leaderboard,
+    sends,
+    subs,
+    dommes,
+    bot_users,
+    the_count,
+    vib_settings,
+    bot_settings
+RESTART IDENTITY CASCADE;
+EOF
+}
+
 maintenance_command() {
   local action="${1:-status}"
   shift || true
@@ -704,6 +887,15 @@ case "${cmd}" in
     ;;
   achievement|achievements)
     achievement_command "$@"
+    ;;
+  migration)
+    migration_command "$@"
+    ;;
+  webhook)
+    webhook_command "$@"
+    ;;
+  clear)
+    clear_command "$@"
     ;;
   block)
     block_command "$@"

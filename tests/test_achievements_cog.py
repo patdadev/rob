@@ -137,16 +137,21 @@ class _FakeBot:
             unlock_returns=unlock_returns,
         )
         self.settings = SimpleNamespace(inactivity_owner_user_id=999)
+        self.maintenance_service = SimpleNamespace(notifications_suppressed=self._notifications_suppressed)
         self.guild_settings_repo = SimpleNamespace(
             get=self._get_settings,
             list_guild_ids=self._list_guild_ids,
         )
+        self._maintenance_notifications = False
 
     async def _get_settings(self, _guild_id: int):
         return SimpleNamespace(mod_role_id=42)
 
     async def _list_guild_ids(self):
         return [1]
+
+    async def _notifications_suppressed(self):
+        return self._maintenance_notifications
 
 
 def _message_text(payload: dict) -> str:
@@ -238,7 +243,7 @@ def test_test_achievements_renders_all_configured_cards_for_admin(monkeypatch):
     rendered = _message_text(channel.messages[0])
     assert "Achievement Unlocked" not in rendered
     assert "Key:" not in rendered
-    assert "Unlocked by Preview Mode" in rendered
+    assert "Achievements Unlock by Preview Mode" in rendered
 
 
 def test_test_achievements_debug_mode_shows_metadata(monkeypatch):

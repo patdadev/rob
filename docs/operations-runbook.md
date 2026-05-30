@@ -2,6 +2,19 @@
 
 This page is a practical checklist for day-to-day Rob operations in production/dev.
 
+## Repo promotion: `rob-dev` -> `rob`
+
+Treat the promotion as code promotion plus data rehearsal, not as a merge from the old `notpatdev/robthebot` repo.
+
+Recommended order:
+
+1. Push the current `rob-dev` codebase to a non-`main` bootstrap branch in `PlainStack2/rob`.
+2. Copy GitHub Actions secrets, environments, and protection rules into `PlainStack2/rob`.
+3. Verify the workflow wiring in the new repo before touching `main`.
+4. Keep `PlainStack2/rob-dev` intact as rollback/reference during rehearsal.
+5. Rehearse data import and webhook reissue on `rob_dev_v2`.
+6. Only then move `PlainStack2/rob:main` to the promoted codebase.
+
 ## Install Global `rob`
 
 ```bash
@@ -27,6 +40,14 @@ rob maintenance off
 rob queue flush
 ```
 
+While maintenance is enabled:
+
+- leaderboard status changes to `🟠 Paused | Under Maintenance`;
+- send posts are queued instead of published;
+- leaderboard refresh waits until maintenance ends;
+- `/register domme` and `/register sub` stay inactive;
+- counting remains active.
+
 ## Leaderboard Recovery
 
 ```bash
@@ -51,6 +72,28 @@ rob sends mark-posted <send_id>
 rob sends backfill-public-ids
 rob throne invalidate-test-sends
 ```
+
+## Rehearsal Migration and Webhook Reissue
+
+```bash
+rob migration audit --guild <guild_id>
+rob webhook preview --guild <guild_id>
+rob webhook send --guild <guild_id> --all --limit 10
+rob webhook send --guild <guild_id> --discord-user-id <discord_user_id>
+rob clear rob_dev_v2
+```
+
+Suggested rehearsal sequence:
+
+1. Run the manual DB build SQL and grants for `rob_dev_v2`.
+2. Run the legacy AWS discovery/report helpers.
+3. Dry-run the SQLite import.
+4. Apply the import into `rob_dev_v2`.
+5. Run `rob migration audit --guild <guild_id>`.
+6. Run `rob webhook preview --guild <guild_id>`.
+7. Reissue webhook URLs in small batches with `rob webhook send`.
+
+`rob clear rob_dev_v2` is deliberately read-only. It prints SQL for manual review and execution in pgAdmin/psql, and preserves schema plus `db_build_version`.
 
 ## Guild Channel Config Audit
 

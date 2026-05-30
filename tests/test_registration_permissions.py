@@ -111,14 +111,21 @@ class _FakeRegistrationService:
 
 
 class _FakeBot:
-    def __init__(self, settings):
+    def __init__(self, settings, *, maintenance_enabled: bool = False):
         self.guild_settings_repo = SimpleNamespace(get=self._get_settings)
         self.registration_service = _FakeRegistrationService()
         self._settings = settings
+        self._maintenance_enabled = maintenance_enabled
+        self.maintenance_service = SimpleNamespace(
+            registrations_blocked=self._registrations_blocked
+        )
 
     async def _get_settings(self, guild_id: int):
         del guild_id
         return self._settings
+
+    async def _registrations_blocked(self):
+        return self._maintenance_enabled
 
 
 def test_register_commands_do_not_take_slash_options():
@@ -168,6 +175,22 @@ def test_register_domme_allowed_sends_dm_setup_flow(monkeypatch):
     assert dm_view.children[1].children[0].label == "Continue Setup"
     assert interaction.response.messages[0]["ephemeral"] is True
     assert bot.registration_service.domme_calls == []
+
+
+def test_register_domme_blocked_during_maintenance(monkeypatch):
+    monkeypatch.setattr("rob.discord.cogs.registration.member_has_role", lambda *_args, **_kwargs: True)
+    interaction = _FakeInteraction()
+    bot = _FakeBot(
+        SimpleNamespace(domme_role_id=11, sub_role_id=22, send_track_channel_id=77),
+        maintenance_enabled=True,
+    )
+    cog = RegistrationCog(bot)
+
+    asyncio.run(RegistrationCog.register_domme.callback(cog, interaction))
+
+    assert interaction.user.sent_messages == []
+    assert interaction.response.messages[0]["ephemeral"] is True
+    assert "maintenance" in _view_text(interaction.response.messages[0]).lower()
 
 
 def _view_text(payload: dict) -> str:
@@ -288,6 +311,22 @@ def test_register_sub_allowed_opens_modal(monkeypatch):
     assert interaction.response.modal is not None
     assert type(interaction.response.modal).__name__ == "_SubRegistrationModal"
     assert bot.registration_service.sub_calls == []
+
+
+def test_register_sub_blocked_during_maintenance(monkeypatch):
+    monkeypatch.setattr("rob.discord.cogs.registration.member_has_role", lambda *_args, **_kwargs: True)
+    interaction = _FakeInteraction()
+    bot = _FakeBot(
+        SimpleNamespace(domme_role_id=11, sub_role_id=22, send_track_channel_id=77),
+        maintenance_enabled=True,
+    )
+    cog = RegistrationCog(bot)
+
+    asyncio.run(RegistrationCog.register_sub.callback(cog, interaction))
+
+    assert interaction.response.modal is None
+    assert interaction.response.messages[0]["ephemeral"] is True
+    assert "maintenance" in _view_text(interaction.response.messages[0]).lower()
 
 
 def test_register_sub_denied_when_role_missing_from_config(monkeypatch):

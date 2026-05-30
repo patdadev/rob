@@ -65,12 +65,14 @@ def test_unlock_card_uses_plain_title_and_unlocked_by_line():
     card = achievement_unlocked_card(
         achievement,
         unlocked_by_display_name="Adore's Pickle Pat",
+        unlocked_by_user_id=42,
     )
     text = _card_text(card)
     assert "Achievement Unlocked" not in text
     assert f"### {achievement.title}" in text
     assert achievement.description in text
-    assert "Unlocked by Adore's Pickle Pat" in text
+    assert "Achievements Unlock by Adore's Pickle Pat" in text
+    assert card.content == "<@42>"
 
 
 def test_unlock_card_hides_debug_metadata_by_default():

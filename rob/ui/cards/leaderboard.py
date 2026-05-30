@@ -66,19 +66,26 @@ def leaderboard_stats_card(
     summary: LeaderboardSummary,
     entries: list[LeaderboardEntry],
     *,
+    maintenance_enabled: bool = False,
     footer: str | None = None,
 ) -> RenderedMessage:
     require_components_v2()
     view = discord.ui.LayoutView(timeout=1800)
-    now = int(time.time())
-    stats_text = (
-        f"-# Leaderboard last updated: <t:{now}:R> / <t:{now}:f>\n\n"
-        f"-# Leaderboard Leader:\n**{entries[0].label if entries else 'Nobody yet'} - {format_money_from_cents(entries[0].total_cents if entries else 0)}**\n\n"
-        f"-# Total Dom/mes on Leaderboard:\n**{summary.domme_count}**\n\n"
-        f"-# Total Sends Tracked:\n**{summary.send_count}**\n\n"
-        f"-# Total Amount Tracked:\n**{format_money_from_cents(summary.total_cents)}**\n\n"
-        f"-# Unclaimed Sends:\n**{summary.unclaimed_send_count} sends / {format_money_from_cents(summary.unclaimed_total_cents)}**"
-    )
+    if maintenance_enabled:
+        stats_text = (
+            "Rob is currently under maintenance, so we've paused the send tracker and leaderboard just until he's done.\n\n"
+            "Fear not, once the maintenance is over. All untracked sends made during this time will be sent out and the leaderboard will be updated."
+        )
+    else:
+        now = int(time.time())
+        stats_text = (
+            f"-# Leaderboard last updated: <t:{now}:R> / <t:{now}:f>\n\n"
+            f"-# Leaderboard Leader:\n**{entries[0].label if entries else 'Nobody yet'} - {format_money_from_cents(entries[0].total_cents if entries else 0)}**\n\n"
+            f"-# Total Dom/mes on Leaderboard:\n**{summary.domme_count}**\n\n"
+            f"-# Total Sends Tracked:\n**{summary.send_count}**\n\n"
+            f"-# Total Amount Tracked:\n**{format_money_from_cents(summary.total_cents)}**\n\n"
+            f"-# Unclaimed Sends:\n**{summary.unclaimed_send_count} sends / {format_money_from_cents(summary.unclaimed_total_cents)}**"
+        )
 
     children = [
         discord.ui.TextDisplay("## 🏆 Thy Send Leaderboard | Stats"),

@@ -56,6 +56,11 @@ class RegistrationService:
         self.throne = throne
         self.webhook_base_url = sanitize_webhook_base_url(webhook_base_url)
 
+    def build_webhook_url(self, *, creator_id: str, webhook_secret: str) -> str | None:
+        if not self.webhook_base_url:
+            return None
+        return f"{self.webhook_base_url}/webhook/{creator_id}/{webhook_secret}"
+
     async def register_domme(
         self,
         *,
@@ -112,17 +117,60 @@ class RegistrationService:
             webhook_secret_hash=hash_webhook_secret(webhook_secret),
         )
 
-        webhook_url = None
-        if self.webhook_base_url:
-            webhook_url = (
-                f"{self.webhook_base_url}/webhook/"
-                f"{creator_info.creator_id}/{webhook_secret}"
-            )
+        webhook_url = self.build_webhook_url(
+            creator_id=creator_info.creator_id,
+            webhook_secret=webhook_secret,
+        )
 
         return DommeRegistrationResult(
             domme=domme,
             webhook_url=webhook_url,
         )
+
+    async def reissue_domme_webhook(
+        self,
+        *,
+        guild_id: int,
+        discord_user_id: int,
+    ) -> DommeRegistrationResult:
+        domme = await self.dommes.get_by_user_id(guild_id, discord_user_id)
+        if domme is None:
+            raise ValueError("That Dom/me is no longer registered.")
+
+        throne_handle = domme.throne_handle
+        throne_creator_id = domme.throne_creator_id
+        throne_url = domme.throne_url
+        hide_own_purchases = domme.hide_own_purchases
+
+        if not throne_creator_id or not throne_handle:
+            lookup = throne_url or throne_handle
+            if not lookup:
+                raise ValueError("Rob could not rebuild the webhook URL because no Throne profile is saved.")
+            creator_info = await self.throne.resolve_creator(lookup)
+            if creator_info is None:
+                raise ValueError("Rob could not resolve the saved Throne profile just now.")
+            throne_handle = creator_info.throne_handle
+            throne_creator_id = creator_info.creator_id
+            hide_own_purchases = creator_info.hide_own_purchases
+            if throne_url is None:
+                throne_url = lookup
+
+        webhook_secret = secrets.token_urlsafe(32)
+        domme = await self.dommes.rotate_webhook_secret(
+            guild_id=guild_id,
+            discord_user_id=discord_user_id,
+            throne_url=throne_url,
+            throne_handle=throne_handle,
+            throne_creator_id=throne_creator_id,
+            hide_own_purchases=hide_own_purchases,
+            webhook_secret=webhook_secret,
+            webhook_secret_hash=hash_webhook_secret(webhook_secret),
+        )
+        webhook_url = self.build_webhook_url(
+            creator_id=throne_creator_id,
+            webhook_secret=webhook_secret,
+        )
+        return DommeRegistrationResult(domme=domme, webhook_url=webhook_url)
 
     async def register_sub(
         self,

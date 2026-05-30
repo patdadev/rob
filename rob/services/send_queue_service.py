@@ -306,6 +306,7 @@ class SendQueueService:
                     **achievement_unlocked_card(
                         achievement,
                         unlocked_by_display_name=_unlock_display_name(user_id),
+                        unlocked_by_user_id=user_id,
                     ).send_kwargs()
                 )
 

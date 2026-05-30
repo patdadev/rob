@@ -53,6 +53,16 @@ If `scripts.check_db.py` reports achievement tables missing, apply the SQL manua
 
 `/test achievements` sends preview cards for every configured achievement so copy/layout can be reviewed in Discord.
 
+## Unlock announcement behavior
+
+- Achievement unlocks are announced in the same context that caused the unlock when that flow supports announcements.
+- Unlock announcements now mention the unlocked user directly so Discord actually pings them.
+- The footer text is:
+
+  `Achievements Unlock by {display_name}`
+
+- `/achievements` itself remains a view command and should not start pinging people just because someone opens the catalogue.
+
 ## Adding a new achievement
 
 1. Add definition in `rob/achievements/definitions.py`.

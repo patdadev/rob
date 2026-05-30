@@ -113,6 +113,7 @@ class RobBot(commands.Bot):
             bootstrap_grace_days=self.settings.inactivity_bootstrap_grace_days,
             final_notice_days=self.settings.inactivity_final_notice_days,
             notice_channel_id=self.settings.inactivity_notice_channel_id,
+            maintenance=self.maintenance_service,
         )
         self.registration_service = RegistrationService(
             guild_settings=self.vib_settings_repo,

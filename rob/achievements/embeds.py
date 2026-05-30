@@ -18,6 +18,7 @@ def achievement_unlocked_card(
     achievement: AchievementDefinition,
     *,
     unlocked_by_display_name: str | None = None,
+    unlocked_by_user_id: int | None = None,
     include_meta_line: bool = False,
 ) -> RenderedMessage:
     require_components_v2()
@@ -36,9 +37,16 @@ def achievement_unlocked_card(
         )
     if unlocked_by_display_name:
         children.append(discord.ui.Separator())
-        children.append(discord.ui.TextDisplay(f"-# Unlocked by {unlocked_by_display_name}"))
+        children.append(
+            discord.ui.TextDisplay(
+                f"-# Achievements Unlock by {unlocked_by_display_name}"
+            )
+        )
     view.add_item(discord.ui.Container(*children, accent_color=COLOR_SUCCESS))
-    return RenderedMessage(view=view)
+    content = None
+    if unlocked_by_user_id is not None:
+        content = f"<@{unlocked_by_user_id}>"
+    return RenderedMessage(content=content, view=view)
 
 
 def achievements_overview_cards(

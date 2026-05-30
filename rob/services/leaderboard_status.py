@@ -11,7 +11,7 @@ class LeaderboardStatus(str, Enum):
 
 _STATUS_TEXT: dict[LeaderboardStatus, str] = {
     LeaderboardStatus.LIVE: "🟢 Live",
-    LeaderboardStatus.MAINTENANCE: "🟠 Paused (Maintenance)",
+    LeaderboardStatus.MAINTENANCE: "🟠 Paused | Under Maintenance",
     LeaderboardStatus.OFFLINE: "🔴 Offline",
 }
 

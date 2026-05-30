@@ -222,6 +222,9 @@ class AchievementsCog(commands.Cog):
         guild_ids = await self.bot.guild_settings_repo.list_guild_ids()
         if not guild_ids:
             return
+        maintenance = getattr(self.bot, "maintenance_service", None)
+        if maintenance is not None and await maintenance.notifications_suppressed():
+            return
         guild_id = guild_ids[0]
         display_name = (
             getattr(message.author, "display_name", None)
@@ -236,6 +239,7 @@ class AchievementsCog(commands.Cog):
                 **achievement_unlocked_card(
                     achievement,
                     unlocked_by_display_name=display_name,
+                    unlocked_by_user_id=message.author.id,
                 ).send_kwargs()
             ),
         )
