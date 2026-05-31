@@ -42,6 +42,8 @@ def test_deploy_scripts_and_docs():
     pre_webhook = Path('deploy/scripts/precheck-webhook.sh').read_text()
     deploy_bot = Path('deploy/scripts/deploy-bot.sh').read_text()
     deploy_webhook = Path('deploy/scripts/deploy-webhook.sh').read_text()
+    bot_dev = Path('deploy/scripts/deploy-bot-dev.sh').read_text()
+    webhook_dev = Path('deploy/scripts/deploy-webhook-dev.sh').read_text()
     docs = Path('docs/deployment.md').read_text()
     cloudflared_script = Path('deploy/scripts/install-cloudflared-webhook.sh')
     cloudflared_doc = Path('docs/cloudflared-webhook.md')
