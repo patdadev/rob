@@ -171,9 +171,12 @@ class LeaderboardService:
         if guild is None:
             return False
 
-        channel_id = settings.leaderboard_channel_id or settings.send_track_channel_id
+        channel_id = self._leader_alert_channel_id(settings)
         if channel_id is None:
-            log.warning("No leaderboard or send tracking channel configured for leader alert in guild %s.", guild_id)
+            log.warning(
+                "No registration, leaderboard, or send tracking channel configured for leader alert in guild %s.",
+                guild_id,
+            )
             return False
 
         channel = guild.get_channel(channel_id)
@@ -189,6 +192,14 @@ class LeaderboardService:
         await channel.send(**leader_alert_card(f"<@{current_leader.user_id}>").send_kwargs())
         await self.bot_state.set_value(state_key, str(current_leader.user_id))
         return True
+
+    @staticmethod
+    def _leader_alert_channel_id(settings) -> int | None:
+        return (
+            settings.registration_channel_id
+            or settings.leaderboard_channel_id
+            or settings.send_track_channel_id
+        )
 
     async def _create_and_save_message(
         self,

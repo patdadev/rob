@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from rob.database.repositories.bot_state import BotStateRepository
 from rob.database.repositories.models import MaintenanceState
 from rob.services.leaderboard_status import LeaderboardStatus
@@ -12,6 +14,26 @@ LEADERBOARD_REFRESH_REQUESTED_AT_KEY = "leaderboard_refresh_requested_at"
 LEADERBOARD_REFRESH_COMPLETED_AT_KEY = "leaderboard_refresh_completed_at"
 
 
+def _normalize_setting_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    if not cleaned:
+        return None
+    if cleaned.startswith("{") and cleaned.endswith("}"):
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError:
+            return cleaned
+        if isinstance(parsed, dict):
+            nested = parsed.get("value")
+            if nested is None:
+                return None
+            nested_cleaned = str(nested).strip()
+            return nested_cleaned or None
+    return cleaned
+
+
 class MaintenanceService:
     def __init__(self, bot_state: BotStateRepository) -> None:
         self.bot_state = bot_state
@@ -20,9 +42,9 @@ class MaintenanceService:
         values = await self.bot_state.get_values(
             [MAINTENANCE_MODE_KEY, MAINTENANCE_REASON_KEY]
         )
-        raw_enabled = values.get(MAINTENANCE_MODE_KEY, "false")
+        raw_enabled = _normalize_setting_text(values.get(MAINTENANCE_MODE_KEY)) or "false"
         enabled = raw_enabled.strip().lower() in {"1", "true", "yes", "on"}
-        reason = values.get(MAINTENANCE_REASON_KEY) or None
+        reason = _normalize_setting_text(values.get(MAINTENANCE_REASON_KEY))
         _raw_value, updated_at = await self.bot_state.get_value(MAINTENANCE_MODE_KEY)
         return MaintenanceState(enabled=enabled, reason=reason, updated_at=updated_at)
 

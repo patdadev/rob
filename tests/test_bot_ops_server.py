@@ -135,6 +135,18 @@ class _FakeDommesRepo:
     async def count(self, guild_id: int):
         return len(await self.list_for_guild(guild_id))
 
+    async def get_by_handle(self, guild_id: int, throne_handle: str):
+        for domme in await self.list_for_guild(guild_id):
+            if getattr(domme, "throne_handle", "").casefold() == throne_handle.casefold():
+                return domme
+        return None
+
+    async def get_by_user_id(self, guild_id: int, discord_user_id: int):
+        for domme in await self.list_for_guild(guild_id):
+            if domme.discord_user_id == discord_user_id:
+                return domme
+        return None
+
 
 class _FakeSendsRepoSummary:
     async def count_for_guild(self, guild_id: int):
@@ -167,8 +179,20 @@ class _FakeCountingService:
 
 
 class _FakeMaintenanceService:
+    def __init__(self):
+        self.enabled = False
+        self.reason = None
+
     async def get_state(self):
-        return SimpleNamespace(enabled=False, reason=None)
+        return SimpleNamespace(enabled=self.enabled, reason=self.reason)
+
+    async def enable(self, *, reason: str | None):
+        self.enabled = True
+        self.reason = reason
+
+    async def disable(self):
+        self.enabled = False
+        self.reason = None
 
 
 class _FakeRegistrationServiceReissue:
@@ -540,3 +564,71 @@ def test_bot_ops_webhook_send_rotates_and_marks_reissue_sent():
     assert dm_user.messages
     assert settings_repo.values["migration:webhook_reissue:99:555"]
     assert "Delivered: 1" in response.text
+
+
+def test_bot_ops_webhook_refresh_resolves_handle_and_sends_dm():
+    dm_user = _FakeDmUser()
+    dommes = [
+        SimpleNamespace(
+            guild_id=99,
+            discord_user_id=555,
+            throne_handle="missadore",
+            public_display_name=None,
+            tracking_status="active",
+            profile_status="active",
+            webhook_connected_at=None,
+            last_successful_event_at=None,
+        )
+    ]
+    settings_repo = _FakeBotSettingsRepo()
+    registration_service = _FakeRegistrationServiceReissue()
+
+    async def _get_settings(guild_id: int):
+        assert guild_id == 99
+        return SimpleNamespace(send_track_channel_id=33)
+
+    bot = SimpleNamespace(
+        get_guild=lambda guild_id: _make_fake_guild() if guild_id == 99 else None,
+        get_user=lambda user_id: dm_user if user_id == 555 else None,
+        guild_settings_repo=SimpleNamespace(get=_get_settings),
+        registration_service=registration_service,
+        dommes_repo=_FakeDommesRepo(dommes),
+        bot_settings_repo=settings_repo,
+        user=SimpleNamespace(id=123),
+    )
+    server = BotOpsServer(bot=bot, host="127.0.0.1", port=8811, secret="shared")
+    request = _FakeRequest(
+        form_payload={"domme_lookup": "missadore"},
+        payload="__error__",
+        headers={"X-Rob-Ops-Secret": "shared"},
+        query={"format": "text"},
+    )
+    request.match_info["guild_id"] = "99"
+
+    response = asyncio.run(server._handle_webhook_reissue_refresh(request))
+
+    assert response.status == 200
+    assert registration_service.calls == [(99, 555)]
+    assert dm_user.messages
+    assert "Webhook URL Refreshed" in response.text
+    assert "Throne Handle: missadore" in response.text
+
+
+def test_bot_ops_maintenance_accepts_form_payload():
+    maintenance_service = _FakeMaintenanceService()
+    bot = SimpleNamespace(maintenance_service=maintenance_service, user=SimpleNamespace(id=123))
+    server = BotOpsServer(bot=bot, host="127.0.0.1", port=8811, secret="shared")
+    request = _FakeRequest(
+        payload="__error__",
+        form_payload={"enabled": "true", "reason": "Deploying update"},
+        headers={"X-Rob-Ops-Secret": "shared"},
+        query={"format": "text"},
+    )
+
+    response = asyncio.run(server._handle_set_maintenance(request))
+
+    assert response.status == 200
+    assert maintenance_service.enabled is True
+    assert maintenance_service.reason == "Deploying update"
+    assert "Enabled: yes" in response.text
+    assert "Reason: Deploying update" in response.text

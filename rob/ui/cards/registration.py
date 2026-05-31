@@ -47,5 +47,20 @@ def domme_registered_card(
     )
 
 
-def throne_setup_card(description: str, *, image_url: str | None = None, view: discord.ui.LayoutView | None = None) -> RenderedMessage:
-    return render(make_card(title=THRONE_SETUP_TITLE, body=description, color=COLOR_PRIMARY, image_url=image_url, variant="setup"), view=view)
+def throne_setup_card(
+    description: str,
+    *,
+    title: str = THRONE_SETUP_TITLE,
+    image_url: str | None = None,
+    view: discord.ui.LayoutView | None = None,
+) -> RenderedMessage:
+    return render(
+        make_card(
+            title=title,
+            body=description,
+            color=COLOR_PRIMARY,
+            image_url=image_url,
+            variant="setup",
+        ),
+        view=view,
+    )

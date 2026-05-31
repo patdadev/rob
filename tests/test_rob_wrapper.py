@@ -260,6 +260,35 @@ def test_rob_wrapper_webhook_preview_and_send_use_text_endpoints(tmp_path: Path)
     assert "limit=2" in log_text
 
 
+def test_rob_wrapper_webhook_refresh_uses_text_endpoint(tmp_path: Path):
+    log_path = tmp_path / "curl.log"
+    _write_fake_command(
+        tmp_path,
+        "curl",
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$*\" >> \"$ROB_TEST_LOG\"\n"
+        "printf 'Webhook URL Refreshed\\n200'\n",
+    )
+    symlink_path = tmp_path / "rob"
+    symlink_path.symlink_to(REPO_ROOT / "scripts" / "rob")
+
+    env = os.environ.copy()
+    env["PATH"] = f"{tmp_path}:{env['PATH']}"
+    env["ROB_TEST_LOG"] = str(log_path)
+
+    subprocess.run(
+        [str(symlink_path), "webhook", "refresh", "missadore", "--guild", "42"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    log_text = log_path.read_text(encoding="utf-8")
+    assert "/guilds/42/webhook/reissue/refresh?format=text" in log_text
+    assert "domme_lookup=missadore" in log_text
+
+
 def test_rob_wrapper_clear_rob_dev_v2_prints_sql_only(tmp_path: Path):
     log_path = tmp_path / "psql.log"
     _write_fake_command(

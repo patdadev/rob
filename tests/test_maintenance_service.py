@@ -72,3 +72,15 @@ def test_leaderboard_status_returns_maintenance_or_live():
     assert asyncio.run(service.get_leaderboard_status()) == LeaderboardStatus.MAINTENANCE
     assert asyncio.run(service.registrations_blocked()) is True
     assert asyncio.run(service.notifications_suppressed()) is True
+
+
+def test_get_state_parses_legacy_json_wrapped_values():
+    state = _FakeBotState()
+    state.values[MAINTENANCE_MODE_KEY] = '{"value": "true"}'
+    state.values[MAINTENANCE_REASON_KEY] = '{"value": "Deploying update"}'
+    service = MaintenanceService(state)
+
+    result = asyncio.run(service.get_state())
+
+    assert result.enabled is True
+    assert result.reason == "Deploying update"

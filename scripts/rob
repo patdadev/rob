@@ -96,6 +96,7 @@ Usage:
   rob webhook preview --guild <guild_id>
   rob webhook send --guild <guild_id> --all [--limit <n>]
   rob webhook send --guild <guild_id> --discord-user-id <id>
+  rob webhook refresh <thronehandle> [--guild <guild_id>]
   rob clear rob_dev_v2
 
   rob block <discord_user_id>
@@ -723,8 +724,18 @@ webhook_command() {
       fi
       ops_post_form "/guilds/${GUILD_ID}/webhook/reissue/send?format=text" "${form_args[@]}"
       ;;
+    refresh)
+      collect_guild_option "$@"
+      if ((${#REMAINING_ARGS[@]})); then
+        set -- "${REMAINING_ARGS[@]}"
+      else
+        set --
+      fi
+      [[ $# -eq 1 ]] || die "usage: rob webhook refresh <thronehandle> [--guild <guild_id>]"
+      ops_post_form "/guilds/${GUILD_ID}/webhook/reissue/refresh?format=text" "domme_lookup=$1"
+      ;;
     *)
-      die "usage: rob webhook preview|send ..."
+      die "usage: rob webhook preview|send|refresh ..."
       ;;
   esac
 }

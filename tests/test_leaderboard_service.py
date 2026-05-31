@@ -30,8 +30,8 @@ class _FakePartialMessage:
 
 
 class _FakeChannel:
-    def __init__(self):
-        self.id = 999
+    def __init__(self, *, channel_id: int = 999):
+        self.id = channel_id
         self._messages: dict[int, _FakeMessage] = {}
         self.sends: list[dict] = []
 
@@ -49,8 +49,16 @@ class _FakeGuild:
     def __init__(self, channel):
         self._channel = channel
 
-    def get_channel(self, _):
+    def get_channel(self, channel_id):
+        if isinstance(self._channel, dict):
+            return self._channel.get(channel_id)
         return self._channel
+
+    async def fetch_channel(self, channel_id):
+        channel = self.get_channel(channel_id)
+        if channel is None:
+            raise RuntimeError(channel_id)
+        return channel
 
 
 class _FakeBot:
@@ -62,8 +70,23 @@ class _FakeBot:
 
 
 class _FakeSettingsRepo:
+    def __init__(
+        self,
+        *,
+        registration_channel_id: int | None = None,
+        leaderboard_channel_id: int | None = 123,
+        send_track_channel_id: int | None = 321,
+    ) -> None:
+        self.registration_channel_id = registration_channel_id
+        self.leaderboard_channel_id = leaderboard_channel_id
+        self.send_track_channel_id = send_track_channel_id
+
     async def get(self, _):
-        return SimpleNamespace(leaderboard_channel_id=123, send_track_channel_id=321)
+        return SimpleNamespace(
+            registration_channel_id=self.registration_channel_id,
+            leaderboard_channel_id=self.leaderboard_channel_id,
+            send_track_channel_id=self.send_track_channel_id,
+        )
 
     async def list_guild_ids(self):
         return [1]
@@ -126,13 +149,15 @@ def _service(
     state: _FakeBotStateRepo | None = None,
     maintenance: _FakeMaintenance | None = None,
     leaderboard_limit: int = 10,
+    settings_repo: _FakeSettingsRepo | None = None,
 ) -> LeaderboardService:
     repo = repo or _FakeLeaderboardsRepo()
     state = state or _FakeBotStateRepo()
     maintenance = maintenance or _FakeMaintenance()
+    settings_repo = settings_repo or _FakeSettingsRepo()
     return LeaderboardService(
         bot=_FakeBot(_FakeGuild(channel)),
-        guild_settings=_FakeSettingsRepo(),
+        guild_settings=settings_repo,
         leaderboards=repo,
         bot_state=state,
         maintenance=maintenance,
@@ -301,6 +326,35 @@ def test_leader_alert_posts_when_leader_changes(monkeypatch: pytest.MonkeyPatch)
     text = "\n".join(str(getattr(x, "content", "")) for x in channel.sends[0]["view"].children[0].children)
     assert "NEW LEADER ALERT" in text
     assert state.values["leader_alert:last_announced:1"] == "2"
+
+
+def test_leader_alert_prefers_registration_channel_for_public_announcement(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("rob.services.leaderboard_service.discord.TextChannel", _FakeChannel)
+    registration_channel = _FakeChannel(channel_id=111)
+    leaderboard_channel = _FakeChannel(channel_id=222)
+    repo = _FakeLeaderboardsRepo()
+    repo.current_leader = LeaderboardEntry(label='@New', user_id=2, total_cents=2000, send_count=3)
+    state = _FakeBotStateRepo()
+    settings_repo = _FakeSettingsRepo(
+        registration_channel_id=111,
+        leaderboard_channel_id=222,
+        send_track_channel_id=333,
+    )
+    service = _service(
+        {
+            111: registration_channel,
+            222: leaderboard_channel,
+        },
+        repo=repo,
+        state=state,
+        settings_repo=settings_repo,
+    )
+
+    posted = asyncio.run(service.maybe_post_leader_alert(1, previous_leader_user_id=1))
+
+    assert posted is True
+    assert len(registration_channel.sends) == 1
+    assert leaderboard_channel.sends == []
 
 
 def test_leader_alert_does_not_post_when_maintenance_enabled(monkeypatch: pytest.MonkeyPatch):

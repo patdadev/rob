@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 from datetime import datetime, timezone
@@ -164,6 +165,10 @@ class BotOpsServer:
         app.router.add_post(
             "/guilds/{guild_id}/webhook/reissue/send",
             self._handle_webhook_reissue_send,
+        )
+        app.router.add_post(
+            "/guilds/{guild_id}/webhook/reissue/refresh",
+            self._handle_webhook_reissue_refresh,
         )
         app.router.add_post(
             "/guilds/{guild_id}/achievements/reset",
@@ -409,10 +414,7 @@ class BotOpsServer:
         if not hasattr(self.bot, "send_queue_service"):
             return web.json_response({"error": "send_queue_service_unavailable"}, status=500)
 
-        try:
-            payload = await request.json()
-        except Exception:
-            payload = {}
+        payload = await self._json_payload(request)
 
         try:
             send_id = int(payload.get("send_id"))
@@ -447,10 +449,7 @@ class BotOpsServer:
         if not hasattr(self.bot, "maintenance_service"):
             return web.json_response({"error": "maintenance_service_unavailable"}, status=500)
 
-        try:
-            payload = await request.json()
-        except Exception:
-            payload = {}
+        payload = await self._json_payload(request)
 
         enabled = self._payload_bool(payload, "enabled")
         reason = str(payload.get("reason") or "").strip() or None
@@ -672,6 +671,74 @@ class BotOpsServer:
                 content_type="text/plain",
             )
         return web.json_response(result_payload)
+
+    async def _handle_webhook_reissue_refresh(self, request: web.Request) -> web.Response:
+        if not self._is_authorized(request):
+            return web.json_response({"error": "forbidden"}, status=403)
+        if not hasattr(self.bot, "registration_service") or not hasattr(self.bot, "bot_settings_repo"):
+            return web.json_response({"error": "webhook_reissue_unavailable"}, status=500)
+
+        guild_id = self._match_guild_id(request)
+        if guild_id is None:
+            return web.json_response({"error": "invalid_guild_id"}, status=400)
+
+        payload = await self._json_payload(request)
+        domme_lookup = str(
+            payload.get("domme_lookup")
+            or payload.get("throne_handle")
+            or payload.get("lookup")
+            or ""
+        ).strip()
+        if not domme_lookup:
+            return web.json_response({"error": "missing_domme_lookup"}, status=400)
+
+        domme = await self._resolve_domme(guild_id, domme_lookup)
+        if domme is None:
+            return web.json_response({"error": "domme_not_found"}, status=404)
+
+        try:
+            result = await self.bot.registration_service.reissue_domme_webhook(
+                guild_id=guild_id,
+                discord_user_id=domme.discord_user_id,
+            )
+            await self._deliver_webhook_reissue_dm(
+                guild_id=guild_id,
+                discord_user_id=domme.discord_user_id,
+                webhook_url=result.webhook_url,
+                domme_id=result.domme.id,
+                mode="refresh",
+                throne_name=result.domme.throne_handle or domme_lookup,
+            )
+            await self.bot.bot_settings_repo.set_value(
+                self._webhook_reissue_sent_key(guild_id, domme.discord_user_id),
+                datetime.now(timezone.utc).isoformat(),
+            )
+        except ValueError as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+        except Exception as exc:  # pragma: no cover - runtime safety path
+            log.exception(
+                "Webhook refresh delivery failed guild_id=%s domme_lookup=%s discord_user_id=%s",
+                guild_id,
+                domme_lookup,
+                getattr(domme, "discord_user_id", None),
+            )
+            return web.json_response({"error": str(exc)}, status=500)
+
+        guild = self.bot.get_guild(guild_id)
+        response_payload = {
+            "ok": True,
+            "guild_id": guild_id,
+            "guild_name": guild.name if guild is not None else None,
+            "discord_user_id": domme.discord_user_id,
+            "throne_handle": result.domme.throne_handle,
+            "webhook_url_generated": bool(result.webhook_url),
+        }
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_webhook_reissue_refresh_text(response_payload),
+                content_type="text/plain",
+            )
+        return web.json_response(response_payload)
 
     async def _handle_add_domme(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
@@ -1191,6 +1258,8 @@ class BotOpsServer:
         discord_user_id: int,
         webhook_url: str | None,
         domme_id: int,
+        mode: str = "migration",
+        throne_name: str | None = None,
     ) -> None:
         if webhook_url is None:
             raise ValueError("Webhook URL generation is unavailable.")
@@ -1201,15 +1270,25 @@ class BotOpsServer:
         settings = await self.bot.guild_settings_repo.get(guild_id)
         from rob.discord.cogs.registration import NotYetButton, YesButton
         from rob.ui.cards.registration import throne_setup_card
-        from rob.ui.copy import throne_setup_steps
+        from rob.ui.copy import (
+            WEBHOOK_REFRESH_TITLE,
+            WEBHOOK_REISSUE_TITLE,
+            webhook_refresh_message,
+            webhook_upgrade_message,
+        )
         from rob.ui.render import add_card_actions
 
-        description = (
-            "Rob rotated your Throne webhook URL as part of the rob-dev to rob rehearsal cutover.\n\n"
-            "Please replace your old Throne webhook URL with the one below, save your settings, run Throne's webhook test, and then press **Yes** here once Throne confirms it worked.\n\n"
-            f"{throne_setup_steps(webhook_url)}"
-        )
-        rendered = throne_setup_card(description)
+        if mode == "refresh":
+            title = WEBHOOK_REFRESH_TITLE
+            description = webhook_refresh_message(webhook_url)
+        else:
+            title = WEBHOOK_REISSUE_TITLE
+            description = webhook_upgrade_message(
+                throne_name=throne_name or "there",
+                webhook_url=webhook_url,
+            )
+
+        rendered = throne_setup_card(description, title=title)
         add_card_actions(
             rendered.view,
             YesButton(
@@ -1521,12 +1600,26 @@ class BotOpsServer:
         return "\n".join(lines)
 
     @staticmethod
+    def _format_webhook_reissue_refresh_text(payload: dict[str, Any]) -> str:
+        return "\n".join(
+            [
+                "Webhook URL Refreshed",
+                f"Guild ID: {payload['guild_id']}",
+                f"Guild Name: {payload.get('guild_name') or '(unknown)'}",
+                f"Discord User ID: {payload['discord_user_id']}",
+                "Throne Handle: " + (payload.get("throne_handle") or "(missing)"),
+                "DM Sent: yes",
+            ]
+        )
+
+    @staticmethod
     def _format_maintenance_text(payload: dict[str, Any]) -> str:
+        reason = BotOpsServer._display_text(payload.get("reason")) or "(none)"
         return "\n".join(
             [
                 "Maintenance Status",
                 f"Enabled: {'yes' if payload.get('enabled') else 'no'}",
-                "Reason: " + (payload.get("reason") or "(none)"),
+                "Reason: " + reason,
             ]
         )
 
@@ -1637,6 +1730,32 @@ class BotOpsServer:
         if value is None:
             return False
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _display_text(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            nested = value.get("value")
+            if nested is None:
+                return None
+            text = str(nested).strip()
+            return text or None
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.startswith("{") and text.endswith("}"):
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                return text
+            if isinstance(parsed, dict):
+                nested = parsed.get("value")
+                if nested is None:
+                    return None
+                nested_text = str(nested).strip()
+                return nested_text or None
+        return text
 
     @staticmethod
     def _payload_send_names(payload: dict[str, Any]) -> list[str]:

@@ -27,6 +27,8 @@ DOMME_REGISTERED_BODY = (
 )
 
 THRONE_SETUP_TITLE = "Throne Tracking Setup!"
+WEBHOOK_REISSUE_TITLE = "Action Needed | Rob Upgrade"
+WEBHOOK_REFRESH_TITLE = "Rob | New Throne Tracking URL"
 
 
 def throne_setup_steps(webhook_url: str) -> str:
@@ -41,4 +43,31 @@ def throne_setup_steps(webhook_url: str) -> str:
         "7. Click Save Settings, then click Test Webhook and wait for the success message.\n\n"
         "Once done, pop back here to see if Rob picked up your send. I'll update this message if it worked.\n\n"
         f"The almighty link:\n```\n{webhook_url}\n```"
+    )
+
+
+def webhook_refresh_message(webhook_url: str) -> str:
+    return (
+        "Hey!\n\n"
+        "It looks like you've requested a new url for automatic throne tracking. Here it is:\n\n"
+        f"```{webhook_url}```\n\n"
+        "Once you've entered the new link, click Save Settings and then Test Webhook to make sure it works.\n\n"
+        "Thanks\n"
+        "Pat\n\n"
+        "-# This is automated. No need to respond.\n\n"
+        "When Throne confirms it worked, press **Yes** below."
+    )
+
+
+def webhook_upgrade_message(*, throne_name: str, webhook_url: str) -> str:
+    return (
+        f"Hey {throne_name},\n\n"
+        "You're marked as one of the awesome people who use the Automatic Throne Tracking provided by Rob. "
+        "As part of the Rob upgrade, the links used for this tracking have been changed.\n\n"
+        "Your old link looking like `https://rob.barecoding.com` will now be changed to:\n\n"
+        f"`{webhook_url}`\n\n"
+        "Once done, click Save Settings and Test Webhook.\n\n"
+        "---\n"
+        "-# This is automated! Have a spectacular day!\n\n"
+        "When Throne confirms it worked, press **Yes** below so Rob can finish the reconnect."
     )
