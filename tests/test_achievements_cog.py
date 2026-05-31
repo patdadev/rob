@@ -93,11 +93,18 @@ class _FakeContext:
 
 
 class _FakeAchievementsService:
-    def __init__(self, *, unlocked_keys: set[str] | None = None, unlock_returns: bool = False):
+    def __init__(
+        self,
+        *,
+        unlocked_keys: set[str] | None = None,
+        unlock_returns: bool = False,
+        enabled: bool = True,
+    ):
         self.unlock_calls: list[tuple[str, int]] = []
         self.unlock_many_calls: list[dict] = []
         self.unlocked_keys = unlocked_keys or set()
         self.unlock_returns = unlock_returns
+        self.enabled = enabled
 
     async def unlock_achievement(self, *, guild_id: int, discord_user_id: int, achievement_key: str, **kwargs):
         self.unlock_calls.append((achievement_key, discord_user_id))
@@ -131,10 +138,17 @@ class _FakeAchievementsService:
 
 
 class _FakeBot:
-    def __init__(self, *, unlocked_keys: set[str] | None = None, unlock_returns: bool = False):
+    def __init__(
+        self,
+        *,
+        unlocked_keys: set[str] | None = None,
+        unlock_returns: bool = False,
+        achievements_enabled: bool = True,
+    ):
         self.achievements_service = _FakeAchievementsService(
             unlocked_keys=unlocked_keys,
             unlock_returns=unlock_returns,
+            enabled=achievements_enabled,
         )
         self.settings = SimpleNamespace(inactivity_owner_user_id=999)
         self.maintenance_service = SimpleNamespace(notifications_suppressed=self._notifications_suppressed)
@@ -211,6 +225,23 @@ def test_achievements_command_shows_only_unlocked_entries_publicly():
     assert "Achievements unlocked: **1/" in text
     assert "The 67 Incident" not in text
     assert "You said 67." not in text
+
+
+def test_achievements_command_reports_when_temporarily_disabled():
+    bot = _FakeBot(unlocked_keys={"count_10"}, achievements_enabled=False)
+    cog = AchievementsCog(bot)  # type: ignore[arg-type]
+    member = _FakeMember(user_id=10, display_name="Pat", role_ids=[42], manage_guild=True)
+    interaction = _FakeInteraction(user=member, guild=_FakeGuild(1), channel=_FakeChannel())
+
+    asyncio.run(AchievementsCog.achievements.callback(cog, interaction, user=None))
+
+    assert interaction.response.messages == [
+        {
+            "content": "Hey, this is disabled! We'll bring it back soon.",
+            "ephemeral": True,
+        }
+    ]
+    assert bot.achievements_service.unlock_calls == []
 
 
 def test_achievements_command_announces_new_meta_achievement_in_channel(monkeypatch):
@@ -356,6 +387,19 @@ def test_secret_prefix_command_dms_user_and_deletes_trigger():
     assert member.dm_messages
     assert "Shhhh..." in _message_text(member.dm_messages[0])
     assert ctx.replies == []
+
+
+def test_secret_prefix_reports_when_achievements_are_disabled():
+    bot = _FakeBot(unlocked_keys=set(), unlock_returns=False, achievements_enabled=False)
+    cog = AchievementsCog(bot)  # type: ignore[arg-type]
+    member = _FakeMember(user_id=10, display_name="Pat", role_ids=[42], manage_guild=True)
+    ctx = _FakeContext(author=member, guild=_FakeGuild(1), channel=_FakeChannel())
+
+    asyncio.run(AchievementsCog.secret_prefix.callback(cog, ctx))
+
+    assert ctx.deleted is True
+    assert member.dm_messages
+    assert member.dm_messages[0]["content"] == "Achievements are switched off right now, but your existing ones are still there."
 
 
 def test_secret_slash_command_has_been_removed():

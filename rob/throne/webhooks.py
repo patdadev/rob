@@ -69,7 +69,10 @@ async def handle_throne_webhook(request: web.Request) -> web.Response:
         log.info("Throne webhook payload for %s: %s", creator_id, payload)
 
     dommes = DommesRepository(database)
-    achievements = AchievementsService(AchievementsRepository(database))
+    achievements = AchievementsService(
+        AchievementsRepository(database),
+        enabled=settings.achievements_enabled,
+    )
     matching_creators = await dommes.get_by_creator_id(creator_id)
 
     matched_creator = None

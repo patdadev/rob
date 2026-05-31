@@ -27,8 +27,9 @@ COUNT_NUMBER_TO_ACHIEVEMENT_KEYS: dict[int, tuple[str, ...]] = {
 
 
 class AchievementsService:
-    def __init__(self, repository: AchievementsRepository) -> None:
+    def __init__(self, repository: AchievementsRepository, *, enabled: bool = True) -> None:
         self.repository = repository
+        self.enabled = enabled
 
     def all_definitions(self) -> tuple[AchievementDefinition, ...]:
         return ACHIEVEMENTS
@@ -46,6 +47,8 @@ class AchievementsService:
         metadata: dict | None = None,
         on_unlocked: Callable[[AchievementDefinition], Awaitable[None]] | None = None,
     ) -> bool:
+        if not self.enabled:
+            return False
         definition = self.get_definition(achievement_key)
         if definition is None:
             log.warning("Attempted to unlock unknown achievement key=%s", achievement_key)

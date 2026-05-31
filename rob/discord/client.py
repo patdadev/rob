@@ -83,7 +83,10 @@ class RobBot(commands.Bot):
 
         self.throne_service = ThroneService()
         self.maintenance_service = MaintenanceService(self.bot_settings_repo)
-        self.achievements_service = AchievementsService(self.achievements_repo)
+        self.achievements_service = AchievementsService(
+            self.achievements_repo,
+            enabled=self.settings.achievements_enabled,
+        )
         self.leaderboard_service = LeaderboardService(
             bot=self,
             guild_settings=self.vib_settings_repo,

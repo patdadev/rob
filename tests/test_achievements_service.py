@@ -135,3 +135,21 @@ def test_unlock_callback_runs_only_for_new_unlocks():
     assert first is True
     assert second is False
     assert announced == ["count_10"]
+
+
+def test_unlock_achievement_is_globally_disabled_without_touching_repository():
+    repo = _FakeAchievementsRepo()
+    service = AchievementsService(repo, enabled=False)  # type: ignore[arg-type]
+
+    unlocked = asyncio.run(
+        service.unlock_achievement(
+            guild_id=1,
+            discord_user_id=2,
+            achievement_key="count_10",
+            source="test",
+        )
+    )
+
+    assert unlocked is False
+    assert repo.unlock_calls == []
+    assert repo.event_calls == []

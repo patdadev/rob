@@ -123,6 +123,12 @@ class AchievementsCog(commands.Cog):
         interaction: discord.Interaction,
         user: Optional[discord.Member] = None,
     ) -> None:
+        if not self.bot.achievements_service.enabled:
+            await interaction.response.send_message(
+                "Hey, this is disabled! We'll bring it back soon.",
+                ephemeral=True,
+            )
+            return
         if interaction.guild is None or interaction.user is None:
             await interaction.response.send_message(
                 **error_card(
@@ -286,6 +292,8 @@ class AchievementsCog(commands.Cog):
         discord_user_id: int,
         display_name: str,
     ) -> RenderedMessage | str:
+        if not self.bot.achievements_service.enabled:
+            return "Achievements are switched off right now, but your existing ones are still there."
         definition = self.bot.achievements_service.get_definition("secret_command")
         if definition is None:
             return "Rob misplaced that secret. Try again in a moment."
