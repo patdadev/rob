@@ -23,10 +23,15 @@ def test_deploy_workflow_rebuild():
     assert 'Skipping DB schema check in bootstrap fallback. Full DB check runs in deploy-bot.sh.' in text
     assert 'Skipping DB schema check in bootstrap fallback. Full DB check runs in deploy-webhook.sh.' in text
     for secret in [
-    'ROB_PROD_BOT_HOST', 'ROB_PROD_BOT_USER', 'ROB_PROD_BOT_SSH_KEY', 'ROB_PROD_BOT_SSH_PORT',
-    'ROB_PROD_WEBHOOK_HOST', 'ROB_PROD_WEBHOOK_USER', 'ROB_PROD_WEBHOOK_SSH_KEY', 'ROB_PROD_WEBHOOK_SSH_PORT',
+    'ROB_PROD_BOT_HOST',
+    'ROB_PROD_BOT_USER',
+    'ROB_PROD_BOT_SSH_KEY',
+    'ROB_PROD_BOT_SSH_PORT',
+    'ROB_PROD_WEBHOOK_HOST',
+    'ROB_PROD_WEBHOOK_USER',
+    'ROB_PROD_WEBHOOK_SSH_KEY',
+    'ROB_PROD_WEBHOOK_SSH_PORT',
     ]:
-    assert secret in text
         assert secret in text
     assert 'scripts/run_migrations.py' not in text
     assert 'scripts/db/build/001_core_schema.sql' not in text
