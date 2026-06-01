@@ -19,6 +19,8 @@ log = logging.getLogger(__name__)
 
 
 class _AchievementsPager:
+    """Manages paginated achievement overview navigation."""
+
     def __init__(
         self,
         *,
@@ -29,6 +31,10 @@ class _AchievementsPager:
         self.cards = cards
         self.page_index = 0
         self._controls_attached: set[int] = set()
+
+    @property
+    def page_count(self) -> int:
+        return len(self.cards)
 
     def current_card(self) -> RenderedMessage:
         card = self.cards[self.page_index]
@@ -45,7 +51,7 @@ class _AchievementsPager:
         next_button = _AchievementsPageButton(
             self,
             direction=1,
-            disabled=page_index >= len(self.cards) - 1,
+            disabled=page_index >= self.page_count - 1,
         )
         if isinstance(view, discord.ui.LayoutView):
             add_card_actions(view, previous, next_button)
@@ -63,7 +69,7 @@ class _AchievementsPager:
             )
             return
 
-        next_index = max(0, min(len(self.cards) - 1, self.page_index + direction))
+        next_index = max(0, min(self.page_count - 1, self.page_index + direction))
         if next_index == self.page_index:
             await interaction.response.defer()
             return
@@ -73,7 +79,7 @@ class _AchievementsPager:
 
 class _AchievementsPageButton(discord.ui.Button):
     def __init__(self, pager: _AchievementsPager, *, direction: int, disabled: bool) -> None:
-        label = "Previous" if direction < 0 else "Next"
+        label = "◀ Previous" if direction < 0 else "Next ▶"
         super().__init__(
             label=label,
             style=discord.ButtonStyle.secondary,

@@ -225,6 +225,7 @@ class _FakeAchievements:
                 key=str(kwargs["achievement_key"]),
                 category="sends_domme",
                 rarity="common",
+                rarity_label="Common",
             )
             await callback(achievement)
         return True

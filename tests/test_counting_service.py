@@ -273,6 +273,7 @@ class _FakeAchievements:
                 key=achievement_key,
                 category="count",
                 rarity="common",
+                rarity_label="Common",
             )
             await callback(achievement)
         return unlocked

@@ -34,6 +34,9 @@ class AchievementsService:
     def all_definitions(self) -> tuple[AchievementDefinition, ...]:
         return ACHIEVEMENTS
 
+    def enabled_definitions(self) -> tuple[AchievementDefinition, ...]:
+        return ENABLED_ACHIEVEMENTS
+
     def get_definition(self, key: str) -> AchievementDefinition | None:
         return ACHIEVEMENTS_BY_KEY.get(key)
 
@@ -101,7 +104,9 @@ class AchievementsService:
         achievement_keys: list[str] | tuple[str, ...],
         source: str | None = None,
         metadata: dict | None = None,
+        on_unlocked: Callable[[AchievementDefinition], Awaitable[None]] | None = None,
     ) -> list[str]:
+        """Attempt to unlock multiple achievements. Returns keys that were newly unlocked."""
         unlocked: list[str] = []
         for key in achievement_keys:
             if await self.unlock_achievement(
@@ -110,6 +115,7 @@ class AchievementsService:
                 achievement_key=key,
                 source=source,
                 metadata=metadata,
+                on_unlocked=on_unlocked,
             ):
                 unlocked.append(key)
         return unlocked

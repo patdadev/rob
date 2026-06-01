@@ -153,3 +153,53 @@ def test_unlock_achievement_is_globally_disabled_without_touching_repository():
     assert unlocked is False
     assert repo.unlock_calls == []
     assert repo.event_calls == []
+
+
+def test_unlock_many_with_callback():
+    repo = _FakeAchievementsRepo()
+    service = AchievementsService(repo)  # type: ignore[arg-type]
+    announced: list[str] = []
+
+    async def _callback(definition):
+        announced.append(definition.key)
+
+    result = asyncio.run(
+        service.unlock_many(
+            guild_id=1,
+            discord_user_id=2,
+            achievement_keys=["count_10", "count_67", "count_69"],
+            source="test",
+            on_unlocked=_callback,
+        )
+    )
+
+    assert result == ["count_10", "count_67", "count_69"]
+    assert announced == ["count_10", "count_67", "count_69"]
+
+
+def test_unlock_many_skips_already_unlocked():
+    repo = _FakeAchievementsRepo()
+    repo.keys = {"count_10"}
+    service = AchievementsService(repo)  # type: ignore[arg-type]
+
+    result = asyncio.run(
+        service.unlock_many(
+            guild_id=1,
+            discord_user_id=2,
+            achievement_keys=["count_10", "count_67"],
+            source="test",
+        )
+    )
+
+    assert result == ["count_67"]
+
+
+def test_enabled_definitions_returns_only_enabled():
+    repo = _FakeAchievementsRepo()
+    service = AchievementsService(repo)  # type: ignore[arg-type]
+
+    enabled = service.enabled_definitions()
+    all_defs = service.all_definitions()
+
+    assert len(enabled) <= len(all_defs)
+    assert all(d.enabled for d in enabled)

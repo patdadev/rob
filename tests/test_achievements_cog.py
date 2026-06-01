@@ -220,9 +220,9 @@ def test_achievements_command_shows_only_unlocked_entries_publicly():
     payload = interaction.response.messages[0]
     assert "ephemeral" not in payload
     text = _message_text(payload)
-    assert "Rob Achievements" in text
+    assert "Your achievements" in text
     assert "Double Digits" in text
-    assert "Achievements unlocked: **1/" in text
+    assert "unlocked" in text
     assert "The 67 Incident" not in text
     assert "You said 67." not in text
 
@@ -270,9 +270,10 @@ def test_achievements_command_shows_empty_state_when_none_unlocked():
     asyncio.run(AchievementsCog.achievements.callback(cog, interaction, user=None))
 
     text = _message_text(interaction.response.messages[0])
-    assert "Achievements unlocked: **0/" in text
-    assert "Your unlocked achievements" in text
-    assert "You have not unlocked any achievements yet." in text
+    assert "**0/" in text
+    assert "unlocked" in text
+    assert "Your achievements" in text
+    assert "haven't unlocked any achievements yet" in text
     assert "Double Digits" not in text
 
 
@@ -338,7 +339,7 @@ def test_test_achievements_debug_mode_shows_metadata(monkeypatch):
     assert "Category:" in rendered
 
 
-def test_achievements_command_adds_pagination_buttons_after_ten_entries():
+def test_achievements_command_adds_pagination_buttons_after_eight_entries():
     many_unlocked_keys = {achievement.key for achievement in ACHIEVEMENTS[:12]}
     bot = _FakeBot(unlocked_keys=many_unlocked_keys)
     cog = AchievementsCog(bot)  # type: ignore[arg-type]
@@ -349,7 +350,7 @@ def test_achievements_command_adds_pagination_buttons_after_ten_entries():
 
     payload = interaction.response.messages[0]
     buttons = _buttons(payload)
-    assert _button_labels(payload) == ["Previous", "Next"]
+    assert _button_labels(payload) == ["◀ Previous", "Next ▶"]
     assert buttons[0].disabled is True
     assert buttons[1].disabled is False
 

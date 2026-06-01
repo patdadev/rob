@@ -17,6 +17,36 @@ AchievementCategory = Literal[
     "secret",
 ]
 
+RARITY_ORDER: dict[AchievementRarity, int] = {
+    "common": 0,
+    "uncommon": 1,
+    "rare": 2,
+    "epic": 3,
+    "legendary": 4,
+    "secret": 5,
+}
+
+RARITY_LABEL: dict[AchievementRarity, str] = {
+    "common": "Common",
+    "uncommon": "Uncommon",
+    "rare": "Rare",
+    "epic": "Epic",
+    "legendary": "Legendary",
+    "secret": "Secret",
+}
+
+CATEGORY_LABEL: dict[AchievementCategory, str] = {
+    "count": "Counting",
+    "sends_domme": "Sends (Domme)",
+    "sends_sub": "Sends (Sub)",
+    "leaderboard": "Leaderboard",
+    "throne_tracking": "Throne Tracking",
+    "inactivity": "Inactivity",
+    "maintenance": "Maintenance",
+    "misc": "Misc",
+    "secret": "Secret",
+}
+
 
 @dataclass(frozen=True)
 class AchievementDefinition:
@@ -30,6 +60,18 @@ class AchievementDefinition:
     enabled: bool = True
     trigger_type: str | None = None
     trigger_value: str | int | None = None
+
+    @property
+    def rarity_rank(self) -> int:
+        return RARITY_ORDER.get(self.rarity, 0)
+
+    @property
+    def rarity_label(self) -> str:
+        return RARITY_LABEL.get(self.rarity, self.rarity.title())
+
+    @property
+    def category_label(self) -> str:
+        return CATEGORY_LABEL.get(self.category, self.category.replace("_", " ").title())
 
 
 def _a(
@@ -538,3 +580,22 @@ ACHIEVEMENTS: tuple[AchievementDefinition, ...] = (
 ACHIEVEMENTS_BY_KEY = {achievement.key: achievement for achievement in ACHIEVEMENTS}
 ENABLED_ACHIEVEMENTS = tuple(achievement for achievement in ACHIEVEMENTS if achievement.enabled)
 TOTAL_ACHIEVEMENT_COUNT = len(ENABLED_ACHIEVEMENTS)
+
+
+def achievements_by_category(
+    achievements: list[AchievementDefinition] | tuple[AchievementDefinition, ...],
+) -> dict[AchievementCategory, list[AchievementDefinition]]:
+    """Group a list of achievements by their category, preserving order."""
+    grouped: dict[AchievementCategory, list[AchievementDefinition]] = {}
+    for achievement in achievements:
+        grouped.setdefault(achievement.category, []).append(achievement)
+    return grouped
+
+
+def sort_by_rarity(
+    achievements: list[AchievementDefinition],
+    *,
+    reverse: bool = False,
+) -> list[AchievementDefinition]:
+    """Sort achievements by rarity (common first by default)."""
+    return sorted(achievements, key=lambda a: a.rarity_rank, reverse=reverse)
