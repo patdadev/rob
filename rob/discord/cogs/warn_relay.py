@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 import discord
 from discord.ext import commands
 
+from rob.ui.cards.warn import warn_dm_card
+
 if TYPE_CHECKING:
     from rob.discord.client import RobBot
 
@@ -43,11 +45,7 @@ class WarnRelayCog(commands.Cog):
         return None
 
     async def _send_warn_dm(self, user_id: int, message_url: str) -> None:
-        content = (
-            "## ⚠️ You've been warned\n\n"
-            "This is a courtesy notification that a moderation warning was recorded.\n\n"
-            f"Reference: {message_url}"
-        )
+        card = warn_dm_card(message_url)
         user = self.bot.get_user(user_id)
         if user is None:
             try:
@@ -57,7 +55,7 @@ class WarnRelayCog(commands.Cog):
         if user is None:
             return
         try:
-            await user.send(content)
+        await user.send(**card.send_kwargs())
             log.info("Sent warn relay DM to user_id=%s", user_id)
         except discord.Forbidden:
             log.info("Could not DM warned user_id=%s (DMs closed).", user_id)

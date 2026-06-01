@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rob.ui.components import make_card, render
 from rob.ui.render import RenderedMessage
-from rob.ui.theme import COLOR_PRIMARY
+from rob.ui.theme import COLOR_PRIMARY, COLOR_SUCCESS
 
 
 def _remove_time_text(remove_at_unix: int) -> str:
@@ -45,5 +45,38 @@ def final_inactivity_warning_card(*, display_name: str, server_name: str, remove
             color=COLOR_PRIMARY,
             callout="This is automated, so there is no need to reply.",
             variant="warning",
+        )
+
+
+def inactivity_test_sent_card(sent_count: int) -> RenderedMessage:
+        return render(
+            make_card(
+                title="Inactivity test sent",
+                body=f"Sent **{sent_count}** inactivity test message(s) to your DMs.",
+                color=COLOR_SUCCESS,
+                variant="success",
+            )
+        )
+
+
+def inactivity_empty_list_card() -> RenderedMessage:
+        return render(
+            make_card(
+                title="Inactive members",
+                body="No eligible inactive members found.",
+                color=COLOR_SUCCESS,
+                variant="success",
+            )
+        )
+
+
+def inactivity_list_card(lines: list[str], total: int) -> RenderedMessage:
+        return render(
+            make_card(
+                title="Inactive members",
+                body=f"Total: **{total}**\n\n" + "\n".join(lines),
+                color=COLOR_PRIMARY,
+                variant="default",
+            )
         )
     )

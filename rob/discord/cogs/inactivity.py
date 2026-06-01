@@ -9,6 +9,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from rob.ui.cards.errors import error_card
+from rob.ui.cards.inactivity import inactivity_empty_list_card, inactivity_list_card, inactivity_test_sent_card
 
 if TYPE_CHECKING:
     from rob.discord.client import RobBot
@@ -99,7 +100,7 @@ class InactivityCog(commands.Cog):
             await member.send(**message)
 
         await interaction.response.send_message(
-            f"Sent {len(messages)} inactivity test message(s) to your DMs.",
+            **inactivity_test_sent_card(len(messages)).send_kwargs(),
             ephemeral=True,
         )
 
@@ -124,16 +125,19 @@ class InactivityCog(commands.Cog):
             perform_kicks=False,
         )
         if not snapshots:
-            await interaction.response.send_message("No eligible inactive members found.", ephemeral=True)
+            await interaction.response.send_message(**inactivity_empty_list_card().send_kwargs(), ephemeral=True)
             return
 
-        lines = ["## Inactive Members", "", f"Total: **{len(snapshots)}**", ""]
+        lines: list[str] = []
         for snapshot in snapshots:
             ts = int(snapshot.remove_at.timestamp())
             lines.append(
                 f"- {snapshot.member.mention} (`{snapshot.member.id}`) — remove <t:{ts}:R> / <t:{ts}:F>"
             )
-        await interaction.response.send_message("\n".join(lines[:200]), ephemeral=True)
+        await interaction.response.send_message(
+            **inactivity_list_card(lines[:200], len(snapshots)).send_kwargs(),
+            ephemeral=True,
+        )
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
