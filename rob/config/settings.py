@@ -125,7 +125,7 @@ def load_base_settings(env_file: str | Path | None = None) -> BaseSettings:
         app_env=_env_str("APP_ENV", "dev"),
         log_level=_env_str("LOG_LEVEL", "INFO"),
         database_url=_env_str("DATABASE_URL", required=True),
-        achievements_enabled=_env_bool("ACHIEVEMENTS_ENABLED", False),
+        achievements_enabled=_env_bool("ACHIEVEMENTS_ENABLED", True),
         rob_ops_host=_env_str("ROB_OPS_HOST", "127.0.0.1"),
         rob_ops_port=_env_int("ROB_OPS_PORT", 8811, minimum=1),
         rob_ops_secret=_env_str("ROB_OPS_SECRET") or None,
