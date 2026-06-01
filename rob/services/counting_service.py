@@ -778,8 +778,6 @@ class CountingService:
             return False
 
         if window.failed_user_role == "domme":
-            if send.sub_user_id is None:
-                return False
             return send.domme_user_id == window.required_domme_user_id
 
         if send.sub_user_id != window.failed_user_id:

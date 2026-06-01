@@ -469,6 +469,34 @@ def test_domme_wrong_count_creates_recovery_window_and_qualifying_send_recovers(
     assert repo.state.current_number == 7
 
 
+def test_domme_recovery_qualifying_send_with_unregistered_sub_recovers():
+    service, repo, _channel, _guild, domme, _domme_alt, _sub, _claimed_sub, _achievements = _make_setup()
+    repo.state = CountingState(1, 100, 7, 9, True, False, datetime.now(timezone.utc))
+    message = _FakeMessageEvent(guild=service.bot.get_guild(1), author=domme, content="99", channel=service.bot.get_guild(1).get_channel(100))
+
+    asyncio.run(service.process_message(message))
+
+    active_windows = asyncio.run(repo.list_active_recovery_windows())
+    assert len(active_windows) == 1
+
+    recovered = asyncio.run(
+        service.process_send_for_count_rescue(
+            SimpleNamespace(
+                guild_id=1,
+                domme_user_id=domme.id,
+                sub_user_id=None,
+                sub_name="unregistered_gifter",
+                sent_at=datetime.now(timezone.utc),
+                is_private=False,
+                is_test_send=False,
+            )
+        )
+    )
+    assert recovered is True
+    assert repo.state.pending_restore is False
+    assert repo.state.current_number == 7
+
+
 def test_domme_recovery_expiry_resets_count_to_one_visible_start():
     service, repo, _channel, _guild, domme, _domme_alt, _sub, _claimed_sub, _achievements = _make_setup()
     repo.state = CountingState(1, 100, 7, 9, True, False, datetime.now(timezone.utc))
