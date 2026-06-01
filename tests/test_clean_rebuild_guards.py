@@ -169,6 +169,7 @@ def test_db_build_scripts_exist_under_scripts_db_build():
     assert (build_dir / "004_sub_send_names.sql").exists()
     assert (build_dir / "005_count_recovery.sql").exists()
     assert (build_dir / "006_send_change_requests.sql").exists()
+    assert (build_dir / "007_send_update_requests.sql").exists()
     assert (build_dir / "003_runtime_grants_template.sql").exists()
     assert (build_dir / "README.md").exists()
     grants_dir = REPO_ROOT / "scripts" / "db" / "grants"
@@ -198,6 +199,9 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     send_change_requests_schema = (
         REPO_ROOT / "scripts" / "db" / "build" / "006_send_change_requests.sql"
     ).read_text(encoding="utf-8")
+    send_update_requests_schema = (
+        REPO_ROOT / "scripts" / "db" / "build" / "007_send_update_requests.sql"
+    ).read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS db_build_version" in core_schema
     assert "CREATE TABLE IF NOT EXISTS bot_users" in core_schema
@@ -218,6 +222,8 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     assert "VALUES ('005_count_recovery'," in count_recovery_schema
     assert "CREATE TABLE IF NOT EXISTS send_change_requests" in send_change_requests_schema
     assert "'006_send_change_requests'" in send_change_requests_schema
+    assert "send_update" in send_update_requests_schema
+    assert "'007_send_update_requests'" in send_update_requests_schema
 
 
 def test_deploy_scripts_do_not_run_schema_builder():

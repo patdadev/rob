@@ -76,7 +76,7 @@ def test_send_card_renders_thumbnail_image_and_currency_name():
     assert type(section.accessory).__name__ == "Thumbnail"
     assert "New Send to @Domme" in all_text
     assert "Throne's Test User" in all_text
-    assert "$10.99 (United States Dollar)" in all_text
+    assert "**Amount:** $10.99" in all_text
     assert "Rob Send ID" not in all_text
     assert "rank after this send" not in all_text
     assert "<t:" not in all_text
@@ -98,6 +98,47 @@ def test_send_card_without_image_uses_text_display_and_no_footer():
     ]
     assert "gifter_name with no nickname claimed" in contents
     assert "-#" not in contents
+
+
+def test_send_card_adjustment_note_and_currency_normalization_for_non_usd():
+    now = datetime.now(timezone.utc)
+    send = SendRecord(
+        2,
+        1,
+        None,
+        10,
+        None,
+        None,
+        "gifter_name",
+        1099,
+        "EUR",
+        None,
+        "throne_webhook",
+        "Flowers",
+        None,
+        None,
+        None,
+        None,
+        False,
+        False,
+        now,
+        now,
+        "posted",
+        None,
+        None,
+        None,
+        now,
+        False,
+    )
+    msg = send_card(
+        send=send,
+        domme_label="@Domme",
+        sub_display="gifter_name with no nickname claimed",
+        adjustment_note="-# NOTE: This send has been adjusted by Pat on 1717000000 | Reason: Price correction",
+    )
+    contents = "\n".join(str(getattr(ch, "content", "")) for ch in msg.view.children[0].children)
+    assert "$10.99 (normalized from EUR 10.99 (Euro))" in contents
+    assert "NOTE: This send has been adjusted by Pat" in contents
 
 
 def test_send_request_send_card_shows_sub_mention_when_sub_user_is_known():

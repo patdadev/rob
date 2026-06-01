@@ -188,6 +188,10 @@ class BotOpsServer:
             "/guilds/{guild_id}/send-requests/remove",
             self._handle_request_send_remove,
         )
+        app.router.add_post(
+            "/guilds/{guild_id}/send-requests/update",
+            self._handle_request_send_update,
+        )
         app.router.add_post("/block", self._handle_block_user)
         app.router.add_post("/unblock", self._handle_unblock_user)
 
@@ -1028,6 +1032,69 @@ class BotOpsServer:
             )
             return web.json_response(
                 {"error": "Rob could not create the send removal approval request just now."},
+                status=500,
+            )
+        payload = {
+            "ok": True,
+            "request_id": change_request.id,
+            "action": change_request.action,
+            "status": change_request.status,
+            "domme_user_id": change_request.domme_user_id,
+            "target_send_id": change_request.target_send_id,
+        }
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_send_request_text(payload),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
+
+    async def _handle_request_send_update(self, request: web.Request) -> web.Response:
+        if not self._is_authorized(request):
+            return web.json_response({"error": "forbidden"}, status=403)
+        if not hasattr(self.bot, "send_change_request_service"):
+            return web.json_response({"error": "send_change_request_service_unavailable"}, status=500)
+        guild_id = self._match_guild_id(request)
+        if guild_id is None:
+            return web.json_response({"error": "invalid_guild_id"}, status=400)
+        payload = await self._json_payload(request)
+        domme_lookup = str(payload.get("domme_lookup") or "").strip()
+        requested_by = str(payload.get("requested_by") or "rob-cli").strip() or "rob-cli"
+        reason = str(payload.get("reason") or "").strip()
+        if not domme_lookup:
+            return web.json_response({"error": "missing_domme_lookup"}, status=400)
+        if not reason:
+            return web.json_response({"error": "missing_reason"}, status=400)
+        try:
+            send_id = int(payload.get("send_id"))
+            message_id = int(payload.get("message_id"))
+            amount = float(payload.get("amount"))
+        except (TypeError, ValueError):
+            return web.json_response({"error": "invalid_update_payload"}, status=400)
+        if amount <= 0:
+            return web.json_response({"error": "invalid_amount"}, status=400)
+        try:
+            change_request = await self.bot.send_change_request_service.create_send_update_request(
+                guild_id=guild_id,
+                domme_lookup=domme_lookup,
+                send_id=send_id,
+                amount_cents=int(round(amount * 100)),
+                message_id=message_id,
+                reason=reason,
+                requested_by=requested_by,
+                currency="USD",
+            )
+        except ValueError as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+        except Exception:
+            log.exception(
+                "Send update approval request failed guild_id=%s domme_lookup=%s send_id=%s",
+                guild_id,
+                domme_lookup,
+                send_id,
+            )
+            return web.json_response(
+                {"error": "Rob could not create the send update approval request just now."},
                 status=500,
             )
         payload = {

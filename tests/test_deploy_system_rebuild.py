@@ -111,6 +111,6 @@ def test_prod_installers_and_manual_setup_target_real_prod():
     assert 'CREATE ROLE prod_rob_webhook LOGIN' in setup_sql
     assert 'CREATE DATABASE rob_prod OWNER doadmin' in setup_sql
     assert '\\ir ../build/001_core_schema.sql' in setup_sql
+    assert '\\ir ../build/007_send_update_requests.sql' in setup_sql
     assert '\\ir ../grants/prod_rob_bot.sql' in setup_sql
     assert '\\ir ../grants/prod_rob_webhook.sql' in setup_sql
-

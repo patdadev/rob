@@ -44,6 +44,7 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'rob_prod')
 \ir ../build/004_sub_send_names.sql
 \ir ../build/005_count_recovery.sql
 \ir ../build/006_send_change_requests.sql
+\ir ../build/007_send_update_requests.sql
 \ir ../grants/prod_rob_bot.sql
 \ir ../grants/prod_rob_webhook.sql
 

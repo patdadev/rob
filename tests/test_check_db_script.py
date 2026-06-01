@@ -26,6 +26,7 @@ def _write_required_build_scripts(tmp_path, *, include_grants_template: bool = F
         "004_sub_send_names.sql",
         "005_count_recovery.sql",
         "006_send_change_requests.sql",
+        "007_send_update_requests.sql",
     ):
         (tmp_path / name).write_text("SELECT 1;\n", encoding="utf-8")
     if include_grants_template:
@@ -175,7 +176,7 @@ def test_check_db_detects_missing_required_columns(monkeypatch: pytest.MonkeyPat
         }
     )
     connection = _FakeConnection(
-        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery", "006_send_change_requests"],
+        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery", "006_send_change_requests", "007_send_update_requests"],
         table_columns=columns,
     )
     _patch_check_db(monkeypatch, connection=connection, build_dir=tmp_path)
@@ -190,7 +191,7 @@ def test_check_db_detects_missing_required_build_script_file(
 ):
     (tmp_path / "001_core_schema.sql").write_text("SELECT 1;\n", encoding="utf-8")
     connection = _FakeConnection(
-        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery", "006_send_change_requests"],
+        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery", "006_send_change_requests", "007_send_update_requests"],
         table_columns=_required_columns_with_overrides(),
     )
     _patch_check_db(monkeypatch, connection=connection, build_dir=tmp_path)
@@ -205,7 +206,7 @@ def test_check_db_rejects_runtime_schema_create_privilege(
 ):
     _write_required_build_scripts(tmp_path)
     connection = _FakeConnection(
-        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery", "006_send_change_requests"],
+        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery", "006_send_change_requests", "007_send_update_requests"],
         table_columns=_required_columns_with_overrides(),
         has_schema_create=True,
     )
@@ -221,7 +222,7 @@ def test_check_db_allows_grants_template_to_be_unapplied(
 ):
     _write_required_build_scripts(tmp_path, include_grants_template=True)
     connection = _FakeConnection(
-        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery", "006_send_change_requests"],
+        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery", "006_send_change_requests", "007_send_update_requests"],
         table_columns=_required_columns_with_overrides(),
     )
     _patch_check_db(monkeypatch, connection=connection, build_dir=tmp_path)
@@ -253,7 +254,7 @@ def test_check_db_webhook_profile_allows_missing_bot_only_tables(
         if name in webhook_tables
     }
     connection = _FakeConnection(
-        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery", "006_send_change_requests"],
+        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery", "006_send_change_requests", "007_send_update_requests"],
         table_columns=columns,
         current_user="prod_rob_webhook",
         privilege_overrides={
@@ -293,7 +294,7 @@ def test_check_db_allows_explicit_webhook_profile_override(
         if name in webhook_tables
     }
     connection = _FakeConnection(
-        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery", "006_send_change_requests"],
+        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery", "006_send_change_requests", "007_send_update_requests"],
         table_columns=columns,
         current_user="prod_rob_bot",
         privilege_overrides={
@@ -315,7 +316,7 @@ def test_check_db_rejects_invalid_profile_override(
     _write_required_build_scripts(tmp_path)
     monkeypatch.setenv("ROB_CHECK_DB_PROFILE", "invalid")
     connection = _FakeConnection(
-        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery", "006_send_change_requests"],
+        build_versions=["001_core_schema", "002_indexes", "003_achievements", "004_sub_send_names", "005_count_recovery", "006_send_change_requests", "007_send_update_requests"],
         table_columns=_required_columns_with_overrides(),
     )
     _patch_check_db(monkeypatch, connection=connection, build_dir=tmp_path)
@@ -332,6 +333,7 @@ def test_repo_db_build_scripts_include_core_versions():
     assert "004_sub_send_names" in expected
     assert "005_count_recovery" in expected
     assert "006_send_change_requests" in expected
+    assert "007_send_update_requests" in expected
     assert "003_runtime_grants_template" in expected
     assert set(check_db.REQUIRED_DB_BUILD_VERSIONS) == {
         "001_core_schema",
@@ -340,4 +342,5 @@ def test_repo_db_build_scripts_include_core_versions():
         "004_sub_send_names",
         "005_count_recovery",
         "006_send_change_requests",
+        "007_send_update_requests",
     }

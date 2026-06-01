@@ -32,7 +32,7 @@ def send_change_request_card(
             details.append(("Note", request.note))
         color = COLOR_WARNING
         title = "Rob | Approve Send Add"
-    else:
+    elif request.action == "send_remove":
         existing_amount = (
             format_money_from_cents(target_send.amount_cents)
             if target_send is not None
@@ -56,6 +56,26 @@ def send_change_request_card(
         ]
         color = COLOR_DANGER
         title = "Rob | Approve Send Removal"
+    else:
+        existing_amount = (
+            format_money_from_cents(target_send.amount_cents, "USD")
+            if target_send is not None
+            else "(unknown)"
+        )
+        summary = (
+            "A backend send amount adjustment is waiting for your approval.\n\n"
+            "Rob will not edit the tracked send or announcement until you approve it here."
+        )
+        details = [
+            ("Dom/me", domme_label),
+            ("Send ID", str(request.target_send_id or 0)),
+            ("Current Amount", existing_amount),
+            ("New Amount", format_money_from_cents(request.amount_cents or 0, "USD")),
+            ("Requested By", request.requested_by),
+            ("Reason", request.note or "No reason provided."),
+        ]
+        color = COLOR_WARNING
+        title = "Rob | Approve Send Update"
 
     return render(
         make_card(

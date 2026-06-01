@@ -109,6 +109,45 @@ class SendChangeRequestsRepository:
         assert row is not None
         return _build_send_change_request(row)
 
+    async def create_send_update_request(
+        self,
+        *,
+        guild_id: int,
+        domme_user_id: int,
+        requested_by: str,
+        target_send_id: int,
+        amount_cents: int,
+        currency: str,
+        note: str | None,
+    ) -> SendChangeRequest:
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                INSERT INTO send_change_requests (
+                    guild_id,
+                    domme_user_id,
+                    action,
+                    status,
+                    requested_by,
+                    target_send_id,
+                    amount_cents,
+                    currency,
+                    note
+                )
+                VALUES ($1, $2, 'send_update', 'pending', $3, $4, $5, $6, $7)
+                RETURNING *
+                """,
+                guild_id,
+                domme_user_id,
+                requested_by,
+                target_send_id,
+                amount_cents,
+                (currency or "USD").upper(),
+                note,
+            )
+        assert row is not None
+        return _build_send_change_request(row)
+
     async def get(self, request_id: int) -> SendChangeRequest | None:
         async with self.database.acquire() as connection:
             row = await connection.fetchrow(

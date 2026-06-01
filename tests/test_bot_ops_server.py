@@ -72,6 +72,16 @@ class _FakeSendChangeRequestService:
             domme_user_id=555,
         )
 
+    async def create_send_update_request(self, **kwargs):
+        self.calls.append(kwargs)
+        return SimpleNamespace(
+            id=12,
+            action="send_update",
+            status="pending",
+            domme_user_id=555,
+            target_send_id=kwargs["send_id"],
+        )
+
 
 class _FakeVibSettingsRepo:
     def __init__(self):
@@ -359,6 +369,43 @@ def test_bot_ops_send_add_request_endpoint_uses_approval_service():
             "currency": "USD",
             "method": "manual",
             "note": None,
+        }
+    ]
+
+
+def test_bot_ops_send_update_request_endpoint_uses_approval_service():
+    approval_service = _FakeSendChangeRequestService()
+    bot = SimpleNamespace(
+        send_change_request_service=approval_service,
+        user=SimpleNamespace(id=123),
+    )
+    server = BotOpsServer(bot=bot, host="127.0.0.1", port=8811, secret="shared")
+    request = _FakeRequest(
+        payload={
+            "domme_lookup": "missadore",
+            "send_id": "321",
+            "amount": "18.75",
+            "message_id": "654321",
+            "reason": "Price correction",
+            "requested_by": "Pat",
+        },
+        headers={"X-Rob-Ops-Secret": "shared"},
+    )
+    request.match_info["guild_id"] = "99"
+
+    response = asyncio.run(server._handle_request_send_update(request))
+
+    assert response.status == 200
+    assert approval_service.calls == [
+        {
+            "guild_id": 99,
+            "domme_lookup": "missadore",
+            "send_id": 321,
+            "amount_cents": 1875,
+            "message_id": 654321,
+            "reason": "Price correction",
+            "requested_by": "Pat",
+            "currency": "USD",
         }
     ]
 

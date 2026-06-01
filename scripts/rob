@@ -86,6 +86,7 @@ Usage:
   rob sends <domme_lookup> --guild <guild_id>
   rob send add <domme_lookup> <amount> [sub_send_name] --guild <guild_id>
   rob send remove <domme_lookup> <send_id> --guild <guild_id>
+  rob send update <throneuser> <sendid> <newamount> --message <messageid> --reason <reason> --guild <guild_id>
 
   rob count set <number> --guild <guild_id>
   rob count status --guild <guild_id>
@@ -547,8 +548,61 @@ send_command() {
         "send_id=$2" \
         "requested_by=$(request_actor)"
       ;;
+    update)
+      collect_guild_option "$@"
+      if ((${#REMAINING_ARGS[@]})); then
+        set -- "${REMAINING_ARGS[@]}"
+      else
+        set --
+      fi
+      [[ $# -ge 3 ]] || die "usage: rob send update <throneuser> <sendid> <newamount> --message <messageid> --reason <reason> --guild <guild_id>"
+      local domme_lookup="$1"
+      local send_id="$2"
+      local new_amount="$3"
+      shift 3
+      [[ "${send_id}" =~ ^[0-9]+$ ]] || die "sendid must be numeric."
+      amount_to_cents "${new_amount}" >/dev/null
+
+      local message_id=""
+      local reason=""
+      while (($#)); do
+        case "$1" in
+          --message)
+            shift
+            (($#)) || die "missing value for --message"
+            message_id="$1"
+            ;;
+          --message=*)
+            message_id="${1#*=}"
+            ;;
+          --reason)
+            shift
+            (($#)) || die "missing value for --reason"
+            reason="$1"
+            ;;
+          --reason=*)
+            reason="${1#*=}"
+            ;;
+          *)
+            die "unknown option for rob send update: $1"
+            ;;
+        esac
+        shift || true
+      done
+
+      [[ "${message_id}" =~ ^[0-9]+$ ]] || die "messageid must be numeric."
+      [[ -n "${reason}" ]] || die "reason is required."
+      ops_post_form \
+        "/guilds/${GUILD_ID}/send-requests/update?format=text" \
+        "domme_lookup=${domme_lookup}" \
+        "send_id=${send_id}" \
+        "amount=${new_amount}" \
+        "message_id=${message_id}" \
+        "reason=${reason}" \
+        "requested_by=$(request_actor)"
+      ;;
     *)
-      die "usage: rob send add|remove ..."
+      die "usage: rob send add|remove|update ..."
       ;;
   esac
 }

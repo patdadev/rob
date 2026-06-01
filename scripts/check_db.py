@@ -15,6 +15,7 @@ REQUIRED_DB_BUILD_VERSIONS = (
     "004_sub_send_names",
     "005_count_recovery",
     "006_send_change_requests",
+    "007_send_update_requests",
 )
 
 REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {

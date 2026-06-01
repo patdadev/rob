@@ -166,6 +166,51 @@ class SendQueueService:
             return False
         return await self._process_send_record(send)
 
+    async def refresh_send_message(
+        self,
+        *,
+        send_id: int,
+        message_id: int,
+        adjustment_note: str | None = None,
+    ) -> bool:
+        send = await self.sends.get(int(send_id))
+        if send is None:
+            return False
+
+        settings = await self.guild_settings.get(send.guild_id)
+        if settings is None or settings.send_track_channel_id is None:
+            return False
+
+        guild = self.bot.get_guild(send.guild_id)
+        if guild is None:
+            return False
+
+        channel = guild.get_channel(settings.send_track_channel_id)
+        if channel is None:
+            try:
+                channel = await guild.fetch_channel(settings.send_track_channel_id)
+            except (discord.NotFound, discord.HTTPException):
+                return False
+
+        if not isinstance(channel, discord.TextChannel):
+            return False
+
+        try:
+            message = await channel.fetch_message(message_id)
+            msg = send_card(
+                send=send,
+                domme_label=f"<@{send.domme_user_id}>",
+                sub_display=build_sub_display(
+                    send,
+                    test_gifter_usernames=self.test_gifter_usernames,
+                ),
+                adjustment_note=adjustment_note,
+            )
+            await message.edit(**msg.edit_kwargs())
+        except (discord.NotFound, discord.HTTPException):
+            return False
+        return True
+
     async def _process_send_record(self, send) -> bool:
         if self.counting_service is not None:
             try:

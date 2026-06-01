@@ -305,6 +305,31 @@ class SendsRepository:
             )
         return int(result.rsplit(" ", 1)[-1])
 
+    async def update_amount(
+        self,
+        send_id: int,
+        *,
+        amount_cents: int,
+        currency: str = "USD",
+    ) -> SendRecord | None:
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                UPDATE sends
+                SET
+                    amount_cents = $2,
+                    currency = $3
+                WHERE id = $1
+                RETURNING *
+                """,
+                send_id,
+                amount_cents,
+                (currency or "USD").upper(),
+            )
+        if row is None:
+            return None
+        return _build_send(row)
+
     async def count_statuses(self) -> QueueStatus:
         async with self.database.acquire() as connection:
             rows = await connection.fetch(
