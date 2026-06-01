@@ -46,37 +46,37 @@ def final_inactivity_warning_card(*, display_name: str, server_name: str, remove
             callout="This is automated, so there is no need to reply.",
             variant="warning",
         )
+    )
 
 
 def inactivity_test_sent_card(sent_count: int) -> RenderedMessage:
-        return render(
-            make_card(
-                title="Inactivity test sent",
-                body=f"Sent **{sent_count}** inactivity test message(s) to your DMs.",
-                color=COLOR_SUCCESS,
-                variant="success",
-            )
+    return render(
+        make_card(
+            title="Inactivity test sent",
+            body=f"Sent **{sent_count}** inactivity test message(s) to your DMs.",
+            color=COLOR_SUCCESS,
+            variant="success",
         )
+    )
 
 
 def inactivity_empty_list_card() -> RenderedMessage:
-        return render(
-            make_card(
-                title="Inactive members",
-                body="No eligible inactive members found.",
-                color=COLOR_SUCCESS,
-                variant="success",
-            )
+    return render(
+        make_card(
+            title="Inactive members",
+            body="No eligible inactive members found.",
+            color=COLOR_SUCCESS,
+            variant="success",
         )
+    )
 
 
 def inactivity_list_card(lines: list[str], total: int) -> RenderedMessage:
-        return render(
-            make_card(
-                title="Inactive members",
-                body=f"Total: **{total}**\n\n" + "\n".join(lines),
-                color=COLOR_PRIMARY,
-                variant="default",
-            )
+    return render(
+        make_card(
+            title="Inactive members",
+            body=f"Total: **{total}**\n\n" + "\n".join(lines),
+            color=COLOR_PRIMARY,
+            variant="default",
         )
     )

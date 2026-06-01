@@ -55,7 +55,7 @@ class WarnRelayCog(commands.Cog):
         if user is None:
             return
         try:
-        await user.send(**card.send_kwargs())
+            await user.send(**card.send_kwargs())
             log.info("Sent warn relay DM to user_id=%s", user_id)
         except discord.Forbidden:
             log.info("Could not DM warned user_id=%s (DMs closed).", user_id)

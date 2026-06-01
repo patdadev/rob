@@ -11,10 +11,12 @@ from rob.discord.cogs.warn_relay import WarnRelayCog
 class _FakeUser:
     def __init__(self, user_id: int):
         self.id = user_id
-        self.messages: list[str] = []
+        self.messages: list[dict[str, object]] = []
 
-    async def send(self, content: str):
-        self.messages.append(content)
+    async def send(self, content: str | None = None, **kwargs):
+        payload: dict[str, object] = {"content": content}
+        payload.update(kwargs)
+        self.messages.append(payload)
 
 
 class _FakeBot:
@@ -58,4 +60,4 @@ def test_warn_relay_sends_courtesy_dm_and_dedupes():
     asyncio.run(cog._process_carlbot_warn_message(msg))
 
     assert len(bot._user.messages) == 1
-    assert "courtesy notification" in bot._user.messages[0]
+    assert bot._user.messages[0].get("view") is not None
