@@ -15,6 +15,7 @@ from rob.database.repositories.counting import CountingRepository
 from rob.database.repositories.dommes import DommesRepository
 from rob.database.repositories.guild_settings import GuildSettingsRepository
 from rob.database.repositories.models import CountRecoveryWindow
+from rob.database.repositories.subs import SubsRepository
 from rob.services.send_display import is_known_test_sender
 from rob.ui.cards.counting import (
     count_failed_reset_card,
@@ -131,6 +132,7 @@ class CountingService:
         dommes: DommesRepository,
         bot_settings: BotSettingsRepository | None = None,
         achievements: AchievementsService | None = None,
+        subs: SubsRepository | None = None,
         rescue_window_seconds: int = 300,
         rescue_tick_seconds: int = 15,
         block_seconds: int = 12 * 60 * 60,
@@ -143,6 +145,7 @@ class CountingService:
         self.dommes = dommes
         self.bot_settings = bot_settings
         self.achievements = achievements
+        self.subs = subs
         self.rescue_window_seconds = rescue_window_seconds
         self.rescue_tick_seconds = rescue_tick_seconds
         self.block_seconds = block_seconds
@@ -426,7 +429,22 @@ class CountingService:
         for window in windows:
             if window.expires_at <= now:
                 continue
-            if not self._send_qualifies_for_window(send=send, window=window, send_time=send_time):
+            failed_sub_send_names: frozenset[str] | None = None
+            if (
+                window.failed_user_role == "sub"
+                and send.sub_user_id != window.failed_user_id
+                and send.sub_name is not None
+                and self.subs is not None
+            ):
+                sub_send_name_records = await self.subs.list_send_names_for_user(
+                    window.guild_id, window.failed_user_id
+                )
+                failed_sub_send_names = frozenset(
+                    record.send_name.casefold() for record in sub_send_name_records
+                )
+            if not self._send_qualifies_for_window(
+                send=send, window=window, send_time=send_time, failed_sub_send_names=failed_sub_send_names
+            ):
                 continue
             resolved = await self.counting.resolve_recovery_window(window_id=window.id, resolution="recovered")
             if not resolved:
@@ -764,7 +782,14 @@ class CountingService:
 
         return _announce
 
-    def _send_qualifies_for_window(self, *, send, window: CountRecoveryWindow, send_time: datetime) -> bool:
+    def _send_qualifies_for_window(
+        self,
+        *,
+        send,
+        window: CountRecoveryWindow,
+        send_time: datetime,
+        failed_sub_send_names: frozenset[str] | None = None,
+    ) -> bool:
         if send.is_private:
             return False
         if send.is_test_send and not self.parse_test_sends_as_real_sends:
@@ -781,7 +806,12 @@ class CountingService:
             return send.domme_user_id == window.required_domme_user_id
 
         if send.sub_user_id != window.failed_user_id:
-            return False
+            if (
+                failed_sub_send_names is None
+                or send.sub_name is None
+                or send.sub_name.casefold() not in failed_sub_send_names
+            ):
+                return False
         required_domme = window.required_domme_user_id
         if required_domme is None:
             return True

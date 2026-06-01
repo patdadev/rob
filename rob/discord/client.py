@@ -105,6 +105,7 @@ class RobBot(commands.Bot):
             dommes=self.dommes_repo,
             bot_settings=self.bot_settings_repo,
             achievements=self.achievements_service,
+            subs=self.subs_repo,
             parse_test_sends_as_real_sends=self.settings.throne_parse_test_sends_as_real_sends,
             test_gifter_usernames=self.settings.throne_test_gifter_usernames,
         )

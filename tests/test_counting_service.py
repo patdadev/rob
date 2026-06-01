@@ -279,7 +279,18 @@ class _FakeAchievements:
         return unlocked
 
 
-def _service(*, repo: _FakeCountingRepo, guild: _FakeGuild, achievements=None):
+class _FakeSubsRepo:
+    """Minimal fake SubsRepository for tests that need name-based sub lookup."""
+
+    def __init__(self, send_names_by_user: dict[int, list[str]] | None = None) -> None:
+        self._send_names_by_user = send_names_by_user or {}
+
+    async def list_send_names_for_user(self, _guild_id: int, discord_user_id: int):
+        names = self._send_names_by_user.get(discord_user_id, [])
+        return [SimpleNamespace(send_name=name) for name in names]
+
+
+def _service(*, repo: _FakeCountingRepo, guild: _FakeGuild, achievements=None, subs=None):
     bot_settings = _FakeBotSettings()
     return CountingService(
         bot=_FakeBot(guild),
@@ -288,6 +299,7 @@ def _service(*, repo: _FakeCountingRepo, guild: _FakeGuild, achievements=None):
         dommes=_FakeDommesRepo(),
         bot_settings=bot_settings,
         achievements=achievements,
+        subs=subs,
         rescue_tick_seconds=1,
         rescue_window_seconds=300,
         block_seconds=12 * 60 * 60,
@@ -666,3 +678,99 @@ def test_recovery_windows_are_restart_safe_and_expiry_resolution_is_idempotent()
 
     asyncio.run(new_service.resolve_expired_windows_once())
     assert repo.windows[1].resolution == "expired_blocked"
+
+
+def test_sub_recovery_with_unregistered_send_name_matches_via_registered_name():
+    """Sub fails the count; their Throne send has sub_user_id=None (username not linked),
+    but the send name matches the failed sub's registered Throne username in the subs repo.
+    Recovery should succeed when the subs repo is wired up."""
+    channel = _FakeChannel(channel_id=100)
+    domme = _FakeMember(20, [_Role(33, "Dom/me")], display_name="Miss Adore", name="missadore")
+    sub = _FakeMember(10, [_Role(22, "Sub")], display_name="Subby", name="subby")
+    guild = _FakeGuild(1, channel, [domme, sub])
+    repo = _FakeCountingRepo()
+    subs_repo = _FakeSubsRepo(send_names_by_user={sub.id: ["Subby_Throne"]})
+    service = _service(repo=repo, guild=guild, subs=subs_repo)
+
+    repo.state = CountingState(1, 100, 12, 9, True, False, datetime.now(timezone.utc))
+    message = _FakeMessageEvent(guild=guild, author=sub, content="99", channel=guild.get_channel(100))
+    result = asyncio.run(service.process_message(message))
+    assert result is not None
+    assert result.reason == "wrong_number_sub_recovery"
+
+    # Send where sub_user_id is None but sub_name matches registered Throne username
+    recovered = asyncio.run(
+        service.process_send_for_count_rescue(
+            SimpleNamespace(
+                guild_id=1,
+                domme_user_id=domme.id,
+                sub_user_id=None,
+                sub_name="Subby_Throne",
+                sent_at=datetime.now(timezone.utc),
+                is_private=False,
+                is_test_send=False,
+            )
+        )
+    )
+    assert recovered is True
+    assert repo.state.current_number == 12
+
+
+def test_sub_recovery_with_unregistered_send_name_fails_without_subs_repo():
+    """Without a subs repo configured, a send with sub_user_id=None cannot recover
+    a sub failure window, even if the name would match."""
+    channel = _FakeChannel(channel_id=100)
+    domme = _FakeMember(20, [_Role(33, "Dom/me")], display_name="Miss Adore", name="missadore")
+    sub = _FakeMember(10, [_Role(22, "Sub")], display_name="Subby", name="subby")
+    guild = _FakeGuild(1, channel, [domme, sub])
+    repo = _FakeCountingRepo()
+    service = _service(repo=repo, guild=guild, subs=None)
+
+    repo.state = CountingState(1, 100, 12, 9, True, False, datetime.now(timezone.utc))
+    message = _FakeMessageEvent(guild=guild, author=sub, content="99", channel=guild.get_channel(100))
+    asyncio.run(service.process_message(message))
+
+    recovered = asyncio.run(
+        service.process_send_for_count_rescue(
+            SimpleNamespace(
+                guild_id=1,
+                domme_user_id=domme.id,
+                sub_user_id=None,
+                sub_name="Subby_Throne",
+                sent_at=datetime.now(timezone.utc),
+                is_private=False,
+                is_test_send=False,
+            )
+        )
+    )
+    assert recovered is False
+
+
+def test_sub_recovery_send_name_match_is_case_insensitive():
+    """Name-based fallback matching should be case-insensitive."""
+    channel = _FakeChannel(channel_id=100)
+    domme = _FakeMember(20, [_Role(33, "Dom/me")], display_name="Miss Adore", name="missadore")
+    sub = _FakeMember(10, [_Role(22, "Sub")], display_name="Subby", name="subby")
+    guild = _FakeGuild(1, channel, [domme, sub])
+    repo = _FakeCountingRepo()
+    subs_repo = _FakeSubsRepo(send_names_by_user={sub.id: ["SUBBY_THRONE"]})
+    service = _service(repo=repo, guild=guild, subs=subs_repo)
+
+    repo.state = CountingState(1, 100, 12, 9, True, False, datetime.now(timezone.utc))
+    message = _FakeMessageEvent(guild=guild, author=sub, content="99", channel=guild.get_channel(100))
+    asyncio.run(service.process_message(message))
+
+    recovered = asyncio.run(
+        service.process_send_for_count_rescue(
+            SimpleNamespace(
+                guild_id=1,
+                domme_user_id=domme.id,
+                sub_user_id=None,
+                sub_name="subby_throne",
+                sent_at=datetime.now(timezone.utc),
+                is_private=False,
+                is_test_send=False,
+            )
+        )
+    )
+    assert recovered is True
