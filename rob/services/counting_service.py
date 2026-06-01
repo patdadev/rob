@@ -383,8 +383,9 @@ class CountingService:
                 if isinstance(message.author, discord.Member)
                 else getattr(message.author, "name", str(message.author.id)),
             )
+            count_start_newly_unlocked: bool | None = None
             for achievement_key in COUNT_NUMBER_TO_ACHIEVEMENT_KEYS.get(number, ()):
-                await self.achievements.unlock_achievement(
+                newly_unlocked = await self.achievements.unlock_achievement(
                     guild_id=message.guild.id,
                     discord_user_id=message.author.id,
                     achievement_key=achievement_key,
@@ -392,16 +393,17 @@ class CountingService:
                     metadata={"number": number},
                     on_unlocked=on_unlocked,
                 )
-            if expected == 1:
-                for achievement_key in ("count_start", "count_after_reset"):
-                    await self.achievements.unlock_achievement(
-                        guild_id=message.guild.id,
-                        discord_user_id=message.author.id,
-                        achievement_key=achievement_key,
-                        source="counting:restart",
-                        metadata={"number": number},
-                        on_unlocked=on_unlocked,
-                    )
+                if achievement_key == "count_start":
+                    count_start_newly_unlocked = newly_unlocked
+            if expected == 1 and count_start_newly_unlocked is False:
+                await self.achievements.unlock_achievement(
+                    guild_id=message.guild.id,
+                    discord_user_id=message.author.id,
+                    achievement_key="count_after_reset",
+                    source="counting:restart",
+                    metadata={"number": number},
+                    on_unlocked=on_unlocked,
+                )
         return CountingProcessResult(
             success=True,
             expected_number=expected,

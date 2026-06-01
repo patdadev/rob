@@ -257,22 +257,25 @@ class _FakeBotSettings:
 
 
 class _FakeAchievements:
-    def __init__(self):
+    def __init__(self, *, unlock_results: dict[str, bool] | None = None):
         self.unlock_calls: list[str] = []
+        self.unlock_results = unlock_results or {}
 
     async def unlock_achievement(self, **kwargs):
-        self.unlock_calls.append(str(kwargs["achievement_key"]))
+        achievement_key = str(kwargs["achievement_key"])
+        self.unlock_calls.append(achievement_key)
+        unlocked = self.unlock_results.get(achievement_key, True)
         callback = kwargs.get("on_unlocked")
-        if callback is not None:
+        if callback is not None and unlocked:
             achievement = SimpleNamespace(
-                title=str(kwargs["achievement_key"]),
-                description=f"Unlocked {kwargs['achievement_key']}",
-                key=str(kwargs["achievement_key"]),
+                title=achievement_key,
+                description=f"Unlocked {achievement_key}",
+                key=achievement_key,
                 category="count",
                 rarity="common",
             )
             await callback(achievement)
-        return True
+        return unlocked
 
 
 def _service(*, repo: _FakeCountingRepo, guild: _FakeGuild, achievements=None):
@@ -403,13 +406,34 @@ def test_successful_count_posts_achievement_card_when_new_unlocks_occur():
     assert result is not None
     assert result.success is True
     assert "count_start" in achievements.unlock_calls
+    assert "count_after_reset" not in achievements.unlock_calls
     rendered = "\n".join(
         str(getattr(item, "content", ""))
         for container in channel.sent[0]["view"].children
         for item in getattr(container, "children", [])
     )
     assert "count_start" in rendered
-    assert "Achievements Unlock by Subby" in rendered
+    assert "Achievement Unlocked by Subby" in rendered
+
+
+def test_restart_at_one_unlocks_count_after_reset_only_when_count_start_already_unlocked():
+    channel = _FakeChannel(channel_id=100)
+    sub = _FakeMember(10, [_Role(22, "Sub")], display_name="Subby", name="subby")
+    guild = _FakeGuild(1, channel, [sub])
+    repo = _FakeCountingRepo()
+    repo.state = CountingState(1, 100, 0, None, True, False, datetime.now(timezone.utc))
+    achievements = _FakeAchievements(unlock_results={"count_start": False})
+    service = _service(repo=repo, guild=guild, achievements=achievements)
+
+    result = asyncio.run(
+        service.process_message(
+            _FakeMessageEvent(guild=guild, author=sub, content="1", channel=guild.get_channel(100))
+        )
+    )
+
+    assert result is not None
+    assert result.success is True
+    assert achievements.unlock_calls == ["count_start", "count_after_reset"]
 
 
 def test_domme_wrong_count_creates_recovery_window_and_qualifying_send_recovers():
