@@ -18,7 +18,7 @@ _RARITY_EMOJIS: dict[str, str] = {
     "rare": "🔵",
     "epic": "🟣",
     "legendary": "🟡",
-    "secret": "🔮",
+    "secret": "🤫",
 }
 
 
