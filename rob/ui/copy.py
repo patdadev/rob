@@ -22,26 +22,25 @@ DOMME_REGISTERED_TITLE = "You're registered!"
 DOMME_REGISTERED_BODY = (
     "Thanks for entrusting Rob with tracking your Throne sends!\n\n"
     "Before we can fully start, there’s just one more thing I need you to do. "
-    "In Pat we *somewhat* trust.\n\n"
-    "In order for Rob to correctly receive your Throne sends, you'll need to pop a special URL into Throne.\n\n"
-    "Because that link is secret, I've sent you a DM to help get it sorted."
+    "In order for Rob to correctly receive your Throne sends, you’ll need to pop a special URL into Throne.\n\n"
+    "Because that link is secret, I’ve sent you a DM to help get it sorted."
 )
 
-THRONE_SETUP_TITLE = "Throne Tracking Setup"
+THRONE_SETUP_TITLE = "Throne Tracking Setup!"
 WEBHOOK_REISSUE_TITLE = "Action Needed | Rob Upgrade"
 WEBHOOK_REFRESH_TITLE = "Rob | New Throne Tracking URL"
 
 
 def throne_setup_steps(webhook_url: str) -> str:
     return (
-        "As my telekinesis skills are a little rusty, we just need to do one final step to help make sure I get told when sends come through.\n\n"
-        "**Steps:**\n"
+        "As my telekinesis skills are a little rusty, we just need to do one final step to help make sure I get told when sends come through. Here's how:\n\n"
         "1. Head to https://throne.com/ and sign in.\n"
-        "2. Go to **Settings** → **Integrations**.\n"
-        "3. Scroll to **Webhooks** and click Enable Webhooks.\n"
-        "4. Under Subscriber URLs, click **Add URL**.\n"
-        "5. Paste the almighty link below.\n"
-        "6. Click **Save Settings**, then **Test Webhook**.\n\n"
+        "2. Go to Settings, then click Integrations.\n"
+        "3. Scroll until you see Webhooks.\n"
+        "4. Click Enable Webhooks.\n"
+        "5. Under Subscriber URLs, click Add URL.\n"
+        "6. Enter the almighty link below.\n"
+        "7. Click Save Settings, then click Test Webhook and wait for the success message.\n\n"
         "Once done, pop back here to see if Rob picked up your send. I'll update this message if it worked.\n\n"
         f"The almighty link:\n```\n{webhook_url}\n```"
     )
@@ -52,11 +51,11 @@ def webhook_refresh_message(webhook_url: str) -> str:
         "Hey!\n\n"
         "It looks like you've requested a new url for automatic throne tracking. Here it is:\n\n"
         f"```{webhook_url}```\n\n"
-        "**What to do next:**\n"
-        "1. Replace your old URL in Throne → Settings → Integrations → Webhooks.\n"
-        "2. Click **Save Settings**, then **Test Webhook**.\n\n"
-        "When Throne confirms it worked, press **Yes** below.\n\n"
-        "-# This is automated. No need to respond."
+        "Once you've entered the new link, click Save Settings and then Test Webhook to make sure it works.\n\n"
+        "Thanks\n"
+        "Pat\n\n"
+        "-# This is automated. No need to respond.\n\n"
+        "When Throne confirms it worked, press **Yes** below."
     )
 
 
@@ -67,9 +66,8 @@ def webhook_upgrade_message(*, throne_name: str, webhook_url: str) -> str:
         "As part of the Rob upgrade, the links used for this tracking have been changed.\n\n"
         "Your old link looking like `https://rob.barecoding.com` will now be changed to:\n\n"
         f"`{webhook_url}`\n\n"
-        "**What to do next:**\n"
-        "1. Replace the old URL in Throne → Settings → Integrations → Webhooks.\n"
-        "2. Click **Save Settings**, then **Test Webhook**.\n\n"
-        "When Throne confirms it worked, press **Yes** below so Rob can finish the reconnect.\n\n"
-        "-# This is automated! Have a spectacular day!"
+        "Once done, click Save Settings and Test Webhook.\n\n"
+        "---\n"
+        "-# This is automated! Have a spectacular day!\n\n"
+        "When Throne confirms it worked, press **Yes** below so Rob can finish the reconnect."
     )

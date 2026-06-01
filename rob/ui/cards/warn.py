@@ -8,13 +8,12 @@ from rob.ui.theme import COLOR_WARNING
 def warn_dm_card(message_url: str) -> RenderedMessage:
     return render(
         make_card(
-            title="You've been warned",
+            title="⚠️ You've been warned",
             body=(
                 "This is a courtesy notification that a moderation warning was recorded.\n\n"
-                f"**Reference:** {message_url}"
+                f"Reference: {message_url}"
             ),
             color=COLOR_WARNING,
             variant="warning",
-            callout="If you believe this was in error, contact a moderator.",
         )
     )

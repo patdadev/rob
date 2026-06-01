@@ -413,7 +413,7 @@ def test_successful_count_posts_achievement_card_when_new_unlocks_occur():
         for item in getattr(container, "children", [])
     )
     assert "count_start" in rendered
-    assert "Unlocked by Subby" in rendered
+    assert "Achievement Unlocked by Subby" in rendered
 
 
 def test_restart_at_one_unlocks_count_after_reset_only_when_count_start_already_unlocked():

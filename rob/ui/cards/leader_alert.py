@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-from rob.ui.components import make_card, render
-from rob.ui.render import RenderedMessage
+import discord
+
+from rob.ui.render import RenderedMessage, require_components_v2
 from rob.ui.theme import COLOR_LEADER_ALERT
 
 
 def leader_alert_card(user_mention: str) -> RenderedMessage:
-    return render(
-        make_card(
-            title="👑 NEW LEADER ALERT!",
-            body=f"Watch out every one! {user_mention} is now #1 on the send leaderboard!",
-            color=COLOR_LEADER_ALERT,
-            variant="default",
-            footer="To view your rank on the leaderboard, run /leaderboard",
-        )
-    )
+    require_components_v2()
+    view = discord.ui.LayoutView(timeout=1800)
+    children = [
+        discord.ui.TextDisplay("## 👑 NEW LEADER ALERT!"),
+        discord.ui.Separator(),
+        discord.ui.TextDisplay(f"Watch out every one! {user_mention} is now #1 on the send leaderboard!"),
+        discord.ui.Separator(),
+        discord.ui.TextDisplay("-# To view your rank on the leaderboard, run /leaderboard"),
+    ]
+    view.add_item(discord.ui.Container(*children, accent_color=COLOR_LEADER_ALERT))
+    return RenderedMessage(view=view)

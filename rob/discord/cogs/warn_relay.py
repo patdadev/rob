@@ -28,27 +28,20 @@ class WarnRelayCog(commands.Cog):
         self._processed_warn_message_ids: deque[int] = deque(maxlen=_MAX_PROCESSED_WARN_MESSAGES)
 
     def _extract_warned_user_id_from_embed(self, embed: discord.Embed) -> int | None:
-        first_non_moderator_mention: int | None = None
         for field in embed.fields:
             name = (field.name or "").strip().lower()
-            match = _USER_MENTION_RE.search(field.value or "")
-            if not match:
+            if not any(hint in name for hint in _WARNED_USER_FIELD_HINTS):
                 continue
-            user_id = int(match.group(1))
             if any(hint in name for hint in _MODERATOR_FIELD_HINTS):
                 continue
-            if any(hint in name for hint in _WARNED_USER_FIELD_HINTS):
-                return user_id
-            if first_non_moderator_mention is None:
-                first_non_moderator_mention = user_id
-
-        if first_non_moderator_mention is not None:
-            return first_non_moderator_mention
+            match = _USER_MENTION_RE.search(field.value or "")
+            if match:
+                return int(match.group(1))
 
         description = embed.description or ""
-        match = _USER_MENTION_RE.search(description)
-        if match:
-            return int(match.group(1))
+        mentions = [int(match.group(1)) for match in _USER_MENTION_RE.finditer(description)]
+        if mentions:
+            return mentions[0]
         return None
 
     async def _send_warn_dm(self, user_id: int, message_url: str) -> None:

@@ -41,7 +41,7 @@ def test_achievements_catalogue_uses_compact_embed_field_layout():
     )
     text = _card_text(cards[0])
     assert cards[0].embeds == []
-    assert "## 🏅 Rob Achievements" in text
+    assert "## Rob Achievements" in text
     assert "Achievements unlocked: **1/" in text
     assert "Your unlocked achievements" in text
     assert "**⚪ Double Digits**" in text
@@ -118,10 +118,9 @@ def test_unlock_card_uses_plain_title_and_unlocked_by_line():
         unlocked_by_user_id=42,
     )
     text = _card_text(card)
-    assert "## 🎉 Achievement Unlocked!" in text
-    assert achievement.title in text
+    assert f"### {achievement.title}" in text
     assert achievement.description in text
-    assert "Unlocked by Adore's Pickle Pat" in text
+    assert "Achievement Unlocked by Adore's Pickle Pat" in text
     assert card.content == "<@42>"
 
 

@@ -73,19 +73,16 @@ class _FakeSettingsRepo:
     def __init__(
         self,
         *,
-        main_chat_channel_id: int | None = None,
         registration_channel_id: int | None = None,
         leaderboard_channel_id: int | None = 123,
         send_track_channel_id: int | None = 321,
     ) -> None:
-        self.main_chat_channel_id = main_chat_channel_id
         self.registration_channel_id = registration_channel_id
         self.leaderboard_channel_id = leaderboard_channel_id
         self.send_track_channel_id = send_track_channel_id
 
     async def get(self, _):
         return SimpleNamespace(
-            main_chat_channel_id=self.main_chat_channel_id,
             registration_channel_id=self.registration_channel_id,
             leaderboard_channel_id=self.leaderboard_channel_id,
             send_track_channel_id=self.send_track_channel_id,
@@ -395,33 +392,3 @@ def test_leader_alert_does_not_post_on_first_real_leader(monkeypatch: pytest.Mon
 
     assert posted is False
     assert channel.sends == []
-
-
-def test_leader_alert_prefers_main_chat_channel(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("rob.services.leaderboard_service.discord.TextChannel", _FakeChannel)
-    main_chat_channel = _FakeChannel(channel_id=444)
-    registration_channel = _FakeChannel(channel_id=111)
-    repo = _FakeLeaderboardsRepo()
-    repo.current_leader = LeaderboardEntry(label='@New', user_id=2, total_cents=2000, send_count=3)
-    state = _FakeBotStateRepo()
-    settings_repo = _FakeSettingsRepo(
-        main_chat_channel_id=444,
-        registration_channel_id=111,
-        leaderboard_channel_id=222,
-        send_track_channel_id=333,
-    )
-    service = _service(
-        {
-            444: main_chat_channel,
-            111: registration_channel,
-        },
-        repo=repo,
-        state=state,
-        settings_repo=settings_repo,
-    )
-
-    posted = asyncio.run(service.maybe_post_leader_alert(1, previous_leader_user_id=1))
-
-    assert posted is True
-    assert len(main_chat_channel.sends) == 1
-    assert registration_channel.sends == []

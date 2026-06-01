@@ -13,7 +13,7 @@ def error_card(message: str, detail: str | None = None):
             body=description,
             color=COLOR_DANGER,
             variant="error",
-            callout="**What to try next:** double-check the details and try again.",
+            callout="What to try next: double-check the details and try again.",
         )
     )
 

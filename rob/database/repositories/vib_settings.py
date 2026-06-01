@@ -13,7 +13,6 @@ CHANNEL_FIELD_NAMES = {
     "counting_channel_id",
     "report_channel_id",
     "warn_log_channel_id",
-    "main_chat_channel_id",
 }
 
 ROLE_FIELD_NAMES = {
@@ -38,7 +37,6 @@ def _build_vib_settings(row: Record) -> VibSettings:
         inactive_role_id=row["inactive_role_id"],
         warn_log_channel_id=row["warn_log_channel_id"],
         carlbot_user_id=row["carlbot_user_id"],
-        main_chat_channel_id=row["main_chat_channel_id"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )

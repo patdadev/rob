@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import time
 
+import discord
+
 from rob.database.repositories.models import LeaderboardEntry, LeaderboardSummary
 from rob.services.leaderboard_status import LeaderboardStatus, render_leaderboard_status
-from rob.ui.components import make_card, render
-from rob.ui.render import CardSection, RenderedMessage
+from rob.ui.render import RenderedMessage, require_components_v2
 from rob.ui.theme import COLOR_LEADERBOARD
 from rob.utils.money import format_money_from_cents
 
 
 _HELPER_TEXT = (
-    "Dom/mes: To link your Throne, run /register domme in this server.\n"
-    "Subs: To link a name you use on Throne, run /register sub."
+    "-# Dom/mes: To link your Throne, run /register domme in this server.\n"
+    "-# Subs: To link a name you use on Throne, run /register sub."
 )
 
 
@@ -29,6 +30,8 @@ def leaderboard_card(
     status: LeaderboardStatus | str = LeaderboardStatus.LIVE,
 ) -> RenderedMessage:
     del title, summary
+    require_components_v2()
+    view = discord.ui.LayoutView(timeout=1800)
 
     if not entries:
         entries_text = (
@@ -40,23 +43,23 @@ def leaderboard_card(
         for i, entry in enumerate(entries[:10], 1):
             lines.append(
                 f"{_line(i, entry.label)} **{entry.label}**\n"
-                f"Amount: {format_money_from_cents(entry.total_cents)} · Sends: {entry.send_count}"
+                f"Amount: {format_money_from_cents(entry.total_cents)} | Total Sends: {entry.send_count}"
             )
         entries_text = "\n\n".join(lines)
 
-    status_text = render_leaderboard_status(status)
-    body = f"{entries_text}"
-
-    return render(
-        make_card(
-            title="Thy Send Leaderboard",
-            body=body,
-            color=COLOR_LEADERBOARD,
-            variant="leaderboard",
-            eyebrow=status_text,
-            footer=footer or _HELPER_TEXT,
-        )
-    )
+    children = [
+        discord.ui.TextDisplay("## 🏆 Thy Send Leaderboard"),
+        discord.ui.Separator(),
+        discord.ui.TextDisplay(f"-# {render_leaderboard_status(status)}"),
+        discord.ui.Separator(),
+        discord.ui.TextDisplay(entries_text),
+        discord.ui.Separator(),
+        discord.ui.TextDisplay(_HELPER_TEXT),
+    ]
+    if footer:
+        children.extend([discord.ui.Separator(), discord.ui.TextDisplay(f"-# {footer}")])
+    view.add_item(discord.ui.Container(*children, accent_color=COLOR_LEADERBOARD))
+    return RenderedMessage(view=view)
 
 
 def leaderboard_stats_card(
@@ -66,36 +69,30 @@ def leaderboard_stats_card(
     maintenance_enabled: bool = False,
     footer: str | None = None,
 ) -> RenderedMessage:
+    require_components_v2()
+    view = discord.ui.LayoutView(timeout=1800)
     if maintenance_enabled:
-        body = (
+        stats_text = (
             "Rob is currently under maintenance, so we've paused the send tracker and leaderboard just until he's done.\n\n"
             "Fear not, once the maintenance is over. All untracked sends made during this time will be sent out and the leaderboard will be updated."
         )
-        sections: list[CardSection] = []
     else:
         now = int(time.time())
-        leader_name = entries[0].label if entries else "Nobody yet"
-        leader_amount = format_money_from_cents(entries[0].total_cents if entries else 0)
-        body = f"Last updated: <t:{now}:R>"
-        sections = [
-            CardSection(title="Leader", text=f"{leader_name} — {leader_amount}", inline=True),
-            CardSection(title="Dom/mes", text=str(summary.domme_count), inline=True),
-            CardSection(title="Sends Tracked", text=str(summary.send_count), inline=True),
-            CardSection(title="Total Tracked", text=format_money_from_cents(summary.total_cents), inline=True),
-            CardSection(
-                title="Unclaimed",
-                text=f"{summary.unclaimed_send_count} sends / {format_money_from_cents(summary.unclaimed_total_cents)}",
-                inline=True,
-            ),
-        ]
-
-    return render(
-        make_card(
-            title="Thy Send Leaderboard | Stats",
-            body=body,
-            color=COLOR_LEADERBOARD,
-            variant="leaderboard",
-            sections=sections,
-            footer=footer,
+        stats_text = (
+            f"-# Leaderboard last updated: <t:{now}:R> / <t:{now}:f>\n\n"
+            f"-# Leaderboard Leader:\n**{entries[0].label if entries else 'Nobody yet'} - {format_money_from_cents(entries[0].total_cents if entries else 0)}**\n\n"
+            f"-# Total Dom/mes on Leaderboard:\n**{summary.domme_count}**\n\n"
+            f"-# Total Sends Tracked:\n**{summary.send_count}**\n\n"
+            f"-# Total Amount Tracked:\n**{format_money_from_cents(summary.total_cents)}**\n\n"
+            f"-# Unclaimed Sends:\n**{summary.unclaimed_send_count} sends / {format_money_from_cents(summary.unclaimed_total_cents)}**"
         )
-    )
+
+    children = [
+        discord.ui.TextDisplay("## 🏆 Thy Send Leaderboard | Stats"),
+        discord.ui.Separator(),
+        discord.ui.TextDisplay(stats_text),
+    ]
+    if footer:
+        children.extend([discord.ui.Separator(), discord.ui.TextDisplay(f"-# {footer}")])
+    view.add_item(discord.ui.Container(*children, accent_color=COLOR_LEADERBOARD))
+    return RenderedMessage(view=view)

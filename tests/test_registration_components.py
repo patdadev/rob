@@ -22,11 +22,9 @@ def test_registration_card_has_no_footer_unless_explicit():
 def test_domme_registered_card_has_no_footer_unless_explicit():
     msg = domme_registered_card()
     contents = "\n".join(str(getattr(ch, "content", "")) for ch in msg.view.children[0].children)
-    assert DOMME_REGISTERED_TITLE in contents
+    assert f"## {DOMME_REGISTERED_TITLE}" in contents
     assert DOMME_REGISTERED_BODY in contents
-    # No footer metadata lines should appear (only the variant emoji prefix in the title)
-    footer_meta = [line for line in contents.split("\n") if line.startswith("-#")]
-    assert footer_meta == []
+    assert "-#" not in contents
 
     msg = domme_registered_card(footer="Explicit footer only")
     contents = "\n".join(str(getattr(ch, "content", "")) for ch in msg.view.children[0].children)

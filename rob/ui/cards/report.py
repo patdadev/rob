@@ -1,22 +1,26 @@
 from __future__ import annotations
 
-from rob.ui.components import make_card, render
-from rob.ui.render import CardSection, RenderedMessage
+import discord
+
+from rob.ui.render import RenderedMessage, require_components_v2
 from rob.ui.theme import COLOR_PRIMARY, COLOR_SUCCESS
 
 
 def report_submitted_card() -> RenderedMessage:
-    return render(
-        make_card(
-            title="Report Sent",
-            body=(
-                "Thanks — I've sent that through.\n"
+    require_components_v2()
+    view = discord.ui.LayoutView(timeout=600)
+    view.add_item(
+        discord.ui.Container(
+            discord.ui.TextDisplay("## Report Sent"),
+            discord.ui.Separator(),
+            discord.ui.TextDisplay(
+                "Thanks - I've sent that through.\n"
                 "If this is urgent, please also let a moderator know."
             ),
-            color=COLOR_SUCCESS,
-            variant="success",
+            accent_color=COLOR_SUCCESS,
         )
     )
+    return RenderedMessage(view=view)
 
 
 def report_staff_card(
@@ -26,16 +30,24 @@ def report_staff_card(
     server_label: str,
     submitted_unix: int,
 ) -> RenderedMessage:
-    return render(
-        make_card(
-            title="Rob Issue Report",
-            body=issue_text,
-            color=COLOR_PRIMARY,
-            variant="workflow",
-            sections=[
-                CardSection(title="Reporter", text=reporter_mention),
-                CardSection(title="Server", text=server_label),
-                CardSection(title="Submitted", text=f"<t:{submitted_unix}:R> · <t:{submitted_unix}:f>"),
-            ],
+    require_components_v2()
+    view = discord.ui.LayoutView(timeout=1800)
+    body = (
+        "-# Reporter:\n"
+        f"**{reporter_mention}**\n\n"
+        "-# Issue:\n"
+        f"**{issue_text}**\n\n"
+        "-# Server:\n"
+        f"**{server_label}**\n\n"
+        "-# Submitted:\n"
+        f"<t:{submitted_unix}:R> / <t:{submitted_unix}:f>"
+    )
+    view.add_item(
+        discord.ui.Container(
+            discord.ui.TextDisplay("## Rob Issue Report"),
+            discord.ui.Separator(),
+            discord.ui.TextDisplay(body),
+            accent_color=COLOR_PRIMARY,
         )
     )
+    return RenderedMessage(view=view)

@@ -752,4 +752,4 @@ def test_bot_ops_announce_achievement_posts_to_registration_channel(monkeypatch)
         for item in getattr(container, "children", [])
     )
     assert "Is This Thing On?" in text
-    assert "Unlocked by Pat" in text
+    assert "Achievement Unlocked by Pat" in text

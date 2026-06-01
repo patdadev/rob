@@ -258,7 +258,7 @@ def test_achievements_command_announces_new_meta_achievement_in_channel(monkeypa
     assert len(channel.messages) == 1
     rendered = _message_text(channel.messages[0])
     assert "Trophy Cabinet" in rendered
-    assert "Unlocked by Pat" in rendered
+    assert "Achievement Unlocked by Pat" in rendered
 
 
 def test_achievements_command_shows_empty_state_when_none_unlocked():
@@ -320,7 +320,7 @@ def test_test_achievements_renders_all_configured_cards_for_admin(monkeypatch):
     assert bot.achievements_service.unlock_calls == []
     rendered = _message_text(channel.messages[0])
     assert "Key:" not in rendered
-    assert "Unlocked by Preview Mode" in rendered
+    assert "Achievement Unlocked by Preview Mode" in rendered
 
 
 def test_test_achievements_debug_mode_shows_metadata(monkeypatch):

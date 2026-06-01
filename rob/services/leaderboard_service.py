@@ -196,8 +196,7 @@ class LeaderboardService:
     @staticmethod
     def _leader_alert_channel_id(settings) -> int | None:
         return (
-            settings.main_chat_channel_id
-            or settings.registration_channel_id
+            settings.registration_channel_id
             or settings.leaderboard_channel_id
             or settings.send_track_channel_id
         )

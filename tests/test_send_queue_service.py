@@ -514,4 +514,4 @@ def test_send_queue_posts_achievement_cards_after_send(monkeypatch: pytest.Monke
         for item in getattr(container, "children", [])
     )
     assert "domme_first_tracked_send" in rendered
-    assert "Unlocked by Miss Adore" in rendered
+    assert "Achievement Unlocked by Miss Adore" in rendered

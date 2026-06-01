@@ -21,25 +21,3 @@ COLOR_PRIMARY = ROB_NAVY
 COLOR_SEND = COLOR_ROB_PURPLE
 COLOR_LEADERBOARD = COLOR_ROB_PURPLE
 COLOR_LEADER_ALERT = COLOR_ROB_PURPLE
-
-# Variant-to-color mapping: provides a default accent color per variant
-VARIANT_COLORS: dict[str, discord.Colour] = {
-    "default": COLOR_INFO,
-    "success": COLOR_SUCCESS,
-    "error": COLOR_DANGER,
-    "warning": COLOR_WARNING,
-    "danger": COLOR_DANGER,
-    "setup": COLOR_PRIMARY,
-    "workflow": COLOR_PRIMARY,
-    "leaderboard": COLOR_LEADERBOARD,
-    "send": COLOR_SEND,
-    "celebration": COLOR_SEND,
-    "counting": COLOR_INFO,
-    "status": COLOR_SUCCESS,
-    "dashboard": COLOR_LEADERBOARD,
-}
-
-
-def color_for_variant(variant: str) -> discord.Colour:
-    """Return the default accent color for a given card variant."""
-    return VARIANT_COLORS.get(variant, COLOR_INFO)

@@ -18,7 +18,6 @@ class VibSettings:
     inactive_role_id: int | None
     warn_log_channel_id: int | None
     carlbot_user_id: int | None
-    main_chat_channel_id: int | None
     created_at: datetime
     updated_at: datetime
 

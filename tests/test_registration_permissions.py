@@ -230,7 +230,7 @@ def test_domme_setup_button_opens_modal_and_submit_registers_once(monkeypatch):
     assert len(bot.registration_service.domme_calls) == 1
     setup_message = channel.partial_messages[555]
     assert len(setup_message.edits) == 1
-    assert "Throne Tracking Setup" in _view_text(setup_message.edits[0])
+    assert "Throne Tracking Setup!" in _view_text(setup_message.edits[0])
     assert submit_interaction.followup.messages == []
 
 
