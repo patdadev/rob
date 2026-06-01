@@ -588,9 +588,9 @@ def test_special_sub_recovery_requires_specific_domme():
     from rob.services.counting_service import _SPECIAL_SUB_REQUIRED_DOMME_USER_ID, _SPECIAL_SUB_USER_ID
 
     channel = _FakeChannel(channel_id=100)
-    special_sub = _FakeMember(_SPECIAL_SUB_USER_ID, [_Role(22, "Sub")], display_name="Patty", name="pattyboy03")
+    special_sub = _FakeMember(_SPECIAL_SUB_USER_ID, [_Role(22, "Sub")], display_name="Special Sub", name="specialsub")
     domme_required = _FakeMember(
-        _SPECIAL_SUB_REQUIRED_DOMME_USER_ID, [_Role(33, "Dom/me")], display_name="Angel", name="angel2adore"
+        _SPECIAL_SUB_REQUIRED_DOMME_USER_ID, [_Role(33, "Dom/me")], display_name="Required Domme", name="requireddomme"
     )
     domme_other = _FakeMember(20, [_Role(33, "Dom/me")], display_name="Other Domme", name="otherdomme")
     guild = _FakeGuild(1, channel, [special_sub, domme_required, domme_other])
@@ -610,7 +610,7 @@ def test_special_sub_recovery_requires_specific_domme():
                 guild_id=1,
                 domme_user_id=domme_other.id,
                 sub_user_id=_SPECIAL_SUB_USER_ID,
-                sub_name="pattyboy03",
+                sub_name="specialsub",
                 sent_at=datetime.now(timezone.utc),
                 is_private=False,
                 is_test_send=False,
@@ -626,7 +626,7 @@ def test_special_sub_recovery_requires_specific_domme():
                 guild_id=1,
                 domme_user_id=_SPECIAL_SUB_REQUIRED_DOMME_USER_ID,
                 sub_user_id=_SPECIAL_SUB_USER_ID,
-                sub_name="pattyboy03",
+                sub_name="specialsub",
                 sent_at=datetime.now(timezone.utc),
                 is_private=False,
                 is_test_send=False,
@@ -634,7 +634,6 @@ def test_special_sub_recovery_requires_specific_domme():
         )
     )
     assert correct_domme_recovered is True
-
 
 def test_sub_recovery_expiry_creates_12h_block_and_blocked_sub_cannot_count():
     service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub, _achievements = _make_setup()
