@@ -75,10 +75,10 @@ def count_rescue_needed_for_role_card(
     if failed_user_role == "domme":
         opener = "A Dom/me fumbled the count. Subs have 5 minutes to send to them and save it."
     else:
-        opener = "A Sub fumbled the count. They have 5 minutes to send and save themselves."
+        opener = "A Sub fumbled the count. They have 5 minutes to send to any Dom/me and save it."
     claim_line = ""
     if failed_user_role == "sub" and claimed_restriction:
-        claim_line = "Because you are claimed, the recovery send must go to your Dom/me.\n\n"
+        claim_line = "There is a restriction on which Dom/me the recovery send must go to.\n\n"
     if failed_user_role == "sub" and claimed_unresolved:
         claim_line = (
             "Because your claimed Dom/me could not be resolved, staff should review your claim role before retrying.\n\n"
