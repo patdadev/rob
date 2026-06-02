@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 import discord
 
-from rob.achievements.service import COUNT_NUMBER_TO_ACHIEVEMENT_KEYS, AchievementsService
+from rob.achievements.service import AchievementsService
 from rob.achievements.embeds import achievement_unlocked_card
 from rob.database.repositories.bot_settings import BotSettingsRepository
 from rob.database.repositories.counting import CountingRepository
@@ -390,17 +390,17 @@ class CountingService:
                 else getattr(message.author, "name", str(message.author.id)),
             )
             count_start_newly_unlocked: bool | None = None
-            for achievement_key in COUNT_NUMBER_TO_ACHIEVEMENT_KEYS.get(number, ()):
-                newly_unlocked = await self.achievements.unlock_achievement(
-                    guild_id=message.guild.id,
-                    discord_user_id=message.author.id,
-                    achievement_key=achievement_key,
-                    source="counting:number",
-                    metadata={"number": number},
-                    on_unlocked=on_unlocked,
-                )
-                if achievement_key == "count_start":
-                    count_start_newly_unlocked = newly_unlocked
+            newly_unlocked_keys = await self.achievements.unlock_triggered_achievements(
+                guild_id=message.guild.id,
+                discord_user_id=message.author.id,
+                trigger_type="count_number",
+                value=number,
+                matches=lambda trigger_value, current_value: trigger_value == current_value,
+                metadata={"number": number},
+                on_unlocked=on_unlocked,
+            )
+            if number == 1:
+                count_start_newly_unlocked = "count_start" in newly_unlocked_keys
             if expected == 1 and count_start_newly_unlocked is False:
                 await self.achievements.unlock_achievement(
                     guild_id=message.guild.id,

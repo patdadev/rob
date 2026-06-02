@@ -3,10 +3,13 @@ from __future__ import annotations
 from rob.achievements.definitions import (
     ACHIEVEMENTS,
     ACHIEVEMENTS_BY_KEY,
+    CATEGORY_ICON,
     CATEGORY_LABEL,
     RARITY_LABEL,
     RARITY_ORDER,
     achievements_by_category,
+    achievements_for_trigger,
+    matching_achievements,
     sort_by_rarity,
 )
 from rob.achievements.embeds import achievement_unlocked_card
@@ -69,6 +72,7 @@ def test_category_label_covers_all_category_values():
     categories_in_achievements = {a.category for a in ACHIEVEMENTS}
     for category in categories_in_achievements:
         assert category in CATEGORY_LABEL
+        assert category in CATEGORY_ICON
 
 
 def test_achievement_definition_rarity_rank_property():
@@ -107,3 +111,16 @@ def test_achievements_by_category_groups_correctly():
     assert "sends_domme" in grouped
     assert all(a.category == "count" for a in grouped["count"])
     assert all(a.category == "sends_domme" for a in grouped["sends_domme"])
+
+
+def test_catalog_helpers_find_triggered_send_milestones():
+    domme_defs = achievements_for_trigger("domme_total_cents")
+    matched = matching_achievements(
+        "domme_total_cents",
+        value=100_000,
+        matches=lambda trigger_value, current_value: isinstance(trigger_value, int) and current_value >= trigger_value,
+    )
+
+    assert ACHIEVEMENTS_BY_KEY["domme_first_tracked_send"] in domme_defs
+    assert ACHIEVEMENTS_BY_KEY["domme_1000_tracked"] in matched
+    assert all(definition.source is not None for definition in domme_defs)

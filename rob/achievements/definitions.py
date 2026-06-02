@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Callable, Literal
 
 
 AchievementRarity = Literal["common", "uncommon", "rare", "epic", "legendary", "secret"]
@@ -47,6 +47,50 @@ CATEGORY_LABEL: dict[AchievementCategory, str] = {
     "secret": "Secret",
 }
 
+CATEGORY_ICON: dict[AchievementCategory, str] = {
+    "count": "🔢",
+    "sends_domme": "💸",
+    "sends_sub": "💳",
+    "leaderboard": "👑",
+    "throne_tracking": "🎁",
+    "inactivity": "🌙",
+    "maintenance": "🛠️",
+    "misc": "🏆",
+    "secret": "🤫",
+}
+
+DEFAULT_SOURCE_BY_TRIGGER: dict[str, str] = {
+    "count_number": "counting:number",
+    "count_failure": "counting:wrong_number",
+    "count_recovery": "counting:rescue",
+    "count_blocked": "counting:rescue_expired",
+    "count_recovery_expired": "counting:rescue_expired",
+    "count_after_reset": "counting:restart",
+    "domme_total_cents": "send:posted",
+    "test_send": "send:test",
+    "domme_rank": "leaderboard:rank",
+    "domme_regain_first": "leaderboard:rank",
+    "manual_send": "send:manual",
+    "domme_send_count": "send:posted",
+    "sub_total_cents": "send:posted",
+    "count_saved": "counting:rescue",
+    "kingmaker": "leaderboard:leader_change",
+    "sub_send_count": "send:posted",
+    "throne_tracking_started": "register:domme",
+    "throne_test_webhook": "throne:webhook_test",
+    "throne_first_real_auto_send": "send:throne",
+    "throne_optout": "register:domme",
+    "inactivity_returned": "inactivity:return",
+    "inactivity_final_return": "inactivity:return",
+    "rejoined_vib": "inactivity:return",
+    "maintenance_interaction": "maintenance:interaction",
+    "maintenance_leaderboard_view": "maintenance:leaderboard",
+    "achievements_view": "slash:/achievements",
+    "achievements_view_other": "slash:/achievements",
+    "dm_rob": "dm",
+    "secret_command": "secret-command",
+}
+
 
 @dataclass(frozen=True)
 class AchievementDefinition:
@@ -55,11 +99,13 @@ class AchievementDefinition:
     description: str
     category: AchievementCategory
     rarity: AchievementRarity
+    icon: str | None = None
     hidden: bool = False
     repeatable: bool = False
     enabled: bool = True
     trigger_type: str | None = None
     trigger_value: str | int | None = None
+    source: str | None = None
 
     @property
     def rarity_rank(self) -> int:
@@ -73,6 +119,10 @@ class AchievementDefinition:
     def category_label(self) -> str:
         return CATEGORY_LABEL.get(self.category, self.category.replace("_", " ").title())
 
+    @property
+    def display_icon(self) -> str:
+        return self.icon or CATEGORY_ICON.get(self.category, "🏆")
+
 
 def _a(
     key: str,
@@ -81,10 +131,12 @@ def _a(
     *,
     category: AchievementCategory,
     rarity: AchievementRarity,
+    icon: str | None = None,
     hidden: bool = False,
     enabled: bool = True,
     trigger_type: str | None = None,
     trigger_value: str | int | None = None,
+    source: str | None = None,
 ) -> AchievementDefinition:
     return AchievementDefinition(
         key=key,
@@ -92,10 +144,12 @@ def _a(
         description=description,
         category=category,
         rarity=rarity,
+        icon=icon,
         hidden=hidden,
         enabled=enabled,
         trigger_type=trigger_type,
         trigger_value=trigger_value,
+        source=source or DEFAULT_SOURCE_BY_TRIGGER.get(trigger_type or ""),
     )
 
 
@@ -578,6 +632,10 @@ ACHIEVEMENTS: tuple[AchievementDefinition, ...] = (
 
 
 ACHIEVEMENTS_BY_KEY = {achievement.key: achievement for achievement in ACHIEVEMENTS}
+ACHIEVEMENTS_BY_TRIGGER: dict[str, tuple[AchievementDefinition, ...]] = {
+    trigger_type: tuple(achievement for achievement in ACHIEVEMENTS if achievement.trigger_type == trigger_type)
+    for trigger_type in {achievement.trigger_type for achievement in ACHIEVEMENTS if achievement.trigger_type}
+}
 ENABLED_ACHIEVEMENTS = tuple(achievement for achievement in ACHIEVEMENTS if achievement.enabled)
 TOTAL_ACHIEVEMENT_COUNT = len(ENABLED_ACHIEVEMENTS)
 
@@ -599,3 +657,28 @@ def sort_by_rarity(
 ) -> list[AchievementDefinition]:
     """Sort achievements by rarity (common first by default)."""
     return sorted(achievements, key=lambda a: a.rarity_rank, reverse=reverse)
+
+
+def achievements_for_trigger(
+    trigger_type: str,
+    *,
+    enabled_only: bool = True,
+) -> tuple[AchievementDefinition, ...]:
+    achievements = ACHIEVEMENTS_BY_TRIGGER.get(trigger_type, ())
+    if not enabled_only:
+        return achievements
+    return tuple(achievement for achievement in achievements if achievement.enabled)
+
+
+def matching_achievements(
+    trigger_type: str,
+    *,
+    value: str | int,
+    matches: Callable[[str | int | None, str | int], bool],
+    enabled_only: bool = True,
+) -> tuple[AchievementDefinition, ...]:
+    return tuple(
+        achievement
+        for achievement in achievements_for_trigger(trigger_type, enabled_only=enabled_only)
+        if matches(achievement.trigger_value, value)
+    )

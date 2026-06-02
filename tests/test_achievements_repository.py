@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from rob.database.repositories.achievements import AchievementsRepository
 
@@ -21,6 +22,24 @@ class _FakeConnection:
 
     async def fetch(self, query: str, *params):
         self.fetch_calls.append((query, params))
+        if "COUNT(*) AS unlock_count" in query:
+            return [{"achievement_key": "count_10", "unlock_count": 2}]
+        if "GROUP BY discord_user_id" in query:
+            return [{"discord_user_id": 2, "unlocked_count": 3}]
+        if "ORDER BY unlocked_at DESC" in query:
+            return [
+                {
+                    "id": 1,
+                    "guild_id": params[0],
+                    "discord_user_id": 2,
+                    "achievement_key": "count_10",
+                    "unlocked_at": datetime(2026, 1, 2),
+                    "source": "counting:number",
+                    "metadata": "{}",
+                    "created_at": datetime(2026, 1, 2),
+                    "updated_at": datetime(2026, 1, 2),
+                }
+            ]
         return [{"achievement_key": "count_10"}]
 
     async def fetchval(self, _query: str, *_params):
@@ -97,3 +116,18 @@ def test_reset_for_guild_deletes_unlocks_and_events():
     assert "DELETE FROM user_achievements" in connection.fetchval_calls[0][0]
     assert connection.fetchval_calls[0][1] == (99,)
     assert "DELETE FROM achievement_events" in connection.fetchval_calls[1][0]
+
+
+def test_server_stats_queries_use_achievement_tables():
+    connection = _FakeConnection()
+    repo = AchievementsRepository(_FakeDatabase(connection))  # type: ignore[arg-type]
+
+    unlock_counts = asyncio.run(repo.list_unlock_counts_for_guild(guild_id=1))
+    recent = asyncio.run(repo.list_recent_unlocks_for_guild(guild_id=1, limit=5))
+    leaderboard = asyncio.run(repo.list_top_users_for_guild(guild_id=1, limit=5))
+    member_count = asyncio.run(repo.count_users_with_unlocks(guild_id=1))
+
+    assert unlock_counts == {"count_10": 2}
+    assert recent[0].achievement_key == "count_10"
+    assert leaderboard == [(2, 3)]
+    assert member_count == 1

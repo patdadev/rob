@@ -384,17 +384,46 @@ class SendQueueService:
                 on_unlocked=_announce_callback(user_id),
             )
 
+        async def _unlock_catalog_thresholds(
+            *,
+            user_id: int,
+            trigger_type: str,
+            value: int,
+            source: str | None = None,
+            metadata: dict | None = None,
+        ) -> None:
+            await self.achievements.unlock_triggered_achievements(
+                guild_id=guild_id,
+                discord_user_id=user_id,
+                trigger_type=trigger_type,
+                value=value,
+                matches=lambda trigger_value, current_value: isinstance(trigger_value, int) and current_value >= trigger_value,
+                source=source,
+                metadata=metadata,
+                on_unlocked=_announce_callback(user_id),
+            )
+
+        async def _unlock_catalog_rank(
+            *,
+            user_id: int,
+            rank: int,
+            metadata: dict | None = None,
+        ) -> None:
+            await self.achievements.unlock_triggered_achievements(
+                guild_id=guild_id,
+                discord_user_id=user_id,
+                trigger_type="domme_rank",
+                value=rank,
+                matches=lambda trigger_value, current_value: isinstance(trigger_value, int) and current_value <= trigger_value,
+                metadata=metadata,
+                on_unlocked=_announce_callback(user_id),
+            )
+
         if send.is_test_send:
             await _unlock(
                 user_id=domme_user_id,
                 achievement_key="domme_first_test_send",
                 source="send:test",
-            )
-        else:
-            await _unlock(
-                user_id=domme_user_id,
-                achievement_key="domme_first_tracked_send",
-                source="send:posted",
             )
 
         if send.source.startswith("manual:"):
@@ -422,32 +451,17 @@ class SendQueueService:
             owner_test_user_id=self.owner_test_user_id,
         )
         if not send.is_test_send:
-            if stats.total_cents >= 10_000:
-                await _unlock(
-                    user_id=domme_user_id,
-                    achievement_key="domme_100_tracked",
-                    source="send:posted",
-                )
-            if stats.total_cents >= 100_000:
-                await _unlock(
-                    user_id=domme_user_id,
-                    achievement_key="domme_1000_tracked",
-                    source="send:posted",
-                )
-            if stats.total_cents >= 500_000:
-                await _unlock(
-                    user_id=domme_user_id,
-                    achievement_key="domme_5000_tracked",
-                    source="send:posted",
-                )
+            await _unlock_catalog_thresholds(
+                user_id=domme_user_id,
+                trigger_type="domme_total_cents",
+                value=stats.total_cents,
+            )
 
-        for threshold, key in ((10, "domme_10_sends_received"), (50, "domme_50_sends_received"), (100, "domme_100_sends_received")):
-            if stats.send_count >= threshold:
-                await _unlock(
-                    user_id=domme_user_id,
-                    achievement_key=key,
-                    source="send:posted",
-                )
+        await _unlock_catalog_thresholds(
+            user_id=domme_user_id,
+            trigger_type="domme_send_count",
+            value=stats.send_count,
+        )
 
         rank = await self.leaderboards.get_domme_rank(
             guild_id,
@@ -457,10 +471,9 @@ class SendQueueService:
             owner_test_user_id=self.owner_test_user_id,
         )
         if rank is not None and rank <= 10:
-            await _unlock(
+            await _unlock_catalog_rank(
                 user_id=domme_user_id,
-                achievement_key="domme_top_10",
-                source="leaderboard:rank",
+                rank=rank,
                 metadata={"rank": rank},
             )
         if rank == 1:
@@ -490,12 +503,6 @@ class SendQueueService:
         if sub_user_id is None:
             return
 
-        await _unlock(
-            user_id=sub_user_id,
-            achievement_key="sub_first_send",
-            source="send:posted",
-        )
-
         sub_stats = await self.leaderboards.get_sub_stats(
             guild_id,
             sub_user_id=sub_user_id,
@@ -503,32 +510,16 @@ class SendQueueService:
             test_gifter_usernames=self.test_gifter_usernames,
             owner_test_user_id=self.owner_test_user_id,
         )
-        if sub_stats.total_cents >= 10_000:
-            await _unlock(
-                user_id=sub_user_id,
-                achievement_key="sub_100_sent",
-                source="send:posted",
-            )
-        if sub_stats.total_cents >= 100_000:
-            await _unlock(
-                user_id=sub_user_id,
-                achievement_key="sub_1000_sent",
-                source="send:posted",
-            )
-        if sub_stats.total_cents >= 500_000:
-            await _unlock(
-                user_id=sub_user_id,
-                achievement_key="sub_5000_sent",
-                source="send:posted",
-            )
-
-        for threshold, key in ((10, "sub_10_sends"), (50, "sub_50_sends"), (100, "sub_100_sends")):
-            if sub_stats.send_count >= threshold:
-                await _unlock(
-                    user_id=sub_user_id,
-                    achievement_key=key,
-                    source="send:posted",
-                )
+        await _unlock_catalog_thresholds(
+            user_id=sub_user_id,
+            trigger_type="sub_total_cents",
+            value=sub_stats.total_cents,
+        )
+        await _unlock_catalog_thresholds(
+            user_id=sub_user_id,
+            trigger_type="sub_send_count",
+            value=sub_stats.send_count,
+        )
 
         current_leader = await self.leaderboard_service.get_current_leader(guild_id)
         if (

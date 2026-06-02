@@ -47,8 +47,9 @@ If `scripts.check_db.py` reports achievement tables missing, apply the SQL manua
 
 ## Slash commands
 
-- `/achievements`
-- `/achievements user:@user`
+- `/achievements` → your achievement cabinet in the current server
+- `/achievements scope:server` → server-wide achievement stats for the current server
+- `/achievements user:@user` → another member's cabinet in the current server
 - `/test achievements` (staff/dev only; visual preview only, no DB writes)
 
 `/test achievements` sends preview cards for every configured achievement so copy/layout can be reviewed in Discord.
@@ -63,14 +64,16 @@ If `scripts.check_db.py` reports achievement tables missing, apply the SQL manua
 
 - `/achievements` itself remains a view command and should not start pinging people just because someone opens the catalogue.
 
-## Adding a new achievement
+## Adding or removing achievements
 
-1. Add definition in `rob/achievements/definitions.py`.
-2. Hook unlock trigger in the relevant service/cog flow.
-3. Add/update tests for:
-   - key presence/uniqueness
-   - unlock behavior
-   - command rendering if user-facing
+`rob/achievements/definitions.py` is now the catalogue and trigger registry.
+
+1. Add, edit, or remove the definition in `rob/achievements/definitions.py`.
+2. For threshold-based sends/counting milestones, stop there — services now read the catalogue and unlock matching entries automatically.
+3. For event/manual achievements, keep the explicit `unlock_achievement(...)` call but only reference the key that already lives in the catalogue.
+4. Update focused tests if the user-facing copy or trigger semantics changed.
+
+Each definition carries the stable DB key, category, rarity, hidden flag, trigger type/value, icon, and default source label.
 
 ## Current trigger notes
 

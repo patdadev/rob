@@ -278,6 +278,42 @@ class _FakeAchievements:
             await callback(achievement)
         return unlocked
 
+    async def unlock_triggered_achievements(self, **kwargs):
+        keys_by_number = {
+            1: ["count_start"],
+            10: ["count_10"],
+            67: ["count_67"],
+            69: ["count_69"],
+            100: ["count_100"],
+            420: ["count_420"],
+            666: ["count_666"],
+            1000: ["count_1000"],
+            1234: ["count_1234"],
+            4321: ["count_4321"],
+            5000: ["count_5000"],
+            10000: ["count_10000"],
+        }
+        if kwargs.get("trigger_type") != "count_number":
+            return []
+        callback = kwargs.get("on_unlocked")
+        unlocked_keys: list[str] = []
+        for achievement_key in keys_by_number.get(int(kwargs["value"]), []):
+            self.unlock_calls.append(achievement_key)
+            unlocked = self.unlock_results.get(achievement_key, True)
+            if unlocked and callback is not None:
+                achievement = SimpleNamespace(
+                    title=achievement_key,
+                    description=f"Unlocked {achievement_key}",
+                    key=achievement_key,
+                    category="count",
+                    rarity="common",
+                    rarity_label="Common",
+                )
+                await callback(achievement)
+            if unlocked:
+                unlocked_keys.append(achievement_key)
+        return unlocked_keys
+
 
 class _FakeSubsRepo:
     """Minimal fake SubsRepository for tests that need name-based sub lookup."""
