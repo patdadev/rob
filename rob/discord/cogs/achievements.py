@@ -7,89 +7,25 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from rob.achievements.embeds import achievement_unlocked_card, achievements_overview_cards
+from rob.achievements.embeds import (
+    achievement_unlocked_card,
+    render_server_achievements_message,
+    render_user_achievements_message,
+)
 from rob.ui.cards.errors import error_card, error_permission
 from rob.ui.copy import PERMISSION_ROLE_MISSING
-from rob.ui.render import RenderedMessage, add_card_actions
+from rob.ui.render import RenderedMessage
 
 if TYPE_CHECKING:
     from rob.discord.client import RobBot
 
 log = logging.getLogger(__name__)
 
-
-class _AchievementsPager:
-    """Manages paginated achievement overview navigation."""
-
-    def __init__(
-        self,
-        *,
-        owner_user_id: int,
-        cards: list[RenderedMessage],
-    ) -> None:
-        self.owner_user_id = owner_user_id
-        self.cards = cards
-        self.page_index = 0
-        self._controls_attached: set[int] = set()
-
-    @property
-    def page_count(self) -> int:
-        return len(self.cards)
-
-    def current_card(self) -> RenderedMessage:
-        card = self.cards[self.page_index]
-        self._attach_controls(card, page_index=self.page_index)
-        return card
-
-    def _attach_controls(self, card: RenderedMessage, *, page_index: int) -> None:
-        if page_index in self._controls_attached:
-            return
-        view = card.view
-        if view is None:
-            return
-        previous = _AchievementsPageButton(self, direction=-1, disabled=page_index <= 0)
-        next_button = _AchievementsPageButton(
-            self,
-            direction=1,
-            disabled=page_index >= self.page_count - 1,
-        )
-        if isinstance(view, discord.ui.LayoutView):
-            add_card_actions(view, previous, next_button)
-        else:
-            view.add_item(previous)
-            view.add_item(next_button)
-        self._controls_attached.add(page_index)
-
-    async def handle_page_turn(self, interaction: discord.Interaction, *, direction: int) -> None:
-        interaction_user = interaction.user
-        if interaction_user is None or interaction_user.id != self.owner_user_id:
-            await interaction.response.send_message(
-                "This achievement list belongs to someone else.",
-                ephemeral=True,
-            )
-            return
-
-        next_index = max(0, min(self.page_count - 1, self.page_index + direction))
-        if next_index == self.page_index:
-            await interaction.response.defer()
-            return
-        self.page_index = next_index
-        await interaction.response.edit_message(**self.current_card().edit_kwargs())
-
-
-class _AchievementsPageButton(discord.ui.Button):
-    def __init__(self, pager: _AchievementsPager, *, direction: int, disabled: bool) -> None:
-        label = "◀ Previous" if direction < 0 else "Next ▶"
-        super().__init__(
-            label=label,
-            style=discord.ButtonStyle.secondary,
-            disabled=disabled,
-        )
-        self.pager = pager
-        self.direction = direction
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        await self.pager.handle_page_turn(interaction, direction=self.direction)
+_ACHIEVEMENT_SCOPE_CHOICES = [
+    app_commands.Choice(name="Me", value="me"),
+    app_commands.Choice(name="Server", value="server"),
+    app_commands.Choice(name="User", value="user"),
+]
 
 
 class AchievementsCog(commands.Cog):
@@ -122,11 +58,16 @@ class AchievementsCog(commands.Cog):
 
         return _callback
 
-    @app_commands.command(name="achievements", description="View your achievements or another member's achievements.")
-    @app_commands.describe(user="Optional member to view instead of yourself.")
+    @app_commands.command(name="achievements", description="View your achievements, another member's, or server-wide stats.")
+    @app_commands.choices(scope=_ACHIEVEMENT_SCOPE_CHOICES)
+    @app_commands.describe(
+        scope="Choose yourself, the server, or another member.",
+        user="Optional member to view instead of yourself.",
+    )
     async def achievements(
         self,
         interaction: discord.Interaction,
+        scope: app_commands.Choice[str] | None = None,
         user: Optional[discord.Member] = None,
     ) -> None:
         if not self.bot.achievements_service.enabled:
@@ -159,7 +100,23 @@ class AchievementsCog(commands.Cog):
                 )
                 return
 
-        target = user or viewer
+        scope_value = scope.value if scope is not None else None
+        if scope_value == "server":
+            target = None
+        elif user is not None:
+            target = user
+        elif scope_value == "user":
+            await interaction.response.send_message(
+                **error_card(
+                    "Pick someone to inspect first.",
+                    "Use the `user` option when you choose the user scope.",
+                ).send_kwargs(),
+                ephemeral=True,
+            )
+            return
+        else:
+            target = viewer
+
         viewer_display_name = viewer.display_name
 
         newly_unlocked = 0
@@ -175,7 +132,7 @@ class AchievementsCog(commands.Cog):
             ),
         ):
             newly_unlocked += 1
-        if target.id != viewer.id:
+        if target is not None and target.id != viewer.id:
             if await self.bot.achievements_service.unlock_achievement(
                 guild_id=interaction.guild.id,
                 discord_user_id=viewer.id,
@@ -190,21 +147,47 @@ class AchievementsCog(commands.Cog):
             ):
                 newly_unlocked += 1
 
-        unlocked_achievements = await self.bot.achievements_service.get_user_achievements(
+        if scope_value == "server":
+            stats = await self.bot.achievements_service.get_server_stats(guild_id=interaction.guild.id)
+            guild_icon = getattr(getattr(interaction.guild, "icon", None), "url", None)
+            rendered = render_server_achievements_message(
+                owner_user_id=viewer.id,
+                server_name=getattr(interaction.guild, "name", f"Server {interaction.guild.id}"),
+                server_icon_url=guild_icon,
+                member_count=getattr(interaction.guild, "member_count", 0) or 0,
+                stats=stats,
+            )
+            await interaction.response.send_message(**rendered.send_kwargs())
+            return
+
+        assert target is not None
+        states = await self.bot.achievements_service.get_user_achievement_states(
             guild_id=interaction.guild.id,
             discord_user_id=target.id,
         )
-        cards = achievements_overview_cards(
-            display_name=target.display_name,
-            unlocked_achievements=unlocked_achievements,
-            for_self=target.id == viewer.id,
-            newly_unlocked_count=newly_unlocked,
+        target_icon = getattr(getattr(target, "display_avatar", None), "url", None)
+        rendered = render_user_achievements_message(
+            owner_user_id=viewer.id,
+            title=target.display_name,
+            subtitle=(
+                f"Your achievement cabinet · +{newly_unlocked} new"
+                if target.id == viewer.id and newly_unlocked
+                else (
+                    "Your achievement cabinet"
+                    if target.id == viewer.id
+                    else f"Viewing {target.display_name} in this server"
+                )
+            ),
+            icon_url=target_icon,
+            states=states,
+            allow_public_share=True,
+            empty_callout=(
+                "You haven't unlocked anything yet. Go do something suspiciously Rob-shaped."
+                if target.id == viewer.id
+                else f"{target.display_name} hasn't unlocked any achievements yet."
+            ),
         )
-        if len(cards) == 1:
-            await interaction.response.send_message(**cards[0].send_kwargs())
-        else:
-            pager = _AchievementsPager(owner_user_id=viewer.id, cards=cards)
-            await interaction.response.send_message(**pager.current_card().send_kwargs())
+        await interaction.response.send_message(**rendered.send_kwargs(), ephemeral=True)
 
     async def _can_use_test_achievements(self, interaction: discord.Interaction) -> bool:
         if interaction.guild is None or interaction.user is None:

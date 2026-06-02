@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 
 from rob.achievements.service import AchievementsService
+from rob.database.repositories.models import UserAchievement
 
 
 class _FakeAchievementsRepo:
@@ -12,6 +14,7 @@ class _FakeAchievementsRepo:
         self.keys: set[str] = set()
         self.raise_on_unlock = False
         self.count = 0
+        self.records: list[UserAchievement] = []
 
     async def unlock(self, **kwargs):
         if self.raise_on_unlock:
@@ -32,6 +35,21 @@ class _FakeAchievementsRepo:
 
     async def count_for_user(self, **_kwargs):
         return self.count
+
+    async def list_for_user(self, **_kwargs):
+        return list(self.records)
+
+    async def list_unlock_counts_for_guild(self, **_kwargs):
+        return {"count_10": 2}
+
+    async def list_recent_unlocks_for_guild(self, **_kwargs):
+        return list(self.records)
+
+    async def list_top_users_for_guild(self, **_kwargs):
+        return [(2, 2)]
+
+    async def count_users_with_unlocks(self, **_kwargs):
+        return 1
 
 
 def test_unlock_achievement_uses_on_conflict_style_semantics():
@@ -203,3 +221,47 @@ def test_enabled_definitions_returns_only_enabled():
 
     assert len(enabled) <= len(all_defs)
     assert all(d.enabled for d in enabled)
+
+
+def test_unlock_triggered_achievements_uses_catalog_thresholds():
+    repo = _FakeAchievementsRepo()
+    service = AchievementsService(repo)  # type: ignore[arg-type]
+
+    result = asyncio.run(
+        service.unlock_triggered_achievements(
+            guild_id=1,
+            discord_user_id=2,
+            trigger_type="sub_total_cents",
+            value=100_000,
+            matches=lambda trigger_value, current_value: isinstance(trigger_value, int) and current_value >= trigger_value,
+        )
+    )
+
+    assert "sub_first_send" in result
+    assert "sub_100_sent" in result
+    assert "sub_1000_sent" in result
+
+
+def test_get_user_achievement_states_includes_locked_entries():
+    repo = _FakeAchievementsRepo()
+    repo.records = [
+        UserAchievement(
+            id=1,
+            guild_id=1,
+            discord_user_id=2,
+            achievement_key="count_10",
+            unlocked_at=datetime(2026, 1, 2),
+            source="counting:number",
+            metadata={},
+            created_at=datetime(2026, 1, 2),
+            updated_at=datetime(2026, 1, 2),
+        )
+    ]
+    service = AchievementsService(repo)  # type: ignore[arg-type]
+
+    states = asyncio.run(service.get_user_achievement_states(guild_id=1, discord_user_id=2))
+
+    unlocked = next(state for state in states if state.definition.key == "count_10")
+    locked = next(state for state in states if state.definition.key == "secret_command")
+    assert unlocked.unlocked is True
+    assert locked.unlocked is False
