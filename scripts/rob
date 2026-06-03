@@ -92,7 +92,6 @@ Usage:
   rob count status --guild <guild_id>
   rob scan --guild <guild_id>
   rob auto-apply --guild <guild_id> [all|channels|roles|field_a,field_b]
-  rob achievement reset --guild <guild_id>
   rob migration audit --guild <guild_id>
   rob webhook preview --guild <guild_id>
   rob webhook send --guild <guild_id> --all [--limit <n>]
@@ -662,27 +661,6 @@ auto_apply_command() {
   ops_post_form "/guilds/${GUILD_ID}/scan/apply?format=text" "options=${options}"
 }
 
-achievement_command() {
-  local action="${1:-}"
-  shift || true
-
-  case "${action}" in
-    reset)
-      collect_guild_option "$@"
-      if ((${#REMAINING_ARGS[@]})); then
-        set -- "${REMAINING_ARGS[@]}"
-      else
-        set --
-      fi
-      [[ $# -eq 0 ]] || die "usage: rob achievement reset --guild <guild_id>"
-      ops_post_form "/guilds/${GUILD_ID}/achievements/reset?format=text"
-      ;;
-    *)
-      die "usage: rob achievement reset --guild <guild_id>"
-      ;;
-  esac
-}
-
 migration_command() {
   local action="${1:-}"
   shift || true
@@ -949,9 +927,6 @@ case "${cmd}" in
     ;;
   auto-apply)
     auto_apply_command "$@"
-    ;;
-  achievement|achievements)
-    achievement_command "$@"
     ;;
   migration)
     migration_command "$@"

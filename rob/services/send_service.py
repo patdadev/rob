@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from rob.achievements.service import AchievementsService
 from rob.database.repositories.leaderboards import LeaderboardsRepository
 from rob.database.repositories.models import Domme, NewSend, SendRecord
 from rob.database.repositories.sends import SendsRepository
@@ -29,7 +28,6 @@ class SendService:
         sends: SendsRepository,
         subs: SubsRepository,
         maintenance: MaintenanceService,
-        achievements: AchievementsService | None = None,
         leaderboards: LeaderboardsRepository | None = None,
         throne: ThroneService | None = None,
         throne_test_gifter_usernames: tuple[str, ...] = (),
@@ -40,7 +38,6 @@ class SendService:
         self.sends = sends
         self.subs = subs
         self.maintenance = maintenance
-        self.achievements = achievements
         self.leaderboards = leaderboards
         self.throne = throne
         self.throne_test_gifter_usernames = throne_test_gifter_usernames

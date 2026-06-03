@@ -15,7 +15,6 @@ def test_load_base_settings_only_requires_database(monkeypatch):
     assert settings.app_env == "dev"
     assert settings.rob_ops_host == "127.0.0.1"
     assert settings.rob_ops_port == 8811
-    assert settings.achievements_enabled is True
     assert settings.rob_bot_notify_url is None
     assert settings.inactivity_enabled_default is False
     assert settings.inactivity_loop_minutes == 60
@@ -69,11 +68,9 @@ def test_load_base_settings_supports_test_sender_and_leaderboard_env(monkeypatch
     monkeypatch.setenv("THRONE_TEST_SEND_LEADERBOARD_OWNER_USER_ID", "42")
     monkeypatch.setenv("LEADERBOARD_LIMIT", "15")
     monkeypatch.setenv("ROB_PUBLIC_BASE_URL", "https://example.com")
-    monkeypatch.setenv("ACHIEVEMENTS_ENABLED", "true")
 
     settings = load_base_settings()
 
-    assert settings.achievements_enabled is True
     assert settings.rob_ops_host == "127.0.0.2"
     assert settings.rob_ops_port == 9911
     assert settings.rob_ops_secret == "shared-secret"

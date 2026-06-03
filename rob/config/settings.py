@@ -13,7 +13,6 @@ class BaseSettings:
     app_env: str
     log_level: str
     database_url: str
-    achievements_enabled: bool
     rob_ops_host: str
     rob_ops_port: int
     rob_ops_secret: str | None
@@ -125,7 +124,6 @@ def load_base_settings(env_file: str | Path | None = None) -> BaseSettings:
         app_env=_env_str("APP_ENV", "dev"),
         log_level=_env_str("LOG_LEVEL", "INFO"),
         database_url=_env_str("DATABASE_URL", required=True),
-        achievements_enabled=_env_bool("ACHIEVEMENTS_ENABLED", True),
         rob_ops_host=_env_str("ROB_OPS_HOST", "127.0.0.1"),
         rob_ops_port=_env_int("ROB_OPS_PORT", 8811, minimum=1),
         rob_ops_secret=_env_str("ROB_OPS_SECRET") or None,
@@ -162,7 +160,6 @@ def load_webhook_settings(env_file: str | Path | None = None) -> WebhookSettings
         app_env=base.app_env,
         log_level=base.log_level,
         database_url=base.database_url,
-        achievements_enabled=base.achievements_enabled,
         rob_ops_host=base.rob_ops_host,
         rob_ops_port=base.rob_ops_port,
         rob_ops_secret=base.rob_ops_secret,
@@ -223,7 +220,6 @@ def load_bot_settings(env_file: str | Path | None = None) -> BotSettings:
         app_env=base.app_env,
         log_level=base.log_level,
         database_url=base.database_url,
-        achievements_enabled=base.achievements_enabled,
         rob_ops_host=base.rob_ops_host,
         rob_ops_port=base.rob_ops_port,
         rob_ops_secret=base.rob_ops_secret,

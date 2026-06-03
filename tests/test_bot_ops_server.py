@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import discord
-from rob.achievements.definitions import ACHIEVEMENTS_BY_KEY
 from rob.services.bot_ops_server import BotOpsServer
 
 
@@ -114,15 +113,6 @@ class _FakeVibSettingsRepo:
         self.role_calls.append((guild_id, field_name, role_id))
         setattr(self.settings, field_name, role_id)
         return self.settings
-
-
-class _FakeAchievementsRepo:
-    def __init__(self):
-        self.guild_ids: list[int] = []
-
-    async def reset_for_guild(self, *, guild_id: int):
-        self.guild_ids.append(guild_id)
-        return {"guild_id": guild_id, "unlocks_deleted": 4, "events_deleted": 9}
 
 
 class _FakeBotSettingsRepo:
@@ -464,25 +454,6 @@ def test_bot_ops_guild_auto_apply_updates_selected_suggestions():
     ]
 
 
-def test_bot_ops_guild_achievement_reset_endpoint_returns_deleted_counts():
-    achievements_repo = _FakeAchievementsRepo()
-    bot = SimpleNamespace(
-        achievements_repo=achievements_repo,
-        user=SimpleNamespace(id=123),
-    )
-    server = BotOpsServer(bot=bot, host="127.0.0.1", port=8811, secret="shared")
-    request = _FakeRequest(headers={"X-Rob-Ops-Secret": "shared"})
-    request.match_info["guild_id"] = "99"
-
-    response = asyncio.run(server._handle_reset_guild_achievements(request))
-
-    assert response.status == 200
-    assert achievements_repo.guild_ids == [99]
-    body = json.loads(response.text)
-    assert body["unlocks_deleted"] == 4
-    assert body["events_deleted"] == 9
-
-
 def test_bot_ops_migration_audit_endpoint_returns_text_summary():
     dommes = [
         SimpleNamespace(
@@ -707,49 +678,3 @@ def test_bot_ops_maintenance_accepts_form_payload():
     assert maintenance_service.reason == "Deploying update"
     assert "Enabled: yes" in response.text
     assert "Reason: Deploying update" in response.text
-
-
-def test_bot_ops_announce_achievement_posts_to_registration_channel(monkeypatch):
-    monkeypatch.setattr("rob.services.bot_ops_server.discord.TextChannel", _FakeOpsChannel)
-    registration_channel = _FakeOpsChannel(11)
-    guild = _FakeOpsGuild(
-        channels={11: registration_channel},
-        members={555: SimpleNamespace(display_name="Pat", name="Pat")},
-    )
-
-    async def _get_settings(guild_id: int):
-        assert guild_id == 99
-        return SimpleNamespace(
-            registration_channel_id=11,
-            send_track_channel_id=None,
-            leaderboard_channel_id=None,
-            report_channel_id=None,
-        )
-
-    bot = SimpleNamespace(
-        get_guild=lambda guild_id: guild if guild_id == 99 else None,
-        get_user=lambda user_id: None,
-        guild_settings_repo=SimpleNamespace(get=_get_settings),
-        achievements_service=SimpleNamespace(
-            get_definition=lambda key: ACHIEVEMENTS_BY_KEY.get(key),
-        ),
-        user=SimpleNamespace(id=123),
-    )
-    server = BotOpsServer(bot=bot, host="127.0.0.1", port=8811, secret="shared")
-    request = _FakeRequest(
-        payload={"discord_user_id": 555, "achievement_key": "throne_test_webhook"},
-        headers={"X-Rob-Ops-Secret": "shared"},
-    )
-    request.match_info["guild_id"] = "99"
-
-    response = asyncio.run(server._handle_announce_achievement(request))
-
-    assert response.status == 200
-    assert len(registration_channel.messages) == 1
-    text = "\n".join(
-        str(getattr(item, "content", ""))
-        for container in registration_channel.messages[0]["view"].children
-        for item in getattr(container, "children", [])
-    )
-    assert "Is This Thing On?" in text
-    assert "Achievement Unlocked by Pat" in text
