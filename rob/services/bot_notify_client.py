@@ -89,10 +89,24 @@ async def notify_bot_onboarding_webhook_verified(
         "discord_user_id": int(discord_user_id),
     }
     timeout = ClientTimeout(total=timeout_seconds)
+    log.info(
+        "Onboarding webhook-verified notification POST endpoint=%s "
+        "guild_id=%s discord_user_id=%s",
+        endpoint,
+        guild_id,
+        discord_user_id,
+    )
     try:
         async with ClientSession(timeout=timeout) as session:
             async with session.post(endpoint, json=payload, headers=headers) as response:
                 if 200 <= response.status < 300:
+                    log.info(
+                        "Onboarding webhook-verified notification delivered "
+                        "status=%s guild_id=%s discord_user_id=%s",
+                        response.status,
+                        guild_id,
+                        discord_user_id,
+                    )
                     return True
                 body = await response.text()
                 log.warning(

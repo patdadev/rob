@@ -443,10 +443,27 @@ class BotOpsServer:
             guild_id = int(payload.get("guild_id"))
             discord_user_id = int(payload.get("discord_user_id"))
         except (TypeError, ValueError):
+            log.warning(
+                "Onboarding webhook auto-advance invalid payload received: %r",
+                payload,
+            )
             return web.json_response({"error": "invalid_payload"}, status=400)
+
+        log.info(
+            "Onboarding webhook auto-advance request received guild_id=%s "
+            "discord_user_id=%s",
+            guild_id,
+            discord_user_id,
+        )
 
         cog = self.bot.get_cog("DMOnboardingCog") if hasattr(self.bot, "get_cog") else None
         if cog is None:
+            log.warning(
+                "Onboarding webhook auto-advance cog unavailable guild_id=%s "
+                "discord_user_id=%s",
+                guild_id,
+                discord_user_id,
+            )
             return web.json_response(
                 {"error": "dm_onboarding_cog_unavailable"}, status=500
             )
