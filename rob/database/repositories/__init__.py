@@ -1,4 +1,3 @@
-from rob.database.repositories.achievements import AchievementsRepository
 from rob.database.repositories.blacklist import BlacklistRepository
 from rob.database.repositories.bot_settings import BotSettingsRepository
 from rob.database.repositories.bot_state import BotStateRepository
@@ -16,7 +15,6 @@ from rob.database.repositories.throne_creators import ThroneCreatorsRepository
 from rob.database.repositories.vib_settings import VibSettingsRepository
 
 __all__ = [
-    "AchievementsRepository",
     "BlacklistRepository",
     "BotSettingsRepository",
     "BotStateRepository",

@@ -8,7 +8,6 @@ from urllib.parse import urlsplit
 
 from aiohttp import web
 import discord
-from rob.achievements.embeds import achievement_unlocked_card
 from rob.utils.money import format_money_from_cents
 
 log = logging.getLogger(__name__)
@@ -171,14 +170,6 @@ class BotOpsServer:
             "/guilds/{guild_id}/webhook/reissue/refresh",
             self._handle_webhook_reissue_refresh,
         )
-        app.router.add_post(
-            "/guilds/{guild_id}/achievements/reset",
-            self._handle_reset_guild_achievements,
-        )
-        app.router.add_post(
-            "/guilds/{guild_id}/achievements/announce",
-            self._handle_announce_achievement,
-        )
         app.router.add_post("/guilds/{guild_id}/dommes", self._handle_add_domme)
         app.router.add_post("/guilds/{guild_id}/dommes/remove", self._handle_remove_domme)
         app.router.add_post("/guilds/{guild_id}/subs", self._handle_add_sub)
@@ -338,73 +329,6 @@ class BotOpsServer:
                 content_type="text/plain",
             )
         return web.json_response(result_payload)
-
-    async def _handle_reset_guild_achievements(self, request: web.Request) -> web.Response:
-        if not self._is_authorized(request):
-            return web.json_response({"error": "forbidden"}, status=403)
-        if not hasattr(self.bot, "achievements_repo"):
-            return web.json_response({"error": "achievements_repo_unavailable"}, status=500)
-
-        guild_id = self._match_guild_id(request)
-        if guild_id is None:
-            return web.json_response({"error": "invalid_guild_id"}, status=400)
-
-        result = await self.bot.achievements_repo.reset_for_guild(guild_id=guild_id)
-        if self._wants_text(request):
-            return web.Response(
-                text=self._format_guild_achievement_reset_text(result),
-                content_type="text/plain",
-            )
-        return web.json_response({"ok": True, **result})
-
-    async def _handle_announce_achievement(self, request: web.Request) -> web.Response:
-        if not self._is_authorized(request):
-            return web.json_response({"error": "forbidden"}, status=403)
-        if not hasattr(self.bot, "achievements_service"):
-            return web.json_response({"error": "achievements_service_unavailable"}, status=500)
-        if not hasattr(self.bot, "guild_settings_repo"):
-            return web.json_response({"error": "guild_settings_repo_unavailable"}, status=500)
-
-        guild_id = self._match_guild_id(request)
-        if guild_id is None:
-            return web.json_response({"error": "invalid_guild_id"}, status=400)
-
-        payload = await self._json_payload(request)
-        discord_user_id = self._payload_user_id(payload)
-        achievement_key = self._display_text(payload.get("achievement_key"))
-        if discord_user_id is None or not achievement_key:
-            return web.json_response(
-                {"error": "discord_user_id_and_achievement_key_required"},
-                status=400,
-            )
-
-        definition = self.bot.achievements_service.get_definition(achievement_key)
-        if definition is None:
-            return web.json_response({"error": "unknown_achievement_key"}, status=404)
-
-        channel = await self._resolve_achievement_channel(guild_id)
-        if channel is None:
-            return web.json_response({"error": "achievement_channel_unavailable"}, status=404)
-
-        display_name = self._display_text(payload.get("display_name")) or await self._resolve_display_name(
-            guild_id,
-            discord_user_id,
-        )
-        await channel.send(
-            **achievement_unlocked_card(
-                definition,
-                unlocked_by_display_name=display_name or f"<@{discord_user_id}>",
-                unlocked_by_user_id=discord_user_id,
-            ).send_kwargs()
-        )
-        response_payload = {
-            "ok": True,
-            "guild_id": guild_id,
-            "discord_user_id": discord_user_id,
-            "achievement_key": achievement_key,
-            "channel_id": channel.id,
-        }
-        return web.json_response(response_payload)
 
     async def _handle_refresh_public_names(self, request: web.Request) -> web.Response:
         if not self._is_authorized(request):
@@ -1575,17 +1499,6 @@ class BotOpsServer:
         return "\n".join(lines)
 
     @staticmethod
-    def _format_guild_achievement_reset_text(payload: dict[str, Any]) -> str:
-        return "\n".join(
-            [
-                "Guild Achievement Reset",
-                f"Guild ID: {payload['guild_id']}",
-                f"Unlocked rows removed: {payload['unlocks_deleted']}",
-                f"Event rows removed: {payload['events_deleted']}",
-            ]
-        )
-
-    @staticmethod
     def _format_count_text(payload: dict[str, Any], *, label: str) -> str:
         lines = [
             label,
@@ -1915,33 +1828,6 @@ class BotOpsServer:
             await self.bot.leaderboard_service.refresh_guild(guild_id)
         except Exception:
             log.exception("Guild refresh failed after bot ops mutation guild_id=%s", guild_id)
-
-    async def _resolve_achievement_channel(self, guild_id: int) -> discord.TextChannel | None:
-        guild = self.bot.get_guild(guild_id)
-        if guild is None:
-            return None
-
-        settings = await self.bot.guild_settings_repo.get(guild_id)
-        if settings is None:
-            return None
-
-        for channel_id in (
-            settings.registration_channel_id,
-            settings.send_track_channel_id,
-            settings.leaderboard_channel_id,
-            settings.report_channel_id,
-        ):
-            if channel_id is None:
-                continue
-            channel = guild.get_channel(channel_id)
-            if channel is None:
-                try:
-                    channel = await guild.fetch_channel(channel_id)
-                except (discord.NotFound, discord.HTTPException):
-                    continue
-            if isinstance(channel, discord.TextChannel):
-                return channel
-        return None
 
     async def _resolve_display_name(self, guild_id: int, discord_user_id: int) -> str | None:
         guild = self.bot.get_guild(guild_id)

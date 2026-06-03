@@ -5,8 +5,6 @@ import logging
 
 import discord
 
-from rob.achievements.embeds import achievement_unlocked_card
-from rob.achievements.service import AchievementsService
 from rob.database.repositories.guild_settings import GuildSettingsRepository
 from rob.database.repositories.leaderboards import LeaderboardsRepository
 from rob.database.repositories.sends import SendsRepository
@@ -29,7 +27,6 @@ class SendQueueService:
         maintenance: MaintenanceService,
         leaderboard_service: LeaderboardService,
         counting_service: CountingService | None = None,
-        achievements: AchievementsService | None = None,
         leaderboards: LeaderboardsRepository | None = None,
         include_test_sends: bool = False,
         owner_test_user_id: int | None = None,
@@ -42,7 +39,6 @@ class SendQueueService:
         self.maintenance = maintenance
         self.leaderboard_service = leaderboard_service
         self.counting_service = counting_service
-        self.achievements = achievements
         self.leaderboards = leaderboards
         self.include_test_sends = include_test_sends
         self.owner_test_user_id = owner_test_user_id
@@ -310,18 +306,6 @@ class SendQueueService:
         await self.sends.mark_posted(send.id, message_id=message.id)
         log.info("Marked send posted id=%s message_id=%s", send.id, message.id)
         try:
-            await self._unlock_send_achievements(
-                send,
-                previous_leader_user_id=previous_leader.user_id if previous_leader is not None else None,
-                announce_channel=channel,
-            )
-        except Exception:
-            log.exception(
-                "Achievement unlock evaluation failed for send_id=%s guild_id=%s.",
-                send.id,
-                send.guild_id,
-            )
-        try:
             await self.leaderboard_service.maybe_post_leader_alert(
                 send.guild_id,
                 previous_leader_user_id=previous_leader.user_id if previous_leader is not None else None,
@@ -333,204 +317,3 @@ class SendQueueService:
                 send.guild_id,
             )
         return True
-
-    async def _unlock_send_achievements(
-        self,
-        send,
-        *,
-        previous_leader_user_id: int | None,
-        announce_channel: discord.TextChannel | None,
-    ) -> None:
-        if self.achievements is None:
-            return
-
-        guild_id = send.guild_id
-        domme_user_id = send.domme_user_id
-        guild = self.bot.get_guild(guild_id)
-
-        def _unlock_display_name(user_id: int) -> str:
-            member = guild.get_member(user_id) if guild is not None else None
-            if member is not None:
-                return member.display_name
-            return f"<@{user_id}>"
-
-        def _announce_callback(user_id: int):
-            async def _callback(achievement) -> None:
-                if announce_channel is None:
-                    return
-                await announce_channel.send(
-                    **achievement_unlocked_card(
-                        achievement,
-                        unlocked_by_display_name=_unlock_display_name(user_id),
-                        unlocked_by_user_id=user_id,
-                    ).send_kwargs()
-                )
-
-            return _callback
-
-        async def _unlock(
-            *,
-            user_id: int,
-            achievement_key: str,
-            source: str,
-            metadata: dict | None = None,
-        ) -> bool:
-            return await self.achievements.unlock_achievement(
-                guild_id=guild_id,
-                discord_user_id=user_id,
-                achievement_key=achievement_key,
-                source=source,
-                metadata=metadata,
-                on_unlocked=_announce_callback(user_id),
-            )
-
-        async def _unlock_catalog_thresholds(
-            *,
-            user_id: int,
-            trigger_type: str,
-            value: int,
-            source: str | None = None,
-            metadata: dict | None = None,
-        ) -> None:
-            await self.achievements.unlock_triggered_achievements(
-                guild_id=guild_id,
-                discord_user_id=user_id,
-                trigger_type=trigger_type,
-                value=value,
-                matches=lambda trigger_value, current_value: isinstance(trigger_value, int) and current_value >= trigger_value,
-                source=source,
-                metadata=metadata,
-                on_unlocked=_announce_callback(user_id),
-            )
-
-        async def _unlock_catalog_rank(
-            *,
-            user_id: int,
-            rank: int,
-            metadata: dict | None = None,
-        ) -> None:
-            await self.achievements.unlock_triggered_achievements(
-                guild_id=guild_id,
-                discord_user_id=user_id,
-                trigger_type="domme_rank",
-                value=rank,
-                matches=lambda trigger_value, current_value: isinstance(trigger_value, int) and current_value <= trigger_value,
-                metadata=metadata,
-                on_unlocked=_announce_callback(user_id),
-            )
-
-        if send.is_test_send:
-            await _unlock(
-                user_id=domme_user_id,
-                achievement_key="domme_first_test_send",
-                source="send:test",
-            )
-
-        if send.source.startswith("manual:"):
-            await _unlock(
-                user_id=domme_user_id,
-                achievement_key="domme_manual_send",
-                source="send:manual",
-            )
-
-        if send.source == "throne_webhook" and not send.is_test_send:
-            await _unlock(
-                user_id=domme_user_id,
-                achievement_key="throne_first_real_auto_send",
-                source="send:throne",
-            )
-
-        if self.leaderboards is None:
-            return
-
-        stats = await self.leaderboards.get_domme_stats(
-            guild_id,
-            domme_user_id=domme_user_id,
-            include_test_sends=self.include_test_sends,
-            test_gifter_usernames=self.test_gifter_usernames,
-            owner_test_user_id=self.owner_test_user_id,
-        )
-        if not send.is_test_send:
-            await _unlock_catalog_thresholds(
-                user_id=domme_user_id,
-                trigger_type="domme_total_cents",
-                value=stats.total_cents,
-            )
-
-        await _unlock_catalog_thresholds(
-            user_id=domme_user_id,
-            trigger_type="domme_send_count",
-            value=stats.send_count,
-        )
-
-        rank = await self.leaderboards.get_domme_rank(
-            guild_id,
-            domme_user_id=domme_user_id,
-            include_test_sends=self.include_test_sends,
-            test_gifter_usernames=self.test_gifter_usernames,
-            owner_test_user_id=self.owner_test_user_id,
-        )
-        if rank is not None and rank <= 10:
-            await _unlock_catalog_rank(
-                user_id=domme_user_id,
-                rank=rank,
-                metadata={"rank": rank},
-            )
-        if rank == 1:
-            already_unlocked = await self.achievements.get_user_achievement_keys(
-                guild_id=guild_id,
-                discord_user_id=domme_user_id,
-            )
-            await self.achievements.unlock_achievement(
-                guild_id=guild_id,
-                discord_user_id=domme_user_id,
-                achievement_key="domme_first_place",
-                source="leaderboard:rank",
-                on_unlocked=_announce_callback(domme_user_id),
-            )
-            if (
-                previous_leader_user_id is not None
-                and previous_leader_user_id != domme_user_id
-                and "domme_first_place" in already_unlocked
-            ):
-                await _unlock(
-                    user_id=domme_user_id,
-                    achievement_key="domme_regain_first",
-                    source="leaderboard:rank",
-                )
-
-        sub_user_id = send.sub_user_id
-        if sub_user_id is None:
-            return
-
-        sub_stats = await self.leaderboards.get_sub_stats(
-            guild_id,
-            sub_user_id=sub_user_id,
-            include_test_sends=self.include_test_sends,
-            test_gifter_usernames=self.test_gifter_usernames,
-            owner_test_user_id=self.owner_test_user_id,
-        )
-        await _unlock_catalog_thresholds(
-            user_id=sub_user_id,
-            trigger_type="sub_total_cents",
-            value=sub_stats.total_cents,
-        )
-        await _unlock_catalog_thresholds(
-            user_id=sub_user_id,
-            trigger_type="sub_send_count",
-            value=sub_stats.send_count,
-        )
-
-        current_leader = await self.leaderboard_service.get_current_leader(guild_id)
-        if (
-            current_leader is not None
-            and current_leader.user_id == domme_user_id
-            and previous_leader_user_id is not None
-            and previous_leader_user_id != domme_user_id
-        ):
-            await _unlock(
-                user_id=sub_user_id,
-                achievement_key="sub_kingmaker",
-                source="leaderboard:leader_change",
-                metadata={"new_leader_user_id": domme_user_id},
-            )

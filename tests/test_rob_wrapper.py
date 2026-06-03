@@ -166,34 +166,6 @@ def test_rob_wrapper_auto_apply_posts_selected_options(tmp_path: Path):
     assert "options=channels,domme_role_id" in log_text
 
 
-def test_rob_wrapper_can_reset_guild_achievements(tmp_path: Path):
-    log_path = tmp_path / "curl.log"
-    _write_fake_command(
-        tmp_path,
-        "curl",
-        "#!/usr/bin/env bash\n"
-        "printf '%s\\n' \"$*\" >> \"$ROB_TEST_LOG\"\n"
-        "printf 'Guild Achievement Reset\\n200'\n",
-    )
-    symlink_path = tmp_path / "rob"
-    symlink_path.symlink_to(REPO_ROOT / "scripts" / "rob")
-
-    env = os.environ.copy()
-    env["PATH"] = f"{tmp_path}:{env['PATH']}"
-    env["ROB_TEST_LOG"] = str(log_path)
-
-    result = subprocess.run(
-        [str(symlink_path), "achievement", "reset", "--guild", "42"],
-        check=True,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-
-    assert "Guild Achievement Reset" in result.stdout
-    assert "/guilds/42/achievements/reset?format=text" in log_path.read_text(encoding="utf-8")
-
-
 def test_rob_wrapper_send_update_posts_send_update_request(tmp_path: Path):
     log_path = tmp_path / "curl.log"
     _write_fake_command(
