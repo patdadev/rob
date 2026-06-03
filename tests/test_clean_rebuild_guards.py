@@ -165,11 +165,12 @@ def test_db_build_scripts_exist_under_scripts_db_build():
     build_dir = REPO_ROOT / "scripts" / "db" / "build"
     assert (build_dir / "001_core_schema.sql").exists()
     assert (build_dir / "002_indexes.sql").exists()
-    assert (build_dir / "003_achievements.sql").exists()
+    assert not (build_dir / "003_achievements.sql").exists()
     assert (build_dir / "004_sub_send_names.sql").exists()
     assert (build_dir / "005_count_recovery.sql").exists()
     assert (build_dir / "006_send_change_requests.sql").exists()
     assert (build_dir / "007_send_update_requests.sql").exists()
+    assert (build_dir / "008_dm_preferences.sql").exists()
     assert (build_dir / "003_runtime_grants_template.sql").exists()
     assert (build_dir / "README.md").exists()
     grants_dir = REPO_ROOT / "scripts" / "db" / "grants"
@@ -187,9 +188,6 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     indexes = (
         REPO_ROOT / "scripts" / "db" / "build" / "002_indexes.sql"
     ).read_text(encoding="utf-8")
-    achievements_schema = (
-        REPO_ROOT / "scripts" / "db" / "build" / "003_achievements.sql"
-    ).read_text(encoding="utf-8")
     sub_send_names_schema = (
         REPO_ROOT / "scripts" / "db" / "build" / "004_sub_send_names.sql"
     ).read_text(encoding="utf-8")
@@ -202,6 +200,9 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     send_update_requests_schema = (
         REPO_ROOT / "scripts" / "db" / "build" / "007_send_update_requests.sql"
     ).read_text(encoding="utf-8")
+    dm_preferences_schema = (
+        REPO_ROOT / "scripts" / "db" / "build" / "008_dm_preferences.sql"
+    ).read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS db_build_version" in core_schema
     assert "CREATE TABLE IF NOT EXISTS bot_users" in core_schema
@@ -212,9 +213,6 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     assert "WHERE event_id IS NOT NULL" not in indexes
     assert "WHERE public_send_id IS NOT NULL" not in indexes
     assert "VALUES ('002_indexes'," in indexes
-    assert "CREATE TABLE IF NOT EXISTS user_achievements" in achievements_schema
-    assert "CREATE TABLE IF NOT EXISTS achievement_events" in achievements_schema
-    assert "VALUES ('003_achievements'," in achievements_schema
     assert "CREATE TABLE IF NOT EXISTS sub_send_names" in sub_send_names_schema
     assert "VALUES ('004_sub_send_names'," in sub_send_names_schema
     assert "CREATE TABLE IF NOT EXISTS count_recovery_windows" in count_recovery_schema
@@ -224,6 +222,16 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     assert "'006_send_change_requests'" in send_change_requests_schema
     assert "send_update" in send_update_requests_schema
     assert "'007_send_update_requests'" in send_update_requests_schema
+    # DM preferences migration drops achievements and adds new domme preference columns.
+    assert "DROP TABLE IF EXISTS user_achievements" in dm_preferences_schema
+    assert "DROP TABLE IF EXISTS achievement_events" in dm_preferences_schema
+    assert "send_notifications_enabled" in dm_preferences_schema
+    assert "leaderboard_visible" in dm_preferences_schema
+    assert "notifications_snoozed_until" in dm_preferences_schema
+    assert "preferences_deferred_until" in dm_preferences_schema
+    assert "preferences_confirmed_at" in dm_preferences_schema
+    assert "CREATE TABLE IF NOT EXISTS domme_onboarding_state" in dm_preferences_schema
+    assert "'008_dm_preferences'" in dm_preferences_schema
 
 
 def test_deploy_scripts_do_not_run_schema_builder():
@@ -261,19 +269,17 @@ def test_prod_webhook_grants_are_runtime_only_and_not_schema_changing():
     ).read_text(encoding="utf-8")
     for forbidden in ("GRANT CREATE", "GRANT ALTER", "GRANT DROP", "GRANT TRUNCATE"):
         assert forbidden not in grants
-    assert "user_achievements" in grants
-    assert "achievement_events" in grants
+    assert "user_achievements" not in grants
+    assert "achievement_events" not in grants
     assert "sub_send_names" in grants
-    assert "REVOKE DELETE ON TABLE user_achievements FROM prod_rob_webhook;" in grants
-    assert "REVOKE DELETE ON TABLE achievement_events FROM prod_rob_webhook;" in grants
 
 
-def test_rehearsal_webhook_grants_revoke_delete_for_achievement_tables():
+def test_rehearsal_webhook_grants_do_not_reference_retired_achievement_tables():
     grants = (
         REPO_ROOT / "scripts" / "db" / "grants" / "dev_rehearsal_prod_roles.sql"
     ).read_text(encoding="utf-8")
-    assert "REVOKE DELETE ON TABLE user_achievements FROM prod_rob_webhook;" in grants
-    assert "REVOKE DELETE ON TABLE achievement_events FROM prod_rob_webhook;" in grants
+    assert "user_achievements" not in grants
+    assert "achievement_events" not in grants
 
 
 def test_webhook_supports_new_and_compatibility_routes():

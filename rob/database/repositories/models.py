@@ -49,6 +49,29 @@ class Domme:
     registered_at: datetime
     created_at: datetime
     updated_at: datetime
+    # DM notification / leaderboard preferences (test-guild only behavior).
+    send_notifications_enabled: bool = True
+    leaderboard_visible: bool = True
+    notifications_snoozed_until: datetime | None = None
+    preferences_deferred_until: datetime | None = None
+    preferences_confirmed_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class DommeOnboardingState:
+    id: int
+    guild_id: int
+    discord_user_id: int
+    stage: str
+    pending_throne_input: str | None
+    pending_throne_handle: str | None
+    pending_throne_creator_id: str | None
+    dm_channel_id: int | None
+    dm_message_id: int | None
+    last_interaction_at: datetime
+    completed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
 
 
 @dataclass(frozen=True)
@@ -320,24 +343,3 @@ class QueueStatus:
     posted: int
     failed: int
     ignored: int
-
-
-@dataclass(frozen=True)
-class UserAchievement:
-    id: int
-    guild_id: int
-    discord_user_id: int
-    achievement_key: str
-    unlocked_at: datetime
-    source: str | None
-    metadata: dict
-    created_at: datetime
-    updated_at: datetime
-
-
-@dataclass(frozen=True)
-class AchievementSummary:
-    guild_id: int
-    discord_user_id: int
-    unlocked_count: int
-    total_count: int

@@ -11,11 +11,11 @@ DB_BUILD_DIR = Path(__file__).resolve().parent / "db" / "build"
 REQUIRED_DB_BUILD_VERSIONS = (
     "001_core_schema",
     "002_indexes",
-    "003_achievements",
     "004_sub_send_names",
     "005_count_recovery",
     "006_send_change_requests",
     "007_send_update_requests",
+    "008_dm_preferences",
 )
 
 REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {
@@ -55,6 +55,11 @@ REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {
         "registered_at",
         "created_at",
         "updated_at",
+        "send_notifications_enabled",
+        "leaderboard_visible",
+        "notifications_snoozed_until",
+        "preferences_deferred_until",
+        "preferences_confirmed_at",
     },
     "subs": {
         "id",
@@ -206,26 +211,20 @@ REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {
         "updated_at",
         "decided_at",
     },
-    "user_achievements": {
+    "domme_onboarding_state": {
         "id",
         "guild_id",
         "discord_user_id",
-        "achievement_key",
-        "unlocked_at",
-        "source",
-        "metadata",
+        "stage",
+        "pending_throne_input",
+        "pending_throne_handle",
+        "pending_throne_creator_id",
+        "dm_channel_id",
+        "dm_message_id",
+        "last_interaction_at",
+        "completed_at",
         "created_at",
         "updated_at",
-    },
-    "achievement_events": {
-        "id",
-        "guild_id",
-        "discord_user_id",
-        "achievement_key",
-        "event_type",
-        "source",
-        "metadata",
-        "created_at",
     },
 }
 
@@ -239,8 +238,6 @@ WEBHOOK_REQUIRED_TABLES = {
     "sends",
     "vib_settings",
     "vib_leaderboard",
-    "user_achievements",
-    "achievement_events",
 }
 
 BOT_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
@@ -258,8 +255,7 @@ BOT_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "count_recovery_windows": ("SELECT", "INSERT", "UPDATE", "DELETE"),
     "count_blocks": ("SELECT", "INSERT", "UPDATE", "DELETE"),
     "send_change_requests": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "user_achievements": ("SELECT", "INSERT", "UPDATE", "DELETE"),
-    "achievement_events": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "domme_onboarding_state": ("SELECT", "INSERT", "UPDATE", "DELETE"),
 }
 
 WEBHOOK_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
@@ -272,8 +268,6 @@ WEBHOOK_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "sends": ("SELECT", "INSERT", "UPDATE"),
     "vib_settings": ("SELECT",),
     "vib_leaderboard": ("SELECT",),
-    "user_achievements": ("SELECT", "INSERT"),
-    "achievement_events": ("SELECT", "INSERT"),
 }
 
 BOT_RUNTIME_SEQUENCES = (
@@ -287,15 +281,12 @@ BOT_RUNTIME_SEQUENCES = (
     "public.count_recovery_windows_id_seq",
     "public.count_blocks_id_seq",
     "public.send_change_requests_id_seq",
-    "public.user_achievements_id_seq",
-    "public.achievement_events_id_seq",
+    "public.domme_onboarding_state_id_seq",
 )
 
 WEBHOOK_RUNTIME_SEQUENCES = (
     "public.bot_users_id_seq",
     "public.sends_id_seq",
-    "public.user_achievements_id_seq",
-    "public.achievement_events_id_seq",
 )
 
 
@@ -415,7 +406,7 @@ async def _assert_runtime_permissions(
                 missing.append(f"{sequence_name}:{privilege}")
 
     if profile == "webhook":
-        for table_name in ("sends", "bot_users", "user_achievements", "achievement_events"):
+        for table_name in ("sends", "bot_users"):
             has_delete = await connection.fetchval(
                 "SELECT has_table_privilege(current_user, $1, 'DELETE')",
                 f"public.{table_name}",
@@ -468,11 +459,11 @@ async def main() -> None:
 
             missing_versions = sorted(set(REQUIRED_DB_BUILD_VERSIONS) - applied)
             if missing_versions:
-                if "003_achievements" in missing_versions:
+                if "008_dm_preferences" in missing_versions:
                     raise RuntimeError(
-                        "Achievement tables are missing.\n"
-                        "Run scripts/db/build/003_achievements.sql manually as doadmin, "
-                        "then run the relevant grants file."
+                        "DM notification preference schema is missing.\n"
+                        "Run scripts/db/build/008_dm_preferences.sql manually as "
+                        "doadmin, then run the relevant grants file."
                     )
                 if len(missing_versions) == 1:
                     raise RuntimeError(

@@ -3,6 +3,7 @@ from rob.database.repositories.bot_settings import BotSettingsRepository
 from rob.database.repositories.bot_state import BotStateRepository
 from rob.database.repositories.bot_users import BotUsersRepository
 from rob.database.repositories.counting import CountingRepository
+from rob.database.repositories.domme_onboarding import DommeOnboardingRepository
 from rob.database.repositories.dommes import DommesRepository
 from rob.database.repositories.guild_settings import GuildSettingsRepository
 from rob.database.repositories.inactive_users import InactiveUsersRepository
@@ -20,6 +21,7 @@ __all__ = [
     "BotStateRepository",
     "BotUsersRepository",
     "CountingRepository",
+    "DommeOnboardingRepository",
     "DommesRepository",
     "GuildSettingsRepository",
     "InactiveUsersRepository",

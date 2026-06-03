@@ -9,6 +9,13 @@ from rob.database.repositories.models import Domme
 
 
 def _build_domme(row: Record) -> Domme:
+    def _get(key: str, default=None):
+        try:
+            value = row[key]
+        except (KeyError, IndexError):
+            return default
+        return default if value is None else value
+
     return Domme(
         id=int(row["id"]),
         bot_user_id=int(row["bot_user_id"]) if row["bot_user_id"] is not None else None,
@@ -31,6 +38,11 @@ def _build_domme(row: Record) -> Domme:
         registered_at=row["registered_at"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        send_notifications_enabled=bool(_get("send_notifications_enabled", True)),
+        leaderboard_visible=bool(_get("leaderboard_visible", True)),
+        notifications_snoozed_until=_get("notifications_snoozed_until"),
+        preferences_deferred_until=_get("preferences_deferred_until"),
+        preferences_confirmed_at=_get("preferences_confirmed_at"),
     )
 
 
@@ -274,3 +286,90 @@ class DommesRepository:
         if row is None:
             raise ValueError("That Dom/me is no longer registered.")
         return _build_domme(row)
+
+    # --- DM notification / leaderboard preferences ---------------------------
+
+    async def set_preferences(
+        self,
+        *,
+        guild_id: int,
+        discord_user_id: int,
+        send_notifications_enabled: bool | None = None,
+        leaderboard_visible: bool | None = None,
+        notifications_snoozed_until: datetime | None = None,
+        clear_snooze: bool = False,
+        preferences_deferred_until: datetime | None = None,
+        clear_defer: bool = False,
+        confirm: bool = False,
+    ) -> Domme | None:
+        """Update DM notification + leaderboard preferences for a Dom/me.
+
+        ``None`` for a value means "do not change". Use ``clear_snooze`` or
+        ``clear_defer`` to explicitly set the corresponding timestamp to
+        ``NULL``. ``confirm=True`` sets ``preferences_confirmed_at`` to
+        ``now()``.
+        """
+
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                UPDATE dommes
+                SET
+                    send_notifications_enabled = COALESCE($3, send_notifications_enabled),
+                    leaderboard_visible        = COALESCE($4, leaderboard_visible),
+                    notifications_snoozed_until = CASE
+                        WHEN $6::bool THEN NULL
+                        WHEN $5::timestamptz IS NOT NULL THEN $5
+                        ELSE notifications_snoozed_until
+                    END,
+                    preferences_deferred_until = CASE
+                        WHEN $8::bool THEN NULL
+                        WHEN $7::timestamptz IS NOT NULL THEN $7
+                        ELSE preferences_deferred_until
+                    END,
+                    preferences_confirmed_at = CASE
+                        WHEN $9::bool THEN now()
+                        ELSE preferences_confirmed_at
+                    END,
+                    updated_at = now()
+                WHERE guild_id = $1
+                  AND discord_user_id = $2
+                RETURNING *
+                """,
+                guild_id,
+                discord_user_id,
+                send_notifications_enabled,
+                leaderboard_visible,
+                notifications_snoozed_until,
+                clear_snooze,
+                preferences_deferred_until,
+                clear_defer,
+                confirm,
+            )
+        return _build_domme(row) if row is not None else None
+
+    async def snooze_notifications(
+        self,
+        *,
+        guild_id: int,
+        discord_user_id: int,
+        until: datetime,
+    ) -> Domme | None:
+        return await self.set_preferences(
+            guild_id=guild_id,
+            discord_user_id=discord_user_id,
+            notifications_snoozed_until=until,
+        )
+
+    async def defer_preferences(
+        self,
+        *,
+        guild_id: int,
+        discord_user_id: int,
+        until: datetime,
+    ) -> Domme | None:
+        return await self.set_preferences(
+            guild_id=guild_id,
+            discord_user_id=discord_user_id,
+            preferences_deferred_until=until,
+        )
