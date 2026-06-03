@@ -505,7 +505,7 @@ class PreferencesView(discord.ui.LayoutView):
                 ),
             ],
         )
-        container.add_item(self.notifications_select)
+        container.add_item(discord.ui.ActionRow(self.notifications_select))
         container.add_item(discord.ui.Separator())
 
         # ---- Section 2: Leaderboard ----
@@ -533,7 +533,7 @@ class PreferencesView(discord.ui.LayoutView):
                 ),
             ],
         )
-        container.add_item(self.leaderboard_select)
+        container.add_item(discord.ui.ActionRow(self.leaderboard_select))
         container.add_item(discord.ui.Separator())
         container.add_item(
             discord.ui.TextDisplay(
@@ -705,7 +705,7 @@ class MigrationPromptView(discord.ui.LayoutView):
                 ),
             ],
         )
-        container.add_item(self.notifications_select)
+        container.add_item(discord.ui.ActionRow(self.notifications_select))
         container.add_item(discord.ui.Separator())
 
         container.add_item(discord.ui.TextDisplay("### 📊 Leaderboard visibility"))
@@ -727,7 +727,7 @@ class MigrationPromptView(discord.ui.LayoutView):
                 ),
             ],
         )
-        container.add_item(self.leaderboard_select)
+        container.add_item(discord.ui.ActionRow(self.leaderboard_select))
         container.add_item(discord.ui.Separator())
         container.add_item(
             discord.ui.TextDisplay(
