@@ -12,6 +12,7 @@ and for invoking these methods at the right interaction.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from rob.config.guilds import is_test_guild
 from rob.database.repositories.domme_onboarding import (
@@ -210,8 +211,6 @@ class DMOnboardingService:
         domme = await self.dommes.get_by_user_id(guild_id, discord_user_id)
         if domme is None:
             raise OnboardingError("You are not registered yet.")
-        from datetime import datetime, timedelta, timezone
-
         until = datetime.now(timezone.utc) + timedelta(days=days)
         await self.dommes.defer_preferences(
             guild_id=guild_id,
