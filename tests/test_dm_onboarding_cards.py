@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import discord
+import pytest
 
 from rob.ui.cards.dm_onboarding import (
     LEADERBOARD_HIDE_VALUE,
@@ -19,6 +20,7 @@ from rob.ui.cards.dm_onboarding import (
     webhook_setup_card,
     webhook_waiting_card,
 )
+from rob.ui.cards.dm_onboarding import onboarding_error_card  # noqa: E402
 
 
 def _has_button_with_id(view: discord.ui.LayoutView, custom_id: str) -> bool:
@@ -109,7 +111,177 @@ def test_success_card_messages_reflect_choices():
     assert "off" in off_text.lower()
 
 
-def test_migration_card_has_set_and_defer_buttons():
+def test_migration_card_has_save_and_defer_buttons_inside_container():
+    # Per spec the visible buttons on the migration card are Save preferences
+    # and Defer for 7 days. The legacy "Open preferences" custom_id is kept
+    # alive via the persistent view registration (see DMOnboardingCog) so
+    # stale DMs in the wild can still be clicked — it is intentionally not
+    # rendered on the new card.
     rendered = migration_prompt_card()
-    assert _has_button_with_id(rendered.view, "rob:dm_migration:open_prefs")
+    assert _has_button_with_id(rendered.view, "rob:dm_migration:save")
     assert _has_button_with_id(rendered.view, "rob:dm_migration:defer_7d")
+    assert not _has_button_with_id(rendered.view, "rob:dm_migration:open_prefs")
+
+
+# ---------------------------------------------------------------------------
+# Layout regression: literal divider text is gone, action rows live inside
+# the Container, and bound callbacks route to the cog.
+# ---------------------------------------------------------------------------
+
+
+import asyncio  # noqa: E402
+
+from unittest.mock import AsyncMock  # noqa: E402
+
+from rob.ui.cards.dm_onboarding import (  # noqa: E402
+    IdentityNoButton,
+    IdentityYesButton,
+    MigrationDeferButton,
+    MigrationSaveButton,
+    OpenModalButton,
+    SavePrefsButton,
+    WebhookRetryButton,
+)
+
+
+def _all_text(view) -> str:
+    return " ".join(
+        i.content
+        for i in view.walk_children()
+        if isinstance(i, discord.ui.TextDisplay)
+    )
+
+
+def _container_button_ids(view):
+    ids: list[str] = []
+    for top in view.children:
+        if isinstance(top, discord.ui.Container):
+            for child in top.walk_children():
+                if isinstance(child, discord.ui.Button):
+                    ids.append(child.custom_id)
+    return ids
+
+
+@pytest.mark.parametrize(
+    "rendered",
+    [
+        intro_card(),
+        identity_confirm_card(throne_handle="a", throne_display_name="A"),
+        webhook_setup_card(webhook_url="https://x/y"),
+        preferences_card(),
+        success_card(),
+        migration_prompt_card(),
+        onboarding_error_card("oops"),
+    ],
+)
+def test_no_literal_divider_text(rendered):
+    text = _all_text(rendered.view)
+    # The bug we are fixing: literal em-dash dividers were rendered as text.
+    assert "——" not in text
+    assert "——————————————" not in text
+
+
+@pytest.mark.parametrize(
+    "rendered,expected_ids",
+    [
+        (intro_card(), ["rob:dm_onboarding:intro:open_modal"]),
+        (
+            identity_confirm_card(throne_handle="a", throne_display_name="A"),
+            [
+                "rob:dm_onboarding:identity:yes",
+                "rob:dm_onboarding:identity:no",
+            ],
+        ),
+        (
+            webhook_setup_card(webhook_url="https://x/y"),
+            ["rob:dm_onboarding:webhook:retry"],
+        ),
+        (
+            preferences_card(),
+            ["rob:dm_onboarding:prefs:save"],
+        ),
+        (
+            migration_prompt_card(),
+            ["rob:dm_migration:save", "rob:dm_migration:defer_7d"],
+        ),
+        (
+            onboarding_error_card("oops"),
+            ["rob:dm_onboarding:intro:open_modal"],
+        ),
+    ],
+)
+def test_action_buttons_live_inside_container(rendered, expected_ids):
+    button_ids = _container_button_ids(rendered.view)
+    for expected in expected_ids:
+        assert expected in button_ids, (
+            f"button {expected!r} must live inside the Container, found {button_ids!r}"
+        )
+
+
+# When the user clicks a button, the LIVE LayoutView's bound callback must
+# delegate to the cog. Without this binding, discord.py's default no-op
+# callback fires and Discord shows "This interaction failed".
+
+
+def _fake_interaction():
+    from types import SimpleNamespace
+
+    response = SimpleNamespace(
+        send_message=AsyncMock(),
+        defer=AsyncMock(),
+        send_modal=AsyncMock(),
+        edit_message=AsyncMock(),
+    )
+    user = SimpleNamespace(id=1, display_name="t", name="t")
+    return SimpleNamespace(
+        user=user,
+        guild_id=None,
+        channel_id=10,
+        message=None,
+        response=response,
+        followup=SimpleNamespace(send=AsyncMock()),
+        view=None,
+        data={"custom_id": "x"},
+    )
+
+
+@pytest.mark.parametrize(
+    "button_cls,handler_name",
+    [
+        (OpenModalButton, "handle_open_modal"),
+        (IdentityYesButton, "handle_identity_yes"),
+        (IdentityNoButton, "handle_identity_no"),
+        (WebhookRetryButton, "handle_webhook_retry"),
+        (SavePrefsButton, "handle_save_preferences"),
+        (MigrationSaveButton, "handle_migration_save"),
+        (MigrationDeferButton, "handle_migration_defer"),
+    ],
+)
+def test_button_callback_routes_to_cog(button_cls, handler_name):
+    cog = type(
+        "CogStub",
+        (),
+        {handler_name: AsyncMock()},
+    )()
+    btn = button_cls(cog)
+    interaction = _fake_interaction()
+    asyncio.run(btn.callback(interaction))
+    getattr(cog, handler_name).assert_awaited_once_with(interaction)
+
+
+def test_button_callback_without_cog_responds_gracefully():
+    btn = OpenModalButton(None)
+    interaction = _fake_interaction()
+    asyncio.run(btn.callback(interaction))
+    # The button must respond to the interaction (otherwise Discord shows
+    # "This interaction failed"). It also must not raise.
+    interaction.response.send_message.assert_awaited_once()
+
+
+def test_preferences_view_selects_ack_interactions():
+    # Each select must respond (defer) when the user changes a value, so
+    # Discord doesn't show "This interaction failed" mid-preference-selection.
+    view = preferences_card().view
+    interaction = _fake_interaction()
+    asyncio.run(view.notifications_select.callback(interaction))
+    interaction.response.defer.assert_awaited_once()
