@@ -944,17 +944,26 @@ def _read_prefs_from_interaction(
     message = getattr(interaction, "message", None)
     if message is None:
         return notifications_enabled, leaderboard_visible
+
+    def _match_select(item: Any) -> None:
+        nonlocal notifications_enabled, leaderboard_visible
+        custom_id = getattr(item, "custom_id", None)
+        if custom_id in (ID_PREFS_NOTIFICATIONS, ID_MIGRATION_NOTIFICATIONS):
+            values = getattr(item, "values", []) or []
+            if values:
+                notifications_enabled = values[0] == NOTIFY_ON_VALUE
+        elif custom_id in (ID_PREFS_LEADERBOARD, ID_MIGRATION_LEADERBOARD):
+            values = getattr(item, "values", []) or []
+            if values:
+                leaderboard_visible = values[0] == LEADERBOARD_SHOW_VALUE
+
     for row in getattr(message, "components", []) or []:
         for child in getattr(row, "children", []) or []:
-            custom_id = getattr(child, "custom_id", None)
-            if custom_id in (ID_PREFS_NOTIFICATIONS, ID_MIGRATION_NOTIFICATIONS):
-                values = getattr(child, "values", []) or []
-                if values:
-                    notifications_enabled = values[0] == NOTIFY_ON_VALUE
-            elif custom_id in (ID_PREFS_LEADERBOARD, ID_MIGRATION_LEADERBOARD):
-                values = getattr(child, "values", []) or []
-                if values:
-                    leaderboard_visible = values[0] == LEADERBOARD_SHOW_VALUE
+            # Check this child directly (legacy: select as direct container child).
+            _match_select(child)
+            # Check one level deeper (current: select inside ActionRow inside container).
+            for grandchild in getattr(child, "children", []) or []:
+                _match_select(grandchild)
     return notifications_enabled, leaderboard_visible
 
 
