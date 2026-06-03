@@ -412,8 +412,10 @@ def test_handle_save_preferences_persists_and_renders_success_card():
         custom_id=ID_PREFS_LEADERBOARD, values=[LEADERBOARD_HIDE_VALUE]
     )
     fake_components = [
-        SimpleNamespace(children=[select_notify]),
-        SimpleNamespace(children=[select_lb]),
+        SimpleNamespace(children=[
+            SimpleNamespace(children=[select_notify]),
+            SimpleNamespace(children=[select_lb]),
+        ]),
     ]
     fake_message = SimpleNamespace(components=fake_components)
     cog = DMOnboardingCog(bot)
@@ -570,8 +572,10 @@ def test_handle_migration_save_persists_preferences():
         custom_id=ID_MIGRATION_LEADERBOARD, values=[LEADERBOARD_HIDE_VALUE]
     )
     fake_components = [
-        SimpleNamespace(children=[select_notify]),
-        SimpleNamespace(children=[select_lb]),
+        SimpleNamespace(children=[
+            SimpleNamespace(children=[select_notify]),
+            SimpleNamespace(children=[select_lb]),
+        ]),
     ]
     fake_message = MagicMock()
     fake_message.components = fake_components

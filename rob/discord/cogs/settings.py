@@ -18,6 +18,8 @@ from discord.ext import commands
 from rob.config.guilds import is_test_guild
 from rob.ui.cards.dm_onboarding import PreferencesView
 from rob.ui.cards.errors import error_card
+from rob.ui.components import make_card, render
+from rob.ui.theme import COLOR_SUCCESS
 
 if TYPE_CHECKING:
     from rob.discord.client import RobBot
@@ -109,7 +111,14 @@ class SettingsCog(commands.Cog):
                 )
                 return
             await inner.response.edit_message(
-                content="Preferences saved.", view=None, embeds=[]
+                **render(
+                    make_card(
+                        title="Preferences saved!",
+                        body="Your notification and leaderboard preferences have been updated.",
+                        color=COLOR_SUCCESS,
+                        variant="success",
+                    )
+                ).edit_kwargs()
             )
 
         save_button.callback = _save_callback  # type: ignore[assignment]
