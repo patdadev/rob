@@ -125,7 +125,7 @@ class _TermsPromptLayout(discord.ui.LayoutView):
         super().__init__(timeout=None)
         container = discord.ui.Container(accent_color=COLOR_INFO)
         container.add_item(
-            discord.ui.TextDisplay("## Rob's Terms of Use and Privacy Notice")
+            discord.ui.TextDisplay("### Rob's Terms of Use and Privacy Notice")
         )
         container.add_item(
             discord.ui.TextDisplay(
@@ -140,6 +140,13 @@ class _TermsPromptLayout(discord.ui.LayoutView):
                 "whether to accept or decline."
             )
         )
+        container.add_item(
+            discord.ui.ActionRow(
+                _document_link_button(label="Terms of Use", url=terms_url),
+                _document_link_button(label="Privacy Notice", url=privacy_url),
+            )
+        )
+        container.add_item(discord.ui.Separator())
         container.add_item(
             discord.ui.TextDisplay(
                 "Once you've reviewed both documents, you can accept or decline below."
@@ -184,7 +191,7 @@ class _TermsOutcomeLayout(discord.ui.LayoutView):
     ) -> None:
         super().__init__(timeout=None)
         container = discord.ui.Container(accent_color=color)
-        container.add_item(discord.ui.TextDisplay(f"## {title}"))
+        container.add_item(discord.ui.TextDisplay(f"### {title}"))
         container.add_item(discord.ui.TextDisplay(body))
         container.add_item(discord.ui.Separator())
         container.add_item(discord.ui.ActionRow(button))
