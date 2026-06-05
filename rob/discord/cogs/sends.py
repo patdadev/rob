@@ -74,15 +74,19 @@ class SendsCog(commands.Cog):
             )
             return
 
+        tracking_disabled = await self.bot.maintenance_service.send_tracking_disabled_for_guild(interaction.guild.id)
         send_queue = getattr(self.bot, "send_queue_service", None)
-        if send_queue is not None:
+        if send_queue is not None and not tracking_disabled:
             await send_queue.notify_send(send.id)
 
-        queue_label = (
-            "queued for after maintenance"
-            if send.discord_post_status == "queued_maintenance"
-            else "queued for posting"
-        )
+        if tracking_disabled:
+            queue_label = "saved with no Discord notification"
+        else:
+            queue_label = (
+                "queued for after maintenance"
+                if send.discord_post_status == "queued_maintenance"
+                else "queued for posting"
+            )
         await interaction.followup.send(
             **registration_card(
                 title="Rob | Send Logged",

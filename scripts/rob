@@ -105,6 +105,9 @@ Usage:
   rob maintenance on [reason...]
   rob maintenance off
   rob maintenance status
+  rob offline on
+  rob offline off
+  rob offline status
   rob logs [bot|webhook|all]
 
 Notes:
@@ -865,6 +868,26 @@ maintenance_command() {
   esac
 }
 
+offline_command() {
+  local action="${1:-status}"
+  shift || true
+
+  case "${action}" in
+    status)
+      ops_get "/rob-offline?format=text"
+      ;;
+    on)
+      ops_post_form "/rob-offline?format=text" "enabled=true"
+      ;;
+    off)
+      ops_post_form "/rob-offline?format=text" "enabled=false"
+      ;;
+    *)
+      die "usage: rob offline on|off|status"
+      ;;
+  esac
+}
+
 block_command() {
   [[ $# -eq 1 ]] || die "usage: rob block <discord_user_id>"
   [[ "$1" =~ ^[0-9]+$ ]] || die "discord_user_id must be numeric."
@@ -948,6 +971,9 @@ case "${cmd}" in
     ;;
   maintenance)
     maintenance_command "$@"
+    ;;
+  offline)
+    offline_command "$@"
     ;;
   logs)
     logs_command "$@"

@@ -142,6 +142,7 @@ class BotOpsServer:
         app = web.Application()
         app.router.add_get("/health", self._handle_health)
         app.router.add_get("/maintenance", self._handle_get_maintenance)
+        app.router.add_get("/rob-offline", self._handle_get_rob_offline)
         app.router.add_get("/guilds/{guild_id}/scan", self._handle_guild_scan)
         app.router.add_get("/guilds/{guild_id}/count", self._handle_get_count)
         app.router.add_get("/guilds/{guild_id}/migration/audit", self._handle_migration_audit)
@@ -160,6 +161,7 @@ class BotOpsServer:
         app.router.add_post("/ops/sends/process", self._handle_process_send)
         app.router.add_post("/sends/process", self._handle_process_send)
         app.router.add_post("/maintenance", self._handle_set_maintenance)
+        app.router.add_post("/rob-offline", self._handle_set_rob_offline)
         app.router.add_post("/guilds/{guild_id}/count", self._handle_set_count)
         app.router.add_post("/guilds/{guild_id}/scan/apply", self._handle_apply_guild_scan)
         app.router.add_post(
@@ -529,6 +531,43 @@ class BotOpsServer:
         if self._wants_text(request):
             return web.Response(
                 text=self._format_maintenance_text(payload),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
+
+
+    async def _handle_set_rob_offline(self, request: web.Request) -> web.Response:
+        if not self._is_authorized(request):
+            return web.json_response({"error": "forbidden"}, status=403)
+        if not hasattr(self.bot, "maintenance_service"):
+            return web.json_response({"error": "maintenance_service_unavailable"}, status=500)
+
+        payload = await self._json_payload(request)
+        enabled = self._payload_bool(payload, "enabled")
+        if enabled:
+            await self.bot.maintenance_service.enable_rob_offline()
+        else:
+            await self.bot.maintenance_service.disable_rob_offline()
+
+        enabled = await self.bot.maintenance_service.is_rob_offline_enabled()
+        payload = {"ok": True, "enabled": enabled}
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_rob_offline_text(payload),
+                content_type="text/plain",
+            )
+        return web.json_response(payload)
+
+    async def _handle_get_rob_offline(self, request: web.Request) -> web.Response:
+        if not self._is_authorized(request):
+            return web.json_response({"error": "forbidden"}, status=403)
+        if not hasattr(self.bot, "maintenance_service"):
+            return web.json_response({"error": "maintenance_service_unavailable"}, status=500)
+        enabled = await self.bot.maintenance_service.is_rob_offline_enabled()
+        payload = {"ok": True, "enabled": enabled}
+        if self._wants_text(request):
+            return web.Response(
+                text=self._format_rob_offline_text(payload),
                 content_type="text/plain",
             )
         return web.json_response(payload)
@@ -1725,6 +1764,16 @@ class BotOpsServer:
                 "Maintenance Status",
                 f"Enabled: {'yes' if payload.get('enabled') else 'no'}",
                 "Reason: " + reason,
+            ]
+        )
+
+    @staticmethod
+    def _format_rob_offline_text(payload: dict[str, Any]) -> str:
+        return "\n".join(
+            [
+                "Rob Offline Mode",
+                f"Enabled: {'yes' if payload.get('enabled') else 'no'}",
+                "Scope: main guild only",
             ]
         )
 

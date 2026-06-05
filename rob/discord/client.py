@@ -42,6 +42,7 @@ from rob.services.send_change_request_service import SendChangeRequestService
 from rob.services.send_queue_service import SendQueueService
 from rob.services.send_service import SendService
 from rob.services.throne_service import ThroneService
+from rob.ui.cards.maintenance import rob_offline_embed
 
 log = logging.getLogger(__name__)
 
@@ -210,6 +211,17 @@ class RobBot(commands.Bot):
                 ephemeral=True,
             )
             return False
+
+        if interaction.guild is not None and await self.maintenance_service.is_rob_offline_for_guild(
+            interaction.guild.id
+        ):
+            command_name = getattr(interaction.command, "qualified_name", "")
+            if command_name != "add":
+                await interaction.response.send_message(
+                    **rob_offline_embed().send_kwargs(),
+                    ephemeral=True,
+                )
+                return False
         return True
 
     async def _sync_application_commands(self, guild_ids: list[int]) -> None:

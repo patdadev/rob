@@ -34,3 +34,26 @@ scripts/rob maintenance off
 scripts/rob queue status
 scripts/rob queue flush
 ```
+
+## Rob Offline Mode
+
+Rob Offline Mode is a separate bare-features mode for the production VIB guild only. It is stored in PostgreSQL `bot_settings` using:
+
+- `rob_offline_mode`
+
+When enabled for the main guild:
+
+- Discord slash commands are blocked except `/add`.
+- `/leaderboard` and `/register` are blocked with the Rob offline embed.
+- Manual sends from `/add` are saved without a Discord send notification.
+- Throne webhook sends continue to be saved by the webhook server without Discord send-tracking posts.
+- Discord leaderboard refreshes render the Rob offline embed instead of live stats.
+- Counting messages continue to work, but count recovery windows are not started or resolved by sends.
+
+The dev/test guild is intentionally unaffected by this mode.
+
+```bash
+scripts/rob offline status
+scripts/rob offline on
+scripts/rob offline off
+```

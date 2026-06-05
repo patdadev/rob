@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+import inspect
 import logging
 
 import discord
@@ -128,11 +129,26 @@ class RegistrationCog(commands.Cog):
             return False
         return True
 
-    async def _require_registration_available(self, interaction: discord.Interaction) -> bool:
+    async def _registrations_blocked_for_guild(self, guild_id: int | None) -> bool:
         maintenance = getattr(self.bot, "maintenance_service", None)
         if maintenance is None:
-            return True
-        if not await maintenance.registrations_blocked():
+            return False
+        checker = getattr(maintenance, "registrations_blocked_for_guild", None)
+        if checker is not None:
+            result = checker(guild_id)
+            if inspect.isawaitable(result):
+                return bool(await result)
+        legacy_checker = getattr(maintenance, "registrations_blocked", None)
+        if legacy_checker is not None:
+            result = legacy_checker()
+            if inspect.isawaitable(result):
+                return bool(await result)
+            if isinstance(result, bool):
+                return result
+        return False
+
+    async def _require_registration_available(self, interaction: discord.Interaction) -> bool:
+        if not await self._registrations_blocked_for_guild(interaction.guild.id if interaction.guild else None):
             return True
         await interaction.response.send_message(
             **error_card(
@@ -258,8 +274,7 @@ class RegistrationCog(commands.Cog):
         throne_input: str,
         setup_message_id: int | None = None,
     ) -> None:
-        maintenance = getattr(self.bot, "maintenance_service", None)
-        if maintenance is not None and await maintenance.registrations_blocked():
+        if await self._registrations_blocked_for_guild(guild_id):
             await interaction.followup.send(
                 **error_card(
                     "Rob is under maintenance right now.",
@@ -520,8 +535,7 @@ class _SubRegistrationModal(discord.ui.Modal, title="Rob | Sub Registration"):
             seen.add(lowered)
 
         await interaction.response.defer(ephemeral=True)
-        maintenance = getattr(self.cog.bot, "maintenance_service", None)
-        if maintenance is not None and await maintenance.registrations_blocked():
+        if await self.cog._registrations_blocked_for_guild(self.guild_id):
             await interaction.followup.send(
                 **error_card(
                     "Rob is under maintenance right now.",

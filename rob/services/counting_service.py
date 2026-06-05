@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import inspect
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -229,7 +230,9 @@ class CountingService:
         if message.channel.id != state.channel_id:
             return None
 
-        await self._sync_recovery_windows()
+        recovery_disabled = await self._recovery_disabled_for_guild(message.guild.id)
+        if not recovery_disabled:
+            await self._sync_recovery_windows()
 
         settings = await self.guild_settings.get(message.guild.id)
         is_sub = self._has_role(message.author, settings.sub_role_id if settings else None)
@@ -246,18 +249,19 @@ class CountingService:
                     blocked_until=block.blocked_until,
                 )
 
-        active_window = await self.counting.get_active_recovery_window(message.guild.id, message.channel.id)
         now = datetime.now(timezone.utc)
-        if active_window is not None and active_window.expires_at > now:
-            return CountingProcessResult(
-                success=False,
-                expected_number=state.current_number + 1,
-                current_number=state.current_number,
-                reason="paused_for_rescue",
-            )
-        if active_window is not None and active_window.expires_at <= now:
-            await self._expire_window(active_window)
-            state = await self.get_or_create_state(message.guild.id)
+        if not recovery_disabled:
+            active_window = await self.counting.get_active_recovery_window(message.guild.id, message.channel.id)
+            if active_window is not None and active_window.expires_at > now:
+                return CountingProcessResult(
+                    success=False,
+                    expected_number=state.current_number + 1,
+                    current_number=state.current_number,
+                    reason="paused_for_rescue",
+                )
+            if active_window is not None and active_window.expires_at <= now:
+                await self._expire_window(active_window)
+                state = await self.get_or_create_state(message.guild.id)
 
         if getattr(message, "attachments", None) or getattr(message, "stickers", None):
             return None
@@ -277,6 +281,23 @@ class CountingService:
             )
 
         if number != expected:
+            if recovery_disabled:
+                await self._cancel_active_windows_for_guild(message.guild.id)
+                await self.counting.upsert(
+                    guild_id=state.guild_id,
+                    channel_id=state.channel_id,
+                    current_number=0,
+                    last_user_id=None,
+                    is_enabled=state.is_enabled,
+                    pending_restore=False,
+                )
+                return CountingProcessResult(
+                    success=False,
+                    expected_number=expected,
+                    current_number=0,
+                    reason="wrong_number_reset",
+                )
+
             deadline = now + timedelta(seconds=self.rescue_window_seconds)
             if is_domme:
                 domme_record = await self.dommes.get_by_user_id(message.guild.id, message.author.id)
@@ -366,6 +387,8 @@ class CountingService:
         )
 
     async def process_send_for_count_rescue(self, send) -> bool:
+        if await self._recovery_disabled_for_guild(send.guild_id):
+            return False
         await self._sync_recovery_windows()
         windows = [
             window
@@ -495,7 +518,11 @@ class CountingService:
         return window
 
     async def _sync_recovery_windows(self) -> None:
-        active_windows = await self.counting.list_active_recovery_windows()
+        active_windows = [
+            window
+            for window in await self.counting.list_active_recovery_windows()
+            if not await self._recovery_disabled_for_guild(window.guild_id)
+        ]
         active_ids = {window.id for window in active_windows}
         for window in list(active_windows):
             if window.expires_at <= datetime.now(timezone.utc):
@@ -762,6 +789,20 @@ class CountingService:
     @staticmethod
     def evaluate_expression(content: str) -> int:
         return _ExpressionEvaluator.evaluate(content)
+
+    async def _recovery_disabled_for_guild(self, guild_id: int | None) -> bool:
+        maintenance = getattr(self.bot, "maintenance_service", None)
+        if maintenance is None:
+            return False
+        checker = getattr(maintenance, "count_recovery_disabled_for_guild", None)
+        if checker is None:
+            return False
+        result = checker(guild_id)
+        if inspect.isawaitable(result):
+            return bool(await result)
+        if isinstance(result, bool):
+            return result
+        return False
 
     async def get_active_recovery_windows(self) -> list[CountRecoveryWindow]:
         return await self.counting.list_active_recovery_windows()

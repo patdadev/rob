@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 from rob.database.repositories.leaderboards import LeaderboardsRepository
 from rob.database.repositories.models import Domme, NewSend, SendRecord
 from rob.database.repositories.sends import SendsRepository
@@ -45,6 +47,17 @@ class SendService:
         self.test_gifter_usernames = test_gifter_usernames
         self.owner_test_user_id = owner_test_user_id
 
+    async def _send_tracking_disabled_for_guild(self, guild_id: int | None) -> bool:
+        checker = getattr(self.maintenance, "send_tracking_disabled_for_guild", None)
+        if checker is None:
+            return False
+        result = checker(guild_id)
+        if inspect.isawaitable(result):
+            return bool(await result)
+        if isinstance(result, bool):
+            return result
+        return False
+
     async def record_throne_send(
         self,
         *,
@@ -79,7 +92,10 @@ class SendService:
                     currency = match.currency
                 is_private = False
 
-        status = "queued_maintenance" if await self.maintenance.is_enabled() else "pending"
+        if await self._send_tracking_disabled_for_guild(creator.guild_id):
+            status = "posted"
+        else:
+            status = "queued_maintenance" if await self.maintenance.is_enabled() else "pending"
 
         sub_id = None
         sub_user_id = None
@@ -131,7 +147,10 @@ class SendService:
         sub_id: int | None = None,
         source: str | None = None,
     ) -> SendRecord | None:
-        status = "queued_maintenance" if await self.maintenance.is_enabled() else "pending"
+        if await self._send_tracking_disabled_for_guild(guild_id):
+            status = "posted"
+        else:
+            status = "queued_maintenance" if await self.maintenance.is_enabled() else "pending"
         resolved_sub_id = sub_id
         resolved_sub_user_id = sub_user_id
         resolved_sub_name = sub_name
