@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 from typing import Any
 
 from rob.database.connection import Database
@@ -14,6 +15,18 @@ def _to_text(raw: Any) -> str | None:
         if value is None:
             return None
         return str(value)
+    if isinstance(raw, str):
+        cleaned = raw.strip()
+        if cleaned.startswith("{") and cleaned.endswith("}"):
+            try:
+                parsed = json.loads(cleaned)
+            except json.JSONDecodeError:
+                return raw
+            if isinstance(parsed, dict):
+                value = parsed.get("value")
+                if value is None:
+                    return None
+                return str(value)
     return str(raw)
 
 
