@@ -19,6 +19,10 @@ def test_load_base_settings_only_requires_database(monkeypatch):
     assert settings.inactivity_enabled_default is False
     assert settings.inactivity_loop_minutes == 60
     assert settings.rob_public_base_url == "https://leaderboard.robthebot.com"
+    assert settings.rob_terms_version == "2026-06-05"
+    assert settings.rob_terms_url is None
+    assert settings.rob_privacy_url is None
+    assert settings.rob_terms_owner_user_id is None
 
 
 def test_load_bot_settings_requires_discord_token(monkeypatch):
@@ -79,6 +83,21 @@ def test_load_base_settings_supports_test_sender_and_leaderboard_env(monkeypatch
     assert settings.throne_test_send_leaderboard_owner_user_id == 42
     assert settings.leaderboard_limit == 15
     assert settings.rob_public_base_url == "https://example.com"
+
+
+def test_load_base_settings_supports_terms_env(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setenv("ROB_TERMS_VERSION", "2026-09-01")
+    monkeypatch.setenv("ROB_TERMS_URL", "https://example.com/terms")
+    monkeypatch.setenv("ROB_PRIVACY_URL", "https://example.com/privacy")
+    monkeypatch.setenv("ROB_TERMS_OWNER_USER_ID", "77")
+
+    settings = load_base_settings()
+
+    assert settings.rob_terms_version == "2026-09-01"
+    assert settings.rob_terms_url == "https://example.com/terms"
+    assert settings.rob_privacy_url == "https://example.com/privacy"
+    assert settings.rob_terms_owner_user_id == 77
 
 
 def test_load_base_settings_skips_dotenv_when_disabled(monkeypatch):

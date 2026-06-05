@@ -16,6 +16,7 @@ REQUIRED_DB_BUILD_VERSIONS = (
     "006_send_change_requests",
     "007_send_update_requests",
     "008_dm_preferences",
+    "009_terms_acceptance",
 )
 
 REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {
@@ -226,6 +227,17 @@ REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {
         "created_at",
         "updated_at",
     },
+    "user_terms_acceptance": {
+        "discord_user_id",
+        "status",
+        "terms_version",
+        "dm_channel_id",
+        "dm_message_id",
+        "first_prompted_at",
+        "last_prompted_at",
+        "accepted_at",
+        "declined_at",
+    },
 }
 
 WEBHOOK_REQUIRED_TABLES = {
@@ -256,6 +268,7 @@ BOT_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "count_blocks": ("SELECT", "INSERT", "UPDATE", "DELETE"),
     "send_change_requests": ("SELECT", "INSERT", "UPDATE", "DELETE"),
     "domme_onboarding_state": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "user_terms_acceptance": ("SELECT", "INSERT", "UPDATE", "DELETE"),
 }
 
 WEBHOOK_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
@@ -463,6 +476,12 @@ async def main() -> None:
                     raise RuntimeError(
                         "DM notification preference schema is missing.\n"
                         "Run scripts/db/build/008_dm_preferences.sql manually as "
+                        "doadmin, then run the relevant grants file."
+                    )
+                if "009_terms_acceptance" in missing_versions:
+                    raise RuntimeError(
+                        "Terms acceptance schema is missing.\n"
+                        "Run scripts/db/build/009_terms_acceptance.sql manually as "
                         "doadmin, then run the relevant grants file."
                     )
                 if len(missing_versions) == 1:

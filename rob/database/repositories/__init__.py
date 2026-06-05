@@ -12,6 +12,7 @@ from rob.database.repositories.send_change_requests import SendChangeRequestsRep
 from rob.database.repositories.sends import SendsRepository
 from rob.database.repositories.subs import SubsRepository
 from rob.database.repositories.the_count import TheCountRepository
+from rob.database.repositories.terms import TermsRepository
 from rob.database.repositories.throne_creators import ThroneCreatorsRepository
 from rob.database.repositories.vib_settings import VibSettingsRepository
 
@@ -30,6 +31,7 @@ __all__ = [
     "SendsRepository",
     "SubsRepository",
     "TheCountRepository",
+    "TermsRepository",
     "ThroneCreatorsRepository",
     "VibSettingsRepository",
 ]

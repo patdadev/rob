@@ -75,6 +75,19 @@ class DommeOnboardingState:
 
 
 @dataclass(frozen=True)
+class UserTermsAcceptance:
+    discord_user_id: int
+    status: str
+    terms_version: str
+    dm_channel_id: int | None
+    dm_message_id: int | None
+    first_prompted_at: datetime
+    last_prompted_at: datetime
+    accepted_at: datetime | None
+    declined_at: datetime | None
+
+
+@dataclass(frozen=True)
 class Sub:
     id: int
     guild_id: int

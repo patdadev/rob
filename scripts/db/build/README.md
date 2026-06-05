@@ -15,12 +15,14 @@ Run in order:
 5. `006_send_change_requests.sql`
 6. `007_send_update_requests.sql`
 7. `008_dm_preferences.sql`
-8. `../grants/dev_rehearsal_prod_roles.sql`
+8. `009_terms_acceptance.sql`
+9. `../grants/dev_rehearsal_prod_roles.sql`
 
 `003_achievements.sql` is retired. `008_dm_preferences.sql` drops the
 achievements tables/sequences if they still exist, removes the prior
 `003_achievements` row from `db_build_version`, and installs the DM
 notification preference columns and `domme_onboarding_state` table.
+`009_terms_acceptance.sql` adds the test-guild Terms acceptance table.
 
 Important:
 

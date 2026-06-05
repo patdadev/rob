@@ -40,11 +40,12 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'rob_prod')
 
 \ir ../build/001_core_schema.sql
 \ir ../build/002_indexes.sql
-\ir ../build/003_achievements.sql
 \ir ../build/004_sub_send_names.sql
 \ir ../build/005_count_recovery.sql
 \ir ../build/006_send_change_requests.sql
 \ir ../build/007_send_update_requests.sql
+\ir ../build/008_dm_preferences.sql
+\ir ../build/009_terms_acceptance.sql
 \ir ../grants/prod_rob_bot.sql
 \ir ../grants/prod_rob_webhook.sql
 

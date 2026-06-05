@@ -171,6 +171,7 @@ def test_db_build_scripts_exist_under_scripts_db_build():
     assert (build_dir / "006_send_change_requests.sql").exists()
     assert (build_dir / "007_send_update_requests.sql").exists()
     assert (build_dir / "008_dm_preferences.sql").exists()
+    assert (build_dir / "009_terms_acceptance.sql").exists()
     assert (build_dir / "003_runtime_grants_template.sql").exists()
     assert (build_dir / "README.md").exists()
     grants_dir = REPO_ROOT / "scripts" / "db" / "grants"
@@ -203,6 +204,9 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     dm_preferences_schema = (
         REPO_ROOT / "scripts" / "db" / "build" / "008_dm_preferences.sql"
     ).read_text(encoding="utf-8")
+    terms_acceptance_schema = (
+        REPO_ROOT / "scripts" / "db" / "build" / "009_terms_acceptance.sql"
+    ).read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS db_build_version" in core_schema
     assert "CREATE TABLE IF NOT EXISTS bot_users" in core_schema
@@ -232,6 +236,10 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     assert "preferences_confirmed_at" in dm_preferences_schema
     assert "CREATE TABLE IF NOT EXISTS domme_onboarding_state" in dm_preferences_schema
     assert "'008_dm_preferences'" in dm_preferences_schema
+    assert "CREATE TABLE IF NOT EXISTS user_terms_acceptance" in terms_acceptance_schema
+    assert "terms_version" in terms_acceptance_schema
+    assert "accepted_at" in terms_acceptance_schema
+    assert "'009_terms_acceptance'" in terms_acceptance_schema
 
 
 def test_deploy_scripts_do_not_run_schema_builder():

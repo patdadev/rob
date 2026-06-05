@@ -32,6 +32,10 @@ class BaseSettings:
     inactivity_owner_user_id: int | None
     inactivity_notice_channel_id: int | None
     rob_public_base_url: str
+    rob_terms_version: str
+    rob_terms_url: str | None
+    rob_privacy_url: str | None
+    rob_terms_owner_user_id: int | None
 
 
 @dataclass(frozen=True)
@@ -151,6 +155,10 @@ def load_base_settings(env_file: str | Path | None = None) -> BaseSettings:
         inactivity_owner_user_id=_env_optional_int("INACTIVITY_OWNER_USER_ID"),
         inactivity_notice_channel_id=_env_optional_int("INACTIVITY_NOTICE_CHANNEL_ID"),
         rob_public_base_url=_env_str("ROB_PUBLIC_BASE_URL", "https://leaderboard.robthebot.com"),
+        rob_terms_version=_env_str("ROB_TERMS_VERSION", "2026-06-05"),
+        rob_terms_url=_env_str("ROB_TERMS_URL") or None,
+        rob_privacy_url=_env_str("ROB_PRIVACY_URL") or None,
+        rob_terms_owner_user_id=_env_optional_int("ROB_TERMS_OWNER_USER_ID"),
     )
 
 
@@ -178,6 +186,10 @@ def load_webhook_settings(env_file: str | Path | None = None) -> WebhookSettings
         inactivity_final_notice_days=base.inactivity_final_notice_days,
         inactivity_owner_user_id=base.inactivity_owner_user_id,
         inactivity_notice_channel_id=base.inactivity_notice_channel_id,
+        rob_terms_version=base.rob_terms_version,
+        rob_terms_url=base.rob_terms_url,
+        rob_privacy_url=base.rob_privacy_url,
+        rob_terms_owner_user_id=base.rob_terms_owner_user_id,
         throne_webhook_host=_env_str("THRONE_WEBHOOK_HOST", "127.0.0.1"),
         throne_webhook_port=_env_int("THRONE_WEBHOOK_PORT", 8080, minimum=1),
         throne_webhook_base_url=_env_str(
@@ -239,6 +251,10 @@ def load_bot_settings(env_file: str | Path | None = None) -> BotSettings:
         inactivity_owner_user_id=base.inactivity_owner_user_id,
         inactivity_notice_channel_id=base.inactivity_notice_channel_id,
         rob_public_base_url=base.rob_public_base_url,
+        rob_terms_version=base.rob_terms_version,
+        rob_terms_url=base.rob_terms_url,
+        rob_privacy_url=base.rob_privacy_url,
+        rob_terms_owner_user_id=base.rob_terms_owner_user_id,
         discord_token=_env_str("DISCORD_TOKEN", required=True),
         bot_name=_env_str("BOT_NAME", "Rob"),
     )
