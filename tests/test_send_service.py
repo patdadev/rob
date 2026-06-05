@@ -68,11 +68,11 @@ class _FakeSubsRepo:
         return await self.get_by_send_name(guild_id, send_name)
 
 
-def _creator() -> ThroneCreator:
+def _creator(guild_id: int = 1) -> ThroneCreator:
     now = datetime.now(timezone.utc)
     return ThroneCreator(
         1,
-        1,
+        guild_id,
         1,
         10,
         "pat",
@@ -214,3 +214,49 @@ def test_non_usd_throne_send_is_converted_to_usd_with_original_metadata():
     assert sends.inserted.amount_cents != 1099
     assert sends.inserted.original_amount_cents == 1099
     assert sends.inserted.original_currency == "EUR"
+
+
+def test_main_guild_offline_throne_send_is_saved_without_discord_queue():
+    from rob.config.guilds import MAIN_GUILD_ID
+
+    sends = _FakeSendsRepo()
+    subs = _FakeSubsRepo()
+
+    class OfflineMaintenance(_FakeMaintenance):
+        async def send_tracking_disabled_for_guild(self, guild_id: int | None) -> bool:
+            return guild_id == MAIN_GUILD_ID
+
+    creator = _creator(MAIN_GUILD_ID)
+    service = SendService(
+        sends=sends,
+        subs=subs,
+        maintenance=OfflineMaintenance(),
+    )
+
+    asyncio.run(service.record_throne_send(creator=creator, payload=_payload("real_sender")))
+
+    assert sends.inserted is not None
+    assert sends.inserted.discord_post_status == "posted"
+
+
+def test_dev_guild_offline_mode_does_not_change_throne_queue_status():
+    from rob.config.guilds import TEST_GUILD_ID
+
+    sends = _FakeSendsRepo()
+    subs = _FakeSubsRepo()
+
+    class OfflineMaintenance(_FakeMaintenance):
+        async def send_tracking_disabled_for_guild(self, guild_id: int | None) -> bool:
+            return False
+
+    creator = _creator(TEST_GUILD_ID)
+    service = SendService(
+        sends=sends,
+        subs=subs,
+        maintenance=OfflineMaintenance(),
+    )
+
+    asyncio.run(service.record_throne_send(creator=creator, payload=_payload("real_sender")))
+
+    assert sends.inserted is not None
+    assert sends.inserted.discord_post_status == "pending"

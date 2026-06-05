@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 import logging
 
@@ -14,6 +15,8 @@ from rob.database.repositories.leaderboards import LeaderboardsRepository
 from rob.database.repositories.models import LeaderboardEntry, LeaderboardSummary
 from rob.ui.cards.leader_alert import leader_alert_card
 from rob.ui.cards.leaderboard import leaderboard_card, leaderboard_stats_card
+from rob.ui.cards.maintenance import rob_offline_embed
+from rob.services.leaderboard_status import LeaderboardStatus
 from rob.services.maintenance_service import MaintenanceService
 
 log = logging.getLogger(__name__)
@@ -66,6 +69,30 @@ class LeaderboardService:
         self.owner_test_user_id = owner_test_user_id
         self._refresh_locks: dict[int, asyncio.Lock] = {}
         self._content_hashes: dict[int, str] = {}
+
+
+    async def _rob_offline_for_guild(self, guild_id: int | None) -> bool:
+        checker = getattr(self.maintenance, "is_rob_offline_for_guild", None)
+        if checker is None:
+            return False
+        result = checker(guild_id)
+        if inspect.isawaitable(result):
+            return bool(await result)
+        if isinstance(result, bool):
+            return result
+        return False
+
+    async def _leaderboard_status_for_guild(self, guild_id: int | None):
+        checker = getattr(self.maintenance, "get_leaderboard_status", None)
+        if checker is None:
+            return LeaderboardStatus.MAINTENANCE if await self.maintenance.is_enabled() else LeaderboardStatus.LIVE
+        try:
+            result = checker(guild_id)
+        except TypeError:
+            result = checker()
+        if inspect.isawaitable(result):
+            return await result
+        return result
 
     async def _filter_entries_for_guild(
         self,
@@ -158,23 +185,28 @@ class LeaderboardService:
                 guild_id,
             )
             maintenance_enabled = await self.maintenance.is_enabled()
-            content_hash = _compute_content_hash(dommes, summary, maintenance_enabled)
+            rob_offline_enabled = await self._rob_offline_for_guild(guild_id)
+            content_hash = _compute_content_hash(dommes, summary, maintenance_enabled or rob_offline_enabled)
             if self._content_hashes.get(guild_id) == content_hash:
                 log.info("Leaderboard content unchanged; skipping Discord edits guild_id=%s", guild_id)
                 return True
             self._content_hashes[guild_id] = content_hash
 
-            dommes_msg = leaderboard_card(
-                title="ignored",
-                entries=dommes,
-                summary=summary,
-                status=await self.maintenance.get_leaderboard_status(),
-            )
-            stats_msg = leaderboard_stats_card(
-                summary,
-                dommes,
-                maintenance_enabled=maintenance_enabled,
-            )
+            if rob_offline_enabled:
+                dommes_msg = rob_offline_embed()
+                stats_msg = rob_offline_embed()
+            else:
+                dommes_msg = leaderboard_card(
+                    title="ignored",
+                    entries=dommes,
+                    summary=summary,
+                    status=await self._leaderboard_status_for_guild(guild_id),
+                )
+                stats_msg = leaderboard_stats_card(
+                    summary,
+                    dommes,
+                    maintenance_enabled=maintenance_enabled,
+                )
 
             main_ok = await self._ensure_message(
                 guild_id=guild_id,
@@ -214,6 +246,8 @@ class LeaderboardService:
         # NEW LEADER ALERT is disabled in the test guild as part of the
         # DM-first preference system.
         if is_test_guild(guild_id):
+            return False
+        if await self._rob_offline_for_guild(guild_id):
             return False
         if await self.maintenance.is_enabled():
             return False

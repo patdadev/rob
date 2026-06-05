@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from datetime import datetime, timezone
 
@@ -53,6 +54,27 @@ class SendQueueService:
         self._stopping = False
         self._startup_leaderboard_refresh_done = False
         self._send_notifications: asyncio.Queue[int] | None = None
+
+
+    async def _maintenance_bool(self, method_name: str, guild_id: int | None = None) -> bool:
+        method = getattr(self.maintenance, method_name, None)
+        if method is None:
+            return False
+        result = method(guild_id) if guild_id is not None else method()
+        if inspect.isawaitable(result):
+            return bool(await result)
+        if isinstance(result, bool):
+            return result
+        return False
+
+    async def _send_tracking_disabled_for_guild(self, guild_id: int | None) -> bool:
+        return await self._maintenance_bool("send_tracking_disabled_for_guild", guild_id)
+
+    async def _count_recovery_disabled_for_guild(self, guild_id: int | None) -> bool:
+        return await self._maintenance_bool("count_recovery_disabled_for_guild", guild_id)
+
+    async def _rob_offline_for_guild(self, guild_id: int | None) -> bool:
+        return await self._maintenance_bool("is_rob_offline_for_guild", guild_id)
 
     def _notification_queue(self) -> asyncio.Queue[int]:
         if self._send_notifications is None:
@@ -117,6 +139,8 @@ class SendQueueService:
             queued_maintenance = await self.sends.fetch_for_status("queued_maintenance", limit=50)
             recovery_candidates = list(pending) + list(queued_maintenance)
             for send in recovery_candidates:
+                if await self._count_recovery_disabled_for_guild(send.guild_id):
+                    continue
                 try:
                     await self.counting_service.process_send_for_count_rescue(send)
                 except Exception:
@@ -131,6 +155,8 @@ class SendQueueService:
                 ok = await self._post_send(send)
                 if ok:
                     log.info("Posted send id=%s guild_id=%s", send.id, send.guild_id)
+                    if await self._rob_offline_for_guild(send.guild_id):
+                        continue
                     try:
                         log.info("Refreshing leaderboard for guild_id=%s", send.guild_id)
                         await self.leaderboard_service.refresh_guild(send.guild_id)
@@ -213,7 +239,7 @@ class SendQueueService:
         return True
 
     async def _process_send_record(self, send) -> bool:
-        if self.counting_service is not None:
+        if self.counting_service is not None and not await self._count_recovery_disabled_for_guild(send.guild_id):
             try:
                 await self.counting_service.process_send_for_count_rescue(send)
             except Exception:
@@ -250,6 +276,8 @@ class SendQueueService:
         ok = await self._post_send(send)
         if ok:
             log.info("Posted send id=%s guild_id=%s", send.id, send.guild_id)
+            if await self._rob_offline_for_guild(send.guild_id):
+                return ok
             try:
                 log.info("Refreshing leaderboard for guild_id=%s", send.guild_id)
                 await self.leaderboard_service.refresh_guild(send.guild_id)
@@ -262,6 +290,15 @@ class SendQueueService:
         return ok
 
     async def _post_send(self, send) -> bool:
+        if await self._send_tracking_disabled_for_guild(send.guild_id):
+            log.info(
+                "Send id=%s guild_id=%s saved without Discord notification while Rob is offline.",
+                send.id,
+                send.guild_id,
+            )
+            await self.sends.mark_posted(send.id, message_id=None)
+            return True
+
         if await self.maintenance.is_enabled():
             log.info(
                 "Send id=%s guild_id=%s held during maintenance window.",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from rob.database.repositories.bot_state import BotStateRepository
+from rob.config.guilds import is_main_guild
 from rob.database.repositories.models import MaintenanceState
 from rob.services.leaderboard_status import LeaderboardStatus
 from rob.utils.time import utc_now
@@ -12,6 +13,7 @@ MAINTENANCE_MODE_KEY = "maintenance_mode"
 MAINTENANCE_REASON_KEY = "maintenance_reason"
 LEADERBOARD_REFRESH_REQUESTED_AT_KEY = "leaderboard_refresh_requested_at"
 LEADERBOARD_REFRESH_COMPLETED_AT_KEY = "leaderboard_refresh_completed_at"
+ROB_OFFLINE_MODE_KEY = "rob_offline_mode"
 
 
 def _normalize_setting_text(value: str | None) -> str | None:
@@ -51,7 +53,15 @@ class MaintenanceService:
     async def is_enabled(self) -> bool:
         return await self.bot_state.get_bool(MAINTENANCE_MODE_KEY, default=False)
 
-    async def get_leaderboard_status(self) -> LeaderboardStatus:
+    async def is_rob_offline_enabled(self) -> bool:
+        return await self.bot_state.get_bool(ROB_OFFLINE_MODE_KEY, default=False)
+
+    async def is_rob_offline_for_guild(self, guild_id: int | None) -> bool:
+        return is_main_guild(guild_id) and await self.is_rob_offline_enabled()
+
+    async def get_leaderboard_status(self, guild_id: int | None = None) -> LeaderboardStatus:
+        if await self.is_rob_offline_for_guild(guild_id):
+            return LeaderboardStatus.OFFLINE
         if await self.is_enabled():
             return LeaderboardStatus.MAINTENANCE
         return LeaderboardStatus.LIVE
@@ -59,8 +69,17 @@ class MaintenanceService:
     async def registrations_blocked(self) -> bool:
         return await self.is_enabled()
 
+    async def registrations_blocked_for_guild(self, guild_id: int | None) -> bool:
+        return await self.is_enabled() or await self.is_rob_offline_for_guild(guild_id)
+
     async def notifications_suppressed(self) -> bool:
         return await self.is_enabled()
+
+    async def send_tracking_disabled_for_guild(self, guild_id: int | None) -> bool:
+        return await self.is_rob_offline_for_guild(guild_id)
+
+    async def count_recovery_disabled_for_guild(self, guild_id: int | None) -> bool:
+        return await self.is_rob_offline_for_guild(guild_id)
 
     async def enable(self, *, reason: str | None) -> None:
         await self.bot_state.set_values(
@@ -78,6 +97,14 @@ class MaintenanceService:
                 MAINTENANCE_REASON_KEY: "",
             }
         )
+        await self.request_leaderboard_refresh()
+
+    async def enable_rob_offline(self) -> None:
+        await self.bot_state.set_value(ROB_OFFLINE_MODE_KEY, "true")
+        await self.request_leaderboard_refresh()
+
+    async def disable_rob_offline(self) -> None:
+        await self.bot_state.set_value(ROB_OFFLINE_MODE_KEY, "false")
         await self.request_leaderboard_refresh()
 
     async def request_leaderboard_refresh(self) -> None:
