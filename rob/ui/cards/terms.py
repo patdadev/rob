@@ -6,7 +6,7 @@ from typing import Any
 import discord
 
 from rob.ui.render import RenderedMessage
-from rob.ui.theme import COLOR_DANGER, COLOR_INFO, COLOR_SUCCESS, COLOR_WARNING
+from rob.ui.theme import COLOR_DANGER, COLOR_INFO, COLOR_SUCCESS
 
 log = logging.getLogger(__name__)
 
