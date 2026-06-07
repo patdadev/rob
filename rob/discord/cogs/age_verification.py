@@ -50,6 +50,29 @@ class AgeVerificationCog(commands.Cog):
         service = self.service
         return service is not None and service.is_enabled_for(guild_id)
 
+    @staticmethod
+    def _response_is_done(interaction: discord.Interaction) -> bool:
+        response = getattr(interaction, "response", None)
+        is_done = getattr(response, "is_done", None)
+        if callable(is_done):
+            try:
+                return bool(is_done())
+            except TypeError:
+                return False
+        return False
+
+    async def _send_interaction_message(
+        self,
+        interaction: discord.Interaction,
+        *,
+        ephemeral: bool = True,
+        **kwargs,
+    ) -> None:
+        if self._response_is_done(interaction):
+            await interaction.followup.send(ephemeral=ephemeral, **kwargs)
+            return
+        await interaction.response.send_message(ephemeral=ephemeral, **kwargs)
+
     async def _ensure_command_available(
         self,
         interaction: discord.Interaction,
@@ -87,9 +110,10 @@ class AgeVerificationCog(commands.Cog):
                 f"`/{command_name}` isn't enabled in this server right now.",
             )
 
-        await interaction.response.send_message(
-            **rendered.send_kwargs(),
+        await self._send_interaction_message(
+            interaction,
             ephemeral=True,
+            **rendered.send_kwargs(),
         )
         return False
 
@@ -100,12 +124,13 @@ class AgeVerificationCog(commands.Cog):
         settings = await self.bot.vib_settings_repo.get(interaction.guild_id)
         if is_staff_member(interaction.user, settings):
             return True
-        await interaction.response.send_message(
+        await self._send_interaction_message(
+            interaction,
+            ephemeral=True,
             **error_card(
                 "Staff only",
                 "Only staff or admins can manage age-verification decisions.",
             ).send_kwargs(),
-            ephemeral=True,
         )
         return False
 
@@ -260,7 +285,9 @@ class AgeVerificationCog(commands.Cog):
         self_view: bool,
     ) -> None:
         subject = self._subject_for_status(user=user, self_view=self_view)
-        await interaction.response.send_message(
+        await self._send_interaction_message(
+            interaction,
+            ephemeral=True,
             **age_verification_status_card(
                 status=str(payload.get("status") or "not_started"),
                 subject=subject,
@@ -270,7 +297,6 @@ class AgeVerificationCog(commands.Cog):
                 summary=payload.get("yoti_result_summary"),
                 reason=payload.get("manual_review_reason"),
             ).send_kwargs(),
-            ephemeral=True,
         )
 
     @app_commands.command(
@@ -284,34 +310,38 @@ class AgeVerificationCog(commands.Cog):
         ):
             return
         if interaction.user is None or self.backend is None:
-            await interaction.response.send_message(
+            await self._send_interaction_message(
+                interaction,
+                ephemeral=True,
                 **error_card(
                     "Age verification unavailable",
                     "Rob couldn't load the age-verification tools right now.",
                 ).send_kwargs(),
-                ephemeral=True,
             )
             return
+        await interaction.response.defer(ephemeral=True)
         try:
             payload = await self.backend.start(
                 guild_id=interaction.guild_id,
                 discord_user_id=interaction.user.id,
             )
         except AgeVerificationBackendClientError as exc:
-            await interaction.response.send_message(
-                **error_card("Age verification unavailable", str(exc)).send_kwargs(),
+            await self._send_interaction_message(
+                interaction,
                 ephemeral=True,
+                **error_card("Age verification unavailable", str(exc)).send_kwargs(),
             )
             return
 
         status = str(payload.get("status") or "not_started")
         if status == STATUS_PENDING and payload.get("verification_url"):
-            await interaction.response.send_message(
+            await self._send_interaction_message(
+                interaction,
+                ephemeral=True,
                 **age_verification_launch_card(
                     verification_url=str(payload["verification_url"]),
                     expires_at=payload.get("expires_at"),
                 ).send_kwargs(),
-                ephemeral=True,
             )
             return
         await self._sync_verified_role(
@@ -336,23 +366,26 @@ class AgeVerificationCog(commands.Cog):
         ):
             return
         if interaction.user is None or self.backend is None:
-            await interaction.response.send_message(
+            await self._send_interaction_message(
+                interaction,
+                ephemeral=True,
                 **error_card(
                     "Age verification unavailable",
                     "Rob couldn't load the age-verification tools right now.",
                 ).send_kwargs(),
-                ephemeral=True,
             )
             return
+        await interaction.response.defer(ephemeral=True)
         try:
             payload = await self.backend.status(
                 guild_id=interaction.guild_id,
                 discord_user_id=interaction.user.id,
             )
         except AgeVerificationBackendClientError as exc:
-            await interaction.response.send_message(
-                **error_card("Age verification unavailable", str(exc)).send_kwargs(),
+            await self._send_interaction_message(
+                interaction,
                 ephemeral=True,
+                **error_card("Age verification unavailable", str(exc)).send_kwargs(),
             )
             return
         await self._sync_verified_role(
@@ -398,7 +431,9 @@ class AgeVerificationCog(commands.Cog):
             if sync.error is None
             else f"Rob marked them as verified 18+, but role sync reported `{sync.error}`."
         )
-        await interaction.response.send_message(
+        await self._send_interaction_message(
+            interaction,
+            ephemeral=True,
             **age_verification_status_card(
                 status=record.status,
                 subject=user.mention,
@@ -407,7 +442,6 @@ class AgeVerificationCog(commands.Cog):
                 summary=detail,
                 reason=record.manual_review_reason,
             ).send_kwargs(),
-            ephemeral=True,
         )
 
     @app_commands.command(
@@ -442,7 +476,9 @@ class AgeVerificationCog(commands.Cog):
             if sync.error is None
             else f"Rob marked them as not verified, but role sync reported `{sync.error}`."
         )
-        await interaction.response.send_message(
+        await self._send_interaction_message(
+            interaction,
+            ephemeral=True,
             **age_verification_status_card(
                 status=record.status,
                 subject=user.mention,
@@ -451,7 +487,6 @@ class AgeVerificationCog(commands.Cog):
                 summary=detail,
                 reason=record.manual_review_reason,
             ).send_kwargs(),
-            ephemeral=True,
         )
 
     @app_commands.command(
@@ -486,7 +521,9 @@ class AgeVerificationCog(commands.Cog):
             if sync.error is None
             else f"Rob revoked their verified status, but role sync reported `{sync.error}`."
         )
-        await interaction.response.send_message(
+        await self._send_interaction_message(
+            interaction,
+            ephemeral=True,
             **age_verification_status_card(
                 status=record.status,
                 subject=user.mention,
@@ -495,5 +532,4 @@ class AgeVerificationCog(commands.Cog):
                 summary=detail,
                 reason=record.manual_review_reason,
             ).send_kwargs(),
-            ephemeral=True,
         )
