@@ -4,6 +4,7 @@ import asyncio
 from types import SimpleNamespace
 
 from rob.discord.cogs.counting import CountingCog
+from rob.ui.emojis import ROBBLANK, ROBNO, ROBYES
 
 
 class _FakeCountingService:
@@ -43,27 +44,12 @@ class _FakeMessage:
         self.reactions.append(value)
 
 
-def test_wrong_number_recovery_path_deletes_without_reacting():
+def test_wrong_number_recovery_path_reacts_without_deleting():
     result = SimpleNamespace(
         success=False,
         reason="wrong_number_sub_recovery",
         blocked_until=None,
-    )
-    cog = CountingCog(_FakeBot(result))  # type: ignore[arg-type]
-    message = _FakeMessage()
-
-    asyncio.run(cog.on_message(message))
-
-    assert message.deleted is True
-    assert message.reactions == []
-
-
-def test_success_path_applies_all_requested_reactions():
-    result = SimpleNamespace(
-        success=True,
-        reason=None,
-        blocked_until=None,
-        reactions=("✅", "🎉", "💯"),
+        reactions=(ROBBLANK, ROBNO),
     )
     cog = CountingCog(_FakeBot(result))  # type: ignore[arg-type]
     message = _FakeMessage()
@@ -71,4 +57,20 @@ def test_success_path_applies_all_requested_reactions():
     asyncio.run(cog.on_message(message))
 
     assert message.deleted is False
-    assert message.reactions == ["✅", "🎉", "💯"]
+    assert message.reactions == [ROBBLANK, ROBNO]
+
+
+def test_success_path_applies_all_requested_reactions():
+    result = SimpleNamespace(
+        success=True,
+        reason=None,
+        blocked_until=None,
+        reactions=(ROBYES,),
+    )
+    cog = CountingCog(_FakeBot(result))  # type: ignore[arg-type]
+    message = _FakeMessage()
+
+    asyncio.run(cog.on_message(message))
+
+    assert message.deleted is False
+    assert message.reactions == [ROBYES]

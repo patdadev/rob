@@ -13,8 +13,6 @@ from rob.ui.cards.terms import (
     DeclineButton,
     ID_TERMS_ACCEPT,
     ID_TERMS_DECLINE,
-    current_privacy_card,
-    current_terms_card,
     terms_accepted_card,
     terms_declined_card,
     terms_dm_blocked_card,
@@ -27,7 +25,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-ALLOWED_TERMS_COMMANDS = frozenset({"terms", "privacy", "termsreset"})
+ALLOWED_TERMS_COMMANDS = frozenset({"termsreset"})
 
 
 class _PersistentTermsView(discord.ui.View):
@@ -257,46 +255,6 @@ class TermsCog(commands.Cog):
             return
 
         await interaction.response.edit_message(**terms_declined_card().edit_kwargs())
-
-    @app_commands.command(
-        name="terms",
-        description="View Rob's current Terms of Use.",
-    )
-    async def terms(self, interaction: discord.Interaction) -> None:
-        service = self.service
-        if service is None:
-            await interaction.response.send_message(
-                "Rob couldn't load the Terms right now.",
-                ephemeral=True,
-            )
-            return
-        await interaction.response.send_message(
-            **current_terms_card(
-                terms_version=service.terms_version,
-                terms_url=service.terms_url,
-            ).send_kwargs(),
-            ephemeral=True,
-        )
-
-    @app_commands.command(
-        name="privacy",
-        description="View Rob's current Privacy Notice.",
-    )
-    async def privacy(self, interaction: discord.Interaction) -> None:
-        service = self.service
-        if service is None:
-            await interaction.response.send_message(
-                "Rob couldn't load the Privacy Notice right now.",
-                ephemeral=True,
-            )
-            return
-        await interaction.response.send_message(
-            **current_privacy_card(
-                terms_version=service.terms_version,
-                privacy_url=service.privacy_url,
-            ).send_kwargs(),
-            ephemeral=True,
-        )
 
     @app_commands.command(
         name="termsreset",

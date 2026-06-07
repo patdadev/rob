@@ -13,8 +13,6 @@ from rob.ui.cards.terms import (
     ID_TERMS_DECLINE,
     ROBNO,
     ROBYES,
-    current_privacy_card,
-    current_terms_card,
     terms_accepted_card,
     terms_declined_card,
     terms_dm_blocked_card,
@@ -85,22 +83,6 @@ def test_terms_dm_blocked_card_contains_expected_copy():
     assert "I couldn't send you a DM" in text
     assert "Hey Aria!" in text
     assert "Please allow DMs from this server" in text
-
-
-def test_terms_and_privacy_cards_include_current_version_and_link_buttons():
-    terms = current_terms_card(
-        terms_version="2026-06-05",
-        terms_url="https://example.com/terms",
-    )
-    privacy = current_privacy_card(
-        terms_version="2026-06-05",
-        privacy_url="https://example.com/privacy",
-    )
-    assert "2026-06-05" in _all_text(terms.view)
-    assert "2026-06-05" in _all_text(privacy.view)
-    assert [button.label for button in _find_link_buttons(terms.view)] == ["Open Terms of Use"]
-    assert [button.label for button in _find_link_buttons(privacy.view)] == ["Open Privacy Notice"]
-
 
 def test_accept_and_decline_buttons_route_to_cog_callbacks():
     cog = SimpleNamespace(

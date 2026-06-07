@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from rob.database.repositories.models import NewSend, SendRecord, ThroneCreator
 from rob.services.send_service import SendService
@@ -66,6 +67,16 @@ class _FakeSubsRepo:
 
     async def get_by_name(self, guild_id: int, send_name: str):
         return await self.get_by_send_name(guild_id, send_name)
+
+
+class _FakeThroneService:
+    def __init__(self, match=None) -> None:
+        self.match = match
+        self.calls: list[tuple[str, str | None, str | None]] = []
+
+    async def match_item(self, *, creator_id: str, item_name: str | None, item_image_url: str | None):
+        self.calls.append((creator_id, item_name, item_image_url))
+        return self.match
 
 
 def _creator(guild_id: int = 1) -> ThroneCreator:
@@ -260,3 +271,43 @@ def test_dev_guild_offline_mode_does_not_change_throne_queue_status():
 
     assert sends.inserted is not None
     assert sends.inserted.discord_post_status == "pending"
+
+
+def test_gift_purchased_without_visible_amount_uses_wishlist_match_and_converts_to_usd():
+    sends = _FakeSendsRepo()
+    subs = _FakeSubsRepo()
+    throne = _FakeThroneService(
+        match=SimpleNamespace(
+            amount_cents=1099,
+            currency="EUR",
+        )
+    )
+    service = SendService(
+        sends=sends,
+        subs=subs,
+        maintenance=_FakeMaintenance(),
+        throne=throne,
+    )
+    hidden_amount_payload = ThroneSendPayload(
+        event_id="evt_hidden",
+        event_type="gift_purchased",
+        order_id="order_hidden",
+        gifter_username="anonymous",
+        item_name="Flowers",
+        item_image_url="https://example.com/item.png",
+        amount_cents=0,
+        currency="USD",
+        is_private=True,
+        purchased_at=datetime.now(timezone.utc),
+        fallback_event_hash="hash_hidden",
+    )
+
+    asyncio.run(service.record_throne_send(creator=_creator(), payload=hidden_amount_payload))
+
+    assert sends.inserted is not None
+    assert sends.inserted.amount_cents == convert_cents_to_usd(1099, "EUR")
+    assert sends.inserted.currency == "USD"
+    assert sends.inserted.original_amount_cents == 1099
+    assert sends.inserted.original_currency == "EUR"
+    assert sends.inserted.is_private is False
+    assert throne.calls == [("creator-id", "Flowers", "https://example.com/item.png")]

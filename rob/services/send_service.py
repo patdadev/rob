@@ -76,7 +76,7 @@ class SendService:
             test_gifter_usernames=set(self.throne_test_gifter_usernames),
         )
 
-        if False and (
+        if (
             amount_cents == 0
             and payload.event_type == "gift_purchased"
             and self.throne is not None
@@ -87,9 +87,13 @@ class SendService:
                 item_image_url=payload.item_image_url,
             )
             if match is not None and match.amount_cents > 0:
-                amount_cents = match.amount_cents
-                if match.currency:
-                    currency = match.currency
+                matched_currency = (match.currency or "USD").upper()
+                amount_cents = convert_cents_to_usd(match.amount_cents, matched_currency)
+                currency = "USD"
+                original_amount_cents = (
+                    match.amount_cents if matched_currency != "USD" else None
+                )
+                original_currency = matched_currency if matched_currency != "USD" else None
                 is_private = False
 
         if await self._send_tracking_disabled_for_guild(creator.guild_id):

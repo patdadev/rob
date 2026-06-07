@@ -38,7 +38,7 @@ def counting_same_user_reminder_card() -> RenderedMessage:
     view = discord.ui.LayoutView(timeout=30)
     view.add_item(
         discord.ui.Container(
-            discord.ui.TextDisplay("## Hold up there, speedy."),
+            discord.ui.TextDisplay("### Hold up there, speedy."),
             discord.ui.Separator(),
             discord.ui.TextDisplay(
                 "One number per person at a time.\n"
@@ -85,7 +85,7 @@ def count_rescue_needed_for_role_card(
         )
     view.add_item(
         discord.ui.Container(
-            discord.ui.TextDisplay("## Count Rescue Needed"),
+            discord.ui.TextDisplay("### Count Rescue Needed"),
             discord.ui.Separator(),
             discord.ui.TextDisplay(
                 "The count is wobbling.\n"
@@ -107,7 +107,7 @@ def count_saved_card(*, next_number: int) -> RenderedMessage:
     view = discord.ui.LayoutView(timeout=600)
     view.add_item(
         discord.ui.Container(
-            discord.ui.TextDisplay("## Count Saved"),
+            discord.ui.TextDisplay("### Count Saved"),
             discord.ui.Separator(),
             discord.ui.TextDisplay(
                 "Rob saw the send and duct-taped the count back together.\n"
@@ -128,7 +128,7 @@ def count_failed_reset_card() -> RenderedMessage:
     view = discord.ui.LayoutView(timeout=600)
     view.add_item(
         discord.ui.Container(
-            discord.ui.TextDisplay("## Count Failed"),
+            discord.ui.TextDisplay("### Count Failed"),
             discord.ui.Separator(),
             discord.ui.TextDisplay(
                 "No qualifying send arrived in time.\n"
@@ -145,7 +145,7 @@ def count_failed_sub_blocked_card(*, blocked_until_unix: int) -> RenderedMessage
     view = discord.ui.LayoutView(timeout=600)
     view.add_item(
         discord.ui.Container(
-            discord.ui.TextDisplay("## Count Failed"),
+            discord.ui.TextDisplay("### Count Failed"),
             discord.ui.Separator(),
             discord.ui.TextDisplay(
                 "No recovery send was detected.\n"
@@ -163,7 +163,7 @@ def count_blocked_sub_card(*, blocked_until_unix: int) -> RenderedMessage:
     view = discord.ui.LayoutView(timeout=120)
     view.add_item(
         discord.ui.Container(
-            discord.ui.TextDisplay("## Count Blocked"),
+            discord.ui.TextDisplay("### Count Blocked"),
             discord.ui.Separator(),
             discord.ui.TextDisplay(
                 "You fumbled the count and missed the recovery window, so you are blocked from counting for 12 hours.\n\n"

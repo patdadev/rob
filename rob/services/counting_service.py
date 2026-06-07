@@ -22,6 +22,7 @@ from rob.ui.cards.counting import (
     count_rescue_needed_for_role_card,
     count_saved_card,
 )
+from rob.ui.emojis import ROBBLANK, ROBNO, ROBYES
 
 log = logging.getLogger(__name__)
 
@@ -35,14 +36,6 @@ _SPECIAL_SUB_REQUIRED_DOMME_USER_ID = 712738633391800320
 _COUNT_HIGH_WATERMARK_KEY_PREFIX = "count_high_watermark:"
 _MAX_COUNT_EXPRESSION_LENGTH = 80
 _ALLOWED_EXPRESSION_CHARS = set("0123456789+-*/() ")
-_SPECIAL_NUMBER_REACTIONS: dict[int, tuple[str, ...]] = {
-    1: ("🥇",),
-    2: ("🥈",),
-    3: ("🥉",),
-    67: ("6️⃣", "7️⃣"),
-    69: ("🫦",),
-    100: ("💯",),
-}
 
 
 @dataclass(frozen=True)
@@ -62,6 +55,7 @@ class _WindowRuntime:
     guild_id: int
     channel_id: int
     message: discord.Message | None = None
+    failed_message: discord.Message | None = None
 
 
 @dataclass(frozen=True)
@@ -296,6 +290,7 @@ class CountingService:
                     expected_number=expected,
                     current_number=0,
                     reason="wrong_number_reset",
+                    reactions=self._failure_reactions(),
                 )
 
             deadline = now + timedelta(seconds=self.rescue_window_seconds)
@@ -315,12 +310,16 @@ class CountingService:
                     claimed_unresolved=False,
                 )
                 await self._ensure_window_message(window, force_post_if_missing=True)
+                runtime = self._runtime_windows.get(window.id)
+                if runtime is not None:
+                    runtime.failed_message = message
                 return CountingProcessResult(
                     success=False,
                     expected_number=expected,
                     current_number=state.current_number,
                     reason="wrong_number_domme_recovery",
                     deadline=deadline,
+                    reactions=self._failure_reactions(),
                 )
 
             if is_sub:
@@ -342,12 +341,16 @@ class CountingService:
                     claimed_unresolved=False,
                 )
                 await self._ensure_window_message(window, force_post_if_missing=True)
+                runtime = self._runtime_windows.get(window.id)
+                if runtime is not None:
+                    runtime.failed_message = message
                 return CountingProcessResult(
                     success=False,
                     expected_number=expected,
                     current_number=state.current_number,
                     reason="wrong_number_sub_recovery",
                     deadline=deadline,
+                    reactions=self._failure_reactions(),
                 )
 
             await self._cancel_active_windows_for_guild(message.guild.id)
@@ -364,6 +367,7 @@ class CountingService:
                 expected_number=expected,
                 current_number=0,
                 reason="wrong_number_reset",
+                reactions=self._failure_reactions(),
             )
 
         await self._cancel_active_windows_for_guild(message.guild.id)
@@ -434,9 +438,15 @@ class CountingService:
             )
             runtime = self._runtime_windows.pop(window.id, None)
             message = runtime.message if runtime is not None else None
+            failed_message = runtime.failed_message if runtime is not None else None
             if message is not None:
                 try:
                     await message.edit(**count_saved_card(next_number=window.expected_number).edit_kwargs())
+                except discord.HTTPException:
+                    pass
+            if failed_message is not None:
+                try:
+                    await failed_message.delete()
                 except discord.HTTPException:
                     pass
             return True
@@ -811,11 +821,12 @@ class CountingService:
         await self._sync_recovery_windows()
 
     async def _build_success_reactions(self, *, guild_id: int, number: int) -> tuple[str, ...]:
-        reactions: list[str] = ["✅"]
-        if await self._update_high_watermark_if_needed(guild_id=guild_id, number=number):
-            reactions.append("🎉")
-        reactions.extend(_SPECIAL_NUMBER_REACTIONS.get(number, ()))
-        return tuple(reactions)
+        await self._update_high_watermark_if_needed(guild_id=guild_id, number=number)
+        return (ROBYES,)
+
+    @staticmethod
+    def _failure_reactions() -> tuple[str, str]:
+        return (ROBBLANK, ROBNO)
 
     async def _update_high_watermark_if_needed(self, *, guild_id: int, number: int) -> bool:
         if self.bot_settings is None:

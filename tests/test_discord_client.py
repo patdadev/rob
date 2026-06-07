@@ -53,9 +53,9 @@ def _fake_interaction(*, guild_id=123, command_name="leaderboard"):
     )
 
 
-def test_global_interaction_check_allows_terms_command_without_gate():
+def test_global_interaction_check_allows_terms_reset_without_gate():
     terms_cog = SimpleNamespace(
-        is_terms_interaction=lambda interaction: interaction.command.qualified_name == "terms",
+        is_terms_interaction=lambda interaction: interaction.command.qualified_name == "termsreset",
         ensure_terms_acceptance=AsyncMock(return_value=False),
     )
     fake_bot = SimpleNamespace(
@@ -63,7 +63,7 @@ def test_global_interaction_check_allows_terms_command_without_gate():
         maintenance_service=SimpleNamespace(is_rob_offline_for_guild=AsyncMock(return_value=False)),
         get_cog=lambda name: terms_cog if name == "TermsCog" else None,
     )
-    interaction = _fake_interaction(command_name="terms")
+    interaction = _fake_interaction(command_name="termsreset")
 
     allowed = asyncio.run(RobBot._global_interaction_check(fake_bot, interaction))
 

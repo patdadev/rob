@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from rob.config.guilds import TEST_GUILD_ID
 from rob.database.repositories.models import (
     LeaderboardEntry,
     LeaderboardSummary,
@@ -23,11 +24,12 @@ def _send(
     *,
     item_image_url: str | None = None,
     is_test_send: bool = False,
+    guild_id: int = 1,
 ) -> SendRecord:
     now = datetime.now(timezone.utc)
     return SendRecord(
         1,
-        1,
+        guild_id,
         None,
         10,
         None,
@@ -63,26 +65,38 @@ def test_setup_step_2_contains_almighty_link():
 
 def test_send_card_renders_thumbnail_image_and_currency_name():
     msg = send_card(
-        send=_send("marie_123", item_image_url="https://example.com/item.png", is_test_send=True),
+        send=_send(
+            "marie_123",
+            item_image_url="https://example.com/item.png",
+            is_test_send=True,
+            guild_id=TEST_GUILD_ID,
+        ),
         domme_label="@Domme",
         sub_display="Throne's Test User",
+        throne_url="https://throne.com/missadore",
     )
     container = msg.view.children[0]
     section = container.children[2]
     all_text = "\n".join(
         str(getattr(child, "content", ""))
-        for child in [container.children[0], section.children[0]]
+        for child in [container.children[0], section.children[0], container.children[6]]
     )
 
     assert [type(child).__name__ for child in container.children] == [
         "TextDisplay",
         "Separator",
         "Section",
+        "Separator",
+        "ActionRow",
+        "Separator",
+        "TextDisplay",
     ]
     assert type(section.accessory).__name__ == "Thumbnail"
-    assert "New Send to @Domme" in all_text
-    assert "Throne's Test User" in all_text
+    assert "New Send Alert!" in all_text
+    assert "@Domme just received **Flowers** via Throne!" in all_text
+    assert "Throne's Test User" not in all_text
     assert "**Amount:** $10.99" in all_text
+    assert "Random Fact:" in all_text
     assert "Rob Send ID" not in all_text
     assert "rank after this send" not in all_text
     assert "<t:" not in all_text
@@ -91,6 +105,8 @@ def test_send_card_renders_thumbnail_image_and_currency_name():
     assert payload[0]["components"][2]["type"] == 9
     assert payload[0]["components"][2]["accessory"]["type"] == 11
     assert payload[0]["components"][2]["accessory"]["media"]["url"] == "https://example.com/item.png"
+    assert payload[0]["components"][4]["components"][0]["label"] == "Flowers on Throne!"
+    assert payload[0]["components"][4]["components"][0]["url"] == "https://throne.com/missadore"
 
 
 def test_send_card_without_image_uses_text_display_and_no_footer():
@@ -102,8 +118,10 @@ def test_send_card_without_image_uses_text_display_and_no_footer():
         "Separator",
         "TextDisplay",
     ]
+    assert "New Send to @Domme" in contents
     assert "gifter_name with no nickname claimed" in contents
-    assert "-#" not in contents
+    assert "Random Fact:" not in contents
+    assert "Rob Send ID" not in contents
 
 
 def test_send_card_adjustment_note_placement_and_non_usd_currency_display():
@@ -197,6 +215,45 @@ def test_send_card_shows_real_usd_conversion_with_original_currency_metadata():
     )
     contents = "\n".join(str(getattr(ch, "content", "")) for ch in msg.view.children[0].children)
     assert "$11.98 (converted from EUR 10.99 (Euro))" in contents
+
+
+def test_send_card_identifies_registered_sub_in_throne_alert():
+    now = datetime.now(timezone.utc)
+    send = SendRecord(
+        4,
+        TEST_GUILD_ID,
+        None,
+        10,
+        77,
+        42,
+        "gifter_name",
+        1099,
+        "USD",
+        None,
+        "throne_webhook",
+        "Flowers",
+        None,
+        None,
+        None,
+        None,
+        False,
+        False,
+        now,
+        now,
+        "posted",
+        None,
+        None,
+        None,
+        now,
+        False,
+    )
+    msg = send_card(
+        send=send,
+        domme_label="@Domme",
+        sub_display="<@42>",
+    )
+    contents = "\n".join(str(getattr(ch, "content", "")) for ch in msg.view.children[0].children)
+    assert "@Domme just received **Flowers** from <@42> via Throne!" in contents
 
 
 def test_send_request_send_card_shows_sub_mention_when_sub_user_is_known():

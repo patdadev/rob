@@ -9,6 +9,7 @@ import pytest
 
 from rob.database.repositories.models import CountBlock, CountRecoveryWindow, CountingState
 from rob.services.counting_service import CountingService
+from rob.ui.emojis import ROBBLANK, ROBNO, ROBYES
 
 
 @dataclass
@@ -91,6 +92,10 @@ class _FakeMessageEvent:
             self.attachments = []
         if self.stickers is None:
             self.stickers = []
+        self.deleted = False
+
+    async def delete(self):
+        self.deleted = True
 
 
 class _FakeCountingRepo:
@@ -364,7 +369,7 @@ def test_existing_stale_count_state_auto_syncs_to_configured_channel():
     assert repo.state.current_number == 1
 
 
-def test_successful_count_returns_standard_high_score_and_special_reactions():
+def test_successful_count_reacts_with_robyes_and_updates_high_watermark():
     service, repo, _channel, guild, _domme, _domme_alt, sub, _claimed_sub = _make_setup()
     repo.state = CountingState(1, 100, 66, 9, True, False, datetime.now(timezone.utc))
     service.bot_settings.values["count_high_watermark:1"] = "66"
@@ -377,7 +382,7 @@ def test_successful_count_returns_standard_high_score_and_special_reactions():
 
     assert result is not None
     assert result.success is True
-    assert result.reactions == ("✅", "🎉", "6️⃣", "7️⃣")
+    assert result.reactions == (ROBYES,)
     assert service.bot_settings.values["count_high_watermark:1"] == "67"
 
 
@@ -390,6 +395,7 @@ def test_domme_wrong_count_creates_recovery_window_and_qualifying_send_recovers(
 
     assert result is not None
     assert result.reason == "wrong_number_domme_recovery"
+    assert result.reactions == (ROBBLANK, ROBNO)
     assert repo.state.pending_restore is True
     active_windows = asyncio.run(repo.list_active_recovery_windows())
     assert len(active_windows) == 1
@@ -409,6 +415,7 @@ def test_domme_wrong_count_creates_recovery_window_and_qualifying_send_recovers(
         )
     )
     assert recovered is True
+    assert message.deleted is True
     assert repo.state.pending_restore is False
     assert repo.state.current_number == 7
 

@@ -13,6 +13,7 @@ from rob.ui.cards.counting import (
     counting_updated_card,
 )
 from rob.ui.cards.errors import error_card
+from rob.ui.emojis import ROBNO
 
 if TYPE_CHECKING:
     from rob.discord.client import RobBot
@@ -49,12 +50,14 @@ class CountingCog(commands.Cog):
         result = await self.bot.counting_service.process_message(message)
         if result is None:
             return
-        if result.success:
-            for reaction in result.reactions or ("✅",):
+        async def _apply_reactions(*reactions: str) -> None:
+            for reaction in reactions:
                 try:
                     await message.add_reaction(reaction)
                 except discord.HTTPException:
                     continue
+        if result.success:
+            await _apply_reactions(*(result.reactions or ()))
             return
 
         if result.reason == "same_user":
@@ -90,16 +93,12 @@ class CountingCog(commands.Cog):
             return
 
         if result.reason in {"wrong_number_sub_recovery", "wrong_number_domme_recovery"}:
-            try:
-                await message.delete()
-            except discord.HTTPException:
-                pass
+            await _apply_reactions(*(result.reactions or ()))
             return
 
         if result.reason == "wrong_number_reset":
             await message.channel.send(**count_failed_card().send_kwargs())
-
-        try:
-            await message.add_reaction("❌")
-        except discord.HTTPException:
+            await _apply_reactions(*(result.reactions or ()))
             return
+
+        await _apply_reactions(ROBNO)

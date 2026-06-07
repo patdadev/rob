@@ -190,22 +190,8 @@ def test_handle_accept_rejects_stale_message():
     stale_text = interaction.response.send_message.await_args.args[0]
     assert "no longer active" in stale_text
 
-
-def test_terms_and_privacy_commands_send_cards():
-    bot = _FakeBot()
-    cog = TermsCog(bot)
-    terms_interaction = _make_interaction(command_name="terms")
-    privacy_interaction = _make_interaction(command_name="privacy")
-
-    asyncio.run(TermsCog.terms.callback(cog, terms_interaction))
-    asyncio.run(TermsCog.privacy.callback(cog, privacy_interaction))
-
-    assert terms_interaction.response.send_message.await_args.kwargs["view"] is not None
-    assert privacy_interaction.response.send_message.await_args.kwargs["view"] is not None
-
-
 def test_terms_interaction_detection_supports_commands_and_buttons():
-    command_interaction = _make_interaction(command_name="terms")
+    command_interaction = _make_interaction(command_name="termsreset")
     button_interaction = _make_interaction(command_name="leaderboard")
     button_interaction.data = {"custom_id": ID_TERMS_ACCEPT}
 

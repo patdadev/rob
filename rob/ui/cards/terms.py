@@ -7,17 +7,13 @@ import discord
 
 from rob.ui.render import RenderedMessage
 from rob.ui.theme import COLOR_DANGER, COLOR_INFO, COLOR_SUCCESS
+from rob.ui.emojis import ROBNO, ROBNO_EMOJI, ROBYES, ROBYES_EMOJI
 
 log = logging.getLogger(__name__)
 
 TERMS_PREFIX = "rob:terms:"
 ID_TERMS_ACCEPT = f"{TERMS_PREFIX}accept"
 ID_TERMS_DECLINE = f"{TERMS_PREFIX}decline"
-ROBYES = "<:robyes:1512405535582982144>"
-ROBNO = "<:robno:1512403862609461338>"
-ROBYES_EMOJI = discord.PartialEmoji.from_str(ROBYES)
-ROBNO_EMOJI = discord.PartialEmoji.from_str(ROBNO)
-
 _UNAVAILABLE_MESSAGE = (
     "These Terms are not available right now. Run any Rob command in the test "
     "server and I'll send a fresh copy."
@@ -262,39 +258,5 @@ def terms_dm_blocked_card(*, name: str) -> RenderedMessage:
                 "Please allow DMs from this server, then try again."
             ),
             color=COLOR_DANGER,
-        )
-    )
-
-
-def current_terms_card(*, terms_version: str, terms_url: str) -> RenderedMessage:
-    return RenderedMessage(
-        view=_SimpleTermsLayout(
-            title="Rob's Terms of Use",
-            body=(
-                "Here is the current Terms of Use for Rob.\n\n"
-                f"Current version: `{terms_version}`"
-            ),
-            color=COLOR_INFO,
-            button_label="Open Terms of Use",
-            button_url=terms_url,
-        )
-    )
-
-
-def current_privacy_card(
-    *,
-    terms_version: str,
-    privacy_url: str,
-) -> RenderedMessage:
-    return RenderedMessage(
-        view=_SimpleTermsLayout(
-            title="Rob's Privacy Notice",
-            body=(
-                "Here is the current Privacy Notice for Rob.\n\n"
-                f"Current version: `{terms_version}`"
-            ),
-            color=COLOR_INFO,
-            button_label="Open Privacy Notice",
-            button_url=privacy_url,
         )
     )

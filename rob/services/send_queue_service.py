@@ -224,6 +224,7 @@ class SendQueueService:
 
         try:
             message = await channel.fetch_message(message_id)
+            throne_url = await self._resolve_throne_url(send)
             msg = send_card(
                 send=send,
                 domme_label=f"<@{send.domme_user_id}>",
@@ -232,11 +233,18 @@ class SendQueueService:
                     test_gifter_usernames=self.test_gifter_usernames,
                 ),
                 adjustment_note=adjustment_note,
+                throne_url=throne_url,
             )
             await message.edit(**msg.edit_kwargs())
         except (discord.NotFound, discord.HTTPException):
             return False
         return True
+
+    async def _resolve_throne_url(self, send) -> str | None:
+        if self.dommes is None:
+            return None
+        domme = await self.dommes.get_by_user_id(int(send.guild_id), int(send.domme_user_id))
+        return getattr(domme, "throne_url", None) if domme is not None else None
 
     async def _process_send_record(self, send) -> bool:
         if self.counting_service is not None and not await self._count_recovery_disabled_for_guild(send.guild_id):
@@ -339,6 +347,7 @@ class SendQueueService:
 
         previous_leader = await self.leaderboard_service.get_current_leader(send.guild_id)
         try:
+            throne_url = await self._resolve_throne_url(send)
             msg = send_card(
                 send=send,
                 domme_label=f"<@{send.domme_user_id}>",
@@ -346,6 +355,7 @@ class SendQueueService:
                     send,
                     test_gifter_usernames=self.test_gifter_usernames,
                 ),
+                throne_url=throne_url,
             )
             message = await channel.send(**msg.send_kwargs())
         except discord.HTTPException as exc:
@@ -418,6 +428,7 @@ class SendQueueService:
             return True
 
         try:
+            throne_url = await self._resolve_throne_url(send)
             msg = send_card(
                 send=send,
                 domme_label=f"<@{recipient_user_id}>",
@@ -425,6 +436,7 @@ class SendQueueService:
                     send,
                     test_gifter_usernames=self.test_gifter_usernames,
                 ),
+                throne_url=throne_url,
             )
             message = await user.send(**msg.send_kwargs())
         except discord.Forbidden:
