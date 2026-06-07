@@ -5,6 +5,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from dotenv import load_dotenv
 
 
@@ -138,6 +140,53 @@ def _env_lower_csv(name: str, default: str) -> tuple[str, ...]:
     return tuple(value.strip().lower() for value in raw.split(",") if value.strip())
 
 
+def _validate_yoti_private_key_path(private_key_path: str) -> None:
+    path = Path(private_key_path).expanduser()
+    try:
+        pem_bytes = path.read_bytes()
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            f"Configured YOTI_PRIVATE_KEY_PATH does not exist: {path}"
+        ) from exc
+    except PermissionError as exc:
+        raise RuntimeError(
+            f"Configured YOTI_PRIVATE_KEY_PATH is not readable by the backend process: {path}"
+        ) from exc
+    except OSError as exc:
+        raise RuntimeError(
+            f"Configured YOTI_PRIVATE_KEY_PATH could not be read by the backend process: {path}"
+        ) from exc
+
+    try:
+        private_key = serialization.load_pem_private_key(
+            pem_bytes,
+            password=None,
+        )
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Configured YOTI_PRIVATE_KEY_PATH is not a valid PEM private key: {path}"
+        ) from exc
+
+    if not isinstance(private_key, rsa.RSAPrivateKey):
+        raise RuntimeError(
+            f"Configured YOTI_PRIVATE_KEY_PATH is not an RSA private key: {path}"
+        )
+
+
+def _validate_webhook_yoti_settings(settings: WebhookSettings) -> None:
+    if not settings.rob_age_verification_enabled:
+        return
+    if not settings.yoti_sdk_id:
+        raise RuntimeError(
+            "YOTI_SDK_ID is required when ROB_AGE_VERIFICATION_ENABLED=true on the webhook backend."
+        )
+    if not settings.yoti_private_key_path:
+        raise RuntimeError(
+            "YOTI_PRIVATE_KEY_PATH is required when ROB_AGE_VERIFICATION_ENABLED=true on the webhook backend."
+        )
+    _validate_yoti_private_key_path(settings.yoti_private_key_path)
+
+
 def load_base_settings(env_file: str | Path | None = None) -> BaseSettings:
     _load_env_file(env_file)
     return BaseSettings(
@@ -184,7 +233,7 @@ def load_base_settings(env_file: str | Path | None = None) -> BaseSettings:
 
 def load_webhook_settings(env_file: str | Path | None = None) -> WebhookSettings:
     base = load_base_settings(env_file)
-    return WebhookSettings(
+    settings = WebhookSettings(
         app_env=base.app_env,
         log_level=base.log_level,
         database_url=base.database_url,
@@ -263,6 +312,8 @@ def load_webhook_settings(env_file: str | Path | None = None) -> WebhookSettings
         yoti_cancel_url=_env_str("YOTI_CANCEL_URL") or None,
         rob_public_base_url=base.rob_public_base_url,
     )
+    _validate_webhook_yoti_settings(settings)
+    return settings
 
 
 def load_bot_settings(env_file: str | Path | None = None) -> BotSettings:

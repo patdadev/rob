@@ -6,7 +6,8 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
+from uuid import uuid4
 
 from aiohttp import ClientResponseError, ClientSession, ClientTimeout
 from cryptography.hazmat.primitives import hashes, serialization
@@ -102,6 +103,7 @@ class YotiAgeProvider:
         self.session_ttl_seconds = session_ttl_seconds
         self.timeout_seconds = timeout_seconds
         self._session: ClientSession | None = None
+        self._private_key: rsa.RSAPrivateKey | None = None
 
     @classmethod
     def from_settings(cls, settings: Any) -> YotiAgeProvider:
@@ -128,6 +130,9 @@ class YotiAgeProvider:
             return
         await self._session.close()
         self._session = None
+
+    def validate_startup_configuration(self) -> None:
+        self._validate_configuration()
 
     def build_reference_id(self, *, guild_id: int, discord_user_id: int) -> str:
         return f"rob:{guild_id}:{discord_user_id}"
@@ -223,15 +228,7 @@ class YotiAgeProvider:
 
     def _validate_configuration(self) -> None:
         self._require_sdk_id()
-        if not self.api_key:
-            raise YotiConfigurationError(
-                "YOTI_API_KEY is required for the hosted Yoti age verification API."
-            )
-        if self.private_key_path:
-            if not Path(self.private_key_path).expanduser().exists():
-                raise YotiConfigurationError(
-                    f"Configured YOTI_PRIVATE_KEY_PATH does not exist: {self.private_key_path}"
-                )
+        self._load_private_key()
         self._resolve_callback_url()
         self._resolve_notification_url()
 
@@ -240,6 +237,53 @@ class YotiAgeProvider:
         if not sdk_id:
             raise YotiConfigurationError("YOTI_SDK_ID is not configured.")
         return sdk_id
+
+    def _require_private_key_path(self) -> Path:
+        private_key_path = (self.private_key_path or "").strip()
+        if not private_key_path:
+            raise YotiConfigurationError("YOTI_PRIVATE_KEY_PATH is not configured.")
+        return Path(private_key_path).expanduser()
+
+    def _load_private_key(self) -> rsa.RSAPrivateKey:
+        if self._private_key is not None:
+            return self._private_key
+
+        private_key_path = self._require_private_key_path()
+        try:
+            pem_bytes = private_key_path.read_bytes()
+        except FileNotFoundError as exc:
+            raise YotiConfigurationError(
+                f"Configured YOTI_PRIVATE_KEY_PATH does not exist: {private_key_path}"
+            ) from exc
+        except PermissionError as exc:
+            raise YotiConfigurationError(
+                "Configured YOTI_PRIVATE_KEY_PATH is not readable by the backend "
+                f"process: {private_key_path}"
+            ) from exc
+        except OSError as exc:
+            raise YotiConfigurationError(
+                "Configured YOTI_PRIVATE_KEY_PATH could not be read by the backend "
+                f"process: {private_key_path}"
+            ) from exc
+
+        try:
+            private_key = serialization.load_pem_private_key(
+                pem_bytes,
+                password=None,
+            )
+        except (TypeError, ValueError) as exc:
+            raise YotiConfigurationError(
+                "Configured YOTI_PRIVATE_KEY_PATH is not a valid PEM private key: "
+                f"{private_key_path}"
+            ) from exc
+
+        if not isinstance(private_key, rsa.RSAPrivateKey):
+            raise YotiConfigurationError(
+                f"Configured YOTI_PRIVATE_KEY_PATH is not an RSA private key: {private_key_path}"
+            )
+
+        self._private_key = private_key
+        return private_key
 
     def _resolve_callback_url(self) -> str:
         if self.callback_url:
@@ -266,21 +310,20 @@ class YotiAgeProvider:
         *,
         json_payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "Yoti-Sdk-Id": self._require_sdk_id(),
-        }
-        url = f"{self.api_origin}{path}"
         if self._session is None:
             self._session = ClientSession(
                 timeout=ClientTimeout(total=self.timeout_seconds)
             )
+        request_url, headers, payload_bytes = self._build_request(
+            method,
+            path,
+            json_payload=json_payload,
+        )
         try:
             async with self._session.request(
                 method,
-                url,
-                json=json_payload,
+                request_url,
+                data=payload_bytes,
                 headers=headers,
             ) as response:
                 response.raise_for_status()
@@ -294,6 +337,91 @@ class YotiAgeProvider:
         if not isinstance(data, dict):
             raise YotiProviderError("Yoti returned an unexpected response body.")
         return data
+
+    def _build_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_payload: dict[str, Any] | None = None,
+    ) -> tuple[str, dict[str, str], bytes | None]:
+        if self._auth_mode() == "bearer":
+            api_key = (self.api_key or "").strip()
+            if not api_key:
+                raise YotiConfigurationError("YOTI_API_KEY is not configured.")
+            headers = {
+                "Accept": "application/json",
+                "Authorization": f"Bearer {api_key}",
+                "Yoti-Sdk-Id": self._require_sdk_id(),
+            }
+            payload_bytes = None
+            if json_payload is not None:
+                payload_bytes = json.dumps(
+                    json_payload,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+                headers["Content-Type"] = "application/json"
+            return f"{self.api_origin}{path}", headers, payload_bytes
+
+        return self._build_signed_request(
+            method,
+            path,
+            json_payload=json_payload,
+        )
+
+    def _auth_mode(self) -> str:
+        environment = (self.environment or "").strip().lower()
+        if environment == "sandbox":
+            return "signed"
+        if (self.api_key or "").strip():
+            return "bearer"
+        return "signed"
+
+    def _build_signed_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_payload: dict[str, Any] | None = None,
+    ) -> tuple[str, dict[str, str], bytes | None]:
+        sdk_id = self._require_sdk_id()
+        query = urlencode(
+            (
+                ("sdkId", sdk_id),
+                ("nonce", str(uuid4())),
+                ("timestamp", str(int(datetime.now(timezone.utc).timestamp()))),
+            )
+        )
+        signed_path = f"{path}?{query}"
+        payload_bytes = None
+        request_to_sign = f"{method.upper()}&{signed_path}"
+        if json_payload is not None:
+            payload_bytes = json.dumps(
+                json_payload,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+            request_to_sign = (
+                f"{request_to_sign}&{base64.b64encode(payload_bytes).decode('ascii')}"
+            )
+
+        signature = base64.b64encode(
+            self._load_private_key().sign(
+                request_to_sign.encode("utf-8"),
+                padding.PKCS1v15(),
+                hashes.SHA256(),
+            )
+        ).decode("ascii")
+        headers = {
+            "Accept": "application/json",
+            "X-Yoti-Auth-Digest": signature,
+            "X-Yoti-Auth-Id": sdk_id,
+            "Yoti-Sdk-Id": sdk_id,
+        }
+        if payload_bytes is not None:
+            headers["Content-Type"] = "application/json"
+        return f"{self.api_origin}{signed_path}", headers, payload_bytes
 
     def _map_result_payload(
         self,

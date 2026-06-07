@@ -516,6 +516,8 @@ def create_webhook_app(
 
     app = web.Application()
     yoti_provider = YotiAgeProvider.from_settings(settings)
+    if getattr(settings, "rob_age_verification_enabled", False):
+        yoti_provider.validate_startup_configuration()
     age_repository = AgeVerificationRepository(database)
     age_service = AgeVerificationService(
         age_verifications=age_repository,

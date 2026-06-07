@@ -41,6 +41,17 @@ The webhook server is the HTTP-only side of Rob.
 
 `DISCORD_TOKEN` is not required here.
 
+When Yoti age verification is enabled on the webhook backend, also set:
+
+- `ROB_AGE_VERIFICATION_ENABLED=true`
+- `ROB_BACKEND_SECRET`
+- `YOTI_ENVIRONMENT=sandbox`
+- `YOTI_SDK_ID`
+- `YOTI_PRIVATE_KEY_PATH`
+- `YOTI_PUBLIC_BASE_URL` or explicit `YOTI_CALLBACK_URL` plus `YOTI_NOTIFICATION_URL`
+
+Yoti sandbox uses Client SDK ID + `.pem` private key. Store the `.pem` only on the backend server and never commit it.
+
 ## Bot notification checklist
 
 For sends to appear in Discord without bot-side polling, the webhook server needs:
