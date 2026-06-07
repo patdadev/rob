@@ -16,13 +16,15 @@ Run in order:
 6. `007_send_update_requests.sql`
 7. `008_dm_preferences.sql`
 8. `009_terms_acceptance.sql`
-9. `../grants/dev_rehearsal_prod_roles.sql`
+9. `010_age_verification.sql`
+10. `../grants/dev_rehearsal_prod_roles.sql`
 
 `003_achievements.sql` is retired. `008_dm_preferences.sql` drops the
 achievements tables/sequences if they still exist, removes the prior
 `003_achievements` row from `db_build_version`, and installs the DM
 notification preference columns and `domme_onboarding_state` table.
 `009_terms_acceptance.sql` adds the test-guild Terms acceptance table.
+`010_age_verification.sql` adds the test-guild-only Yoti age verification table.
 
 Important:
 

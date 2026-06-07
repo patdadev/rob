@@ -17,6 +17,7 @@ REQUIRED_DB_BUILD_VERSIONS = (
     "007_send_update_requests",
     "008_dm_preferences",
     "009_terms_acceptance",
+    "010_age_verification",
 )
 
 REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {
@@ -238,6 +239,25 @@ REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {
         "accepted_at",
         "declined_at",
     },
+    "age_verifications": {
+        "id",
+        "guild_id",
+        "discord_user_id",
+        "status",
+        "provider",
+        "age_threshold",
+        "yoti_session_id",
+        "yoti_reference_id",
+        "yoti_method",
+        "yoti_result_summary",
+        "manual_review_reason",
+        "reviewed_by_user_id",
+        "verified_at",
+        "expires_at",
+        "revoked_at",
+        "created_at",
+        "updated_at",
+    },
 }
 
 WEBHOOK_REQUIRED_TABLES = {
@@ -250,6 +270,7 @@ WEBHOOK_REQUIRED_TABLES = {
     "sends",
     "vib_settings",
     "vib_leaderboard",
+    "age_verifications",
 }
 
 BOT_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
@@ -269,6 +290,7 @@ BOT_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "send_change_requests": ("SELECT", "INSERT", "UPDATE", "DELETE"),
     "domme_onboarding_state": ("SELECT", "INSERT", "UPDATE", "DELETE"),
     "user_terms_acceptance": ("SELECT", "INSERT", "UPDATE", "DELETE"),
+    "age_verifications": ("SELECT", "INSERT", "UPDATE", "DELETE"),
 }
 
 WEBHOOK_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
@@ -281,6 +303,7 @@ WEBHOOK_TABLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "sends": ("SELECT", "INSERT", "UPDATE"),
     "vib_settings": ("SELECT",),
     "vib_leaderboard": ("SELECT",),
+    "age_verifications": ("SELECT", "INSERT", "UPDATE"),
 }
 
 BOT_RUNTIME_SEQUENCES = (
@@ -295,11 +318,13 @@ BOT_RUNTIME_SEQUENCES = (
     "public.count_blocks_id_seq",
     "public.send_change_requests_id_seq",
     "public.domme_onboarding_state_id_seq",
+    "public.age_verifications_id_seq",
 )
 
 WEBHOOK_RUNTIME_SEQUENCES = (
     "public.bot_users_id_seq",
     "public.sends_id_seq",
+    "public.age_verifications_id_seq",
 )
 
 
@@ -482,6 +507,12 @@ async def main() -> None:
                     raise RuntimeError(
                         "Terms acceptance schema is missing.\n"
                         "Run scripts/db/build/009_terms_acceptance.sql manually as "
+                        "doadmin, then run the relevant grants file."
+                    )
+                if "010_age_verification" in missing_versions:
+                    raise RuntimeError(
+                        "Age verification schema is missing.\n"
+                        "Run scripts/db/build/010_age_verification.sql manually as "
                         "doadmin, then run the relevant grants file."
                     )
                 if len(missing_versions) == 1:

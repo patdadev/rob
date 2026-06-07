@@ -172,6 +172,7 @@ def test_db_build_scripts_exist_under_scripts_db_build():
     assert (build_dir / "007_send_update_requests.sql").exists()
     assert (build_dir / "008_dm_preferences.sql").exists()
     assert (build_dir / "009_terms_acceptance.sql").exists()
+    assert (build_dir / "010_age_verification.sql").exists()
     assert (build_dir / "003_runtime_grants_template.sql").exists()
     assert (build_dir / "README.md").exists()
     grants_dir = REPO_ROOT / "scripts" / "db" / "grants"
@@ -207,6 +208,9 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     terms_acceptance_schema = (
         REPO_ROOT / "scripts" / "db" / "build" / "009_terms_acceptance.sql"
     ).read_text(encoding="utf-8")
+    age_verification_schema = (
+        REPO_ROOT / "scripts" / "db" / "build" / "010_age_verification.sql"
+    ).read_text(encoding="utf-8")
 
     assert "CREATE TABLE IF NOT EXISTS db_build_version" in core_schema
     assert "CREATE TABLE IF NOT EXISTS bot_users" in core_schema
@@ -240,6 +244,10 @@ def test_db_build_scripts_contain_required_schema_and_index_statements():
     assert "terms_version" in terms_acceptance_schema
     assert "accepted_at" in terms_acceptance_schema
     assert "'009_terms_acceptance'" in terms_acceptance_schema
+    assert "CREATE TABLE IF NOT EXISTS age_verifications" in age_verification_schema
+    assert "reviewed_by_user_id" in age_verification_schema
+    assert "idx_age_verifications_yoti_session_id" in age_verification_schema
+    assert "'010_age_verification'" in age_verification_schema
 
 
 def test_deploy_scripts_do_not_run_schema_builder():
@@ -280,6 +288,7 @@ def test_prod_webhook_grants_are_runtime_only_and_not_schema_changing():
     assert "user_achievements" not in grants
     assert "achievement_events" not in grants
     assert "sub_send_names" in grants
+    assert "age_verifications" in grants
 
 
 def test_rehearsal_webhook_grants_do_not_reference_retired_achievement_tables():
@@ -288,6 +297,7 @@ def test_rehearsal_webhook_grants_do_not_reference_retired_achievement_tables():
     ).read_text(encoding="utf-8")
     assert "user_achievements" not in grants
     assert "achievement_events" not in grants
+    assert "age_verifications" in grants
 
 
 def test_webhook_supports_new_and_compatibility_routes():
@@ -314,6 +324,10 @@ def test_webhook_supports_new_and_compatibility_routes():
     }
     assert "/webhook/{creator_id}/{secret}" in route_paths
     assert "/throne/webhook/{creator_id}/{secret}" in route_paths
+    assert "/age-verification/start" in route_paths
+    assert "/age-verification/status" in route_paths
+    assert "/yoti/notification" in route_paths
+    assert "/yoti/callback" in route_paths
 
 
 def test_importer_maps_dommes_subs_sends_count_and_inactivity(tmp_path: Path):

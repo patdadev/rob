@@ -9,6 +9,7 @@ from discord.ext import commands
 from rob.config.settings import BotSettings
 from rob.database.connection import Database
 from rob.database.repositories import (
+    AgeVerificationRepository,
     BlacklistRepository,
     BotSettingsRepository,
     CountingRepository,
@@ -20,6 +21,7 @@ from rob.database.repositories import (
     TermsRepository,
     VibSettingsRepository,
 )
+from rob.discord.cogs.age_verification import AgeVerificationCog
 from rob.database.repositories.domme_onboarding import DommeOnboardingRepository
 from rob.discord.cogs.admin_tools import AdminToolsCog
 from rob.discord.cogs.activity_tracker import ActivityTrackerCog
@@ -34,6 +36,8 @@ from rob.discord.cogs.settings import SettingsCog
 from rob.discord.cogs.terms import TermsCog
 from rob.discord.cogs.warn_relay import WarnRelayCog
 from rob.services.counting_service import CountingService
+from rob.services.age_verification_backend_client import AgeVerificationBackendClient
+from rob.services.age_verification_service import AgeVerificationService
 from rob.services.bot_ops_server import BotOpsServer
 from rob.services.dm_onboarding_service import DMOnboardingService
 from rob.services.inactivity_service import InactivityService
@@ -86,6 +90,7 @@ class RobBot(commands.Bot):
         self.send_change_requests_repo = SendChangeRequestsRepository(self.database)
         self.domme_onboarding_repo = DommeOnboardingRepository(self.database)
         self.terms_repo = TermsRepository(self.database)
+        self.age_verifications_repo = AgeVerificationRepository(self.database)
 
         self.throne_service = ThroneService()
         self.maintenance_service = MaintenanceService(self.bot_settings_repo)
@@ -143,6 +148,16 @@ class RobBot(commands.Bot):
             privacy_url=self.settings.rob_privacy_url,
             owner_user_id=self.settings.rob_terms_owner_user_id,
         )
+        self.age_verification_service = AgeVerificationService(
+            age_verifications=self.age_verifications_repo,
+            enabled=self.settings.rob_age_verification_enabled,
+            test_only=self.settings.rob_age_verification_test_only,
+            age_threshold=18,
+        )
+        self.age_verification_backend_client = AgeVerificationBackendClient(
+            base_url=self.settings.rob_backend_url,
+            secret=self.settings.rob_backend_secret,
+        )
         self.send_service = SendService(
             sends=self.sends_repo,
             subs=self.subs_repo,
@@ -187,6 +202,7 @@ class RobBot(commands.Bot):
         await self.add_cog(RegistrationCog(self))
         await self.add_cog(DMOnboardingCog(self))
         await self.add_cog(TermsCog(self))
+        await self.add_cog(AgeVerificationCog(self))
         await self.add_cog(SendsCog(self))
         await self.add_cog(LeaderboardsCog(self))
         await self.add_cog(ActivityTrackerCog(self))

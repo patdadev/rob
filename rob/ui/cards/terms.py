@@ -7,9 +7,12 @@ import discord
 
 from rob.ui.render import RenderedMessage
 from rob.ui.theme import COLOR_DANGER, COLOR_INFO, COLOR_SUCCESS
-from rob.ui.emojis import ROBNO as ROBNO, ROBNO_EMOJI, ROBYES as ROBYES, ROBYES_EMOJI
+from rob.ui.emojis import ROBNO as _ROBNO, ROBNO_EMOJI, ROBYES as _ROBYES, ROBYES_EMOJI
 
 log = logging.getLogger(__name__)
+
+ROBNO = _ROBNO
+ROBYES = _ROBYES
 
 TERMS_PREFIX = "rob:terms:"
 ID_TERMS_ACCEPT = f"{TERMS_PREFIX}accept"

@@ -19,10 +19,13 @@ Current manual DB build order before applying grants:
 
 1. `scripts/db/build/001_core_schema.sql`
 2. `scripts/db/build/002_indexes.sql`
-3. `scripts/db/build/003_achievements.sql`
-4. `scripts/db/build/004_sub_send_names.sql`
-5. `scripts/db/build/005_count_recovery.sql`
-6. `scripts/db/build/006_send_change_requests.sql`
+3. `scripts/db/build/004_sub_send_names.sql`
+4. `scripts/db/build/005_count_recovery.sql`
+5. `scripts/db/build/006_send_change_requests.sql`
+6. `scripts/db/build/007_send_update_requests.sql`
+7. `scripts/db/build/008_dm_preferences.sql`
+8. `scripts/db/build/009_terms_acceptance.sql`
+9. `scripts/db/build/010_age_verification.sql`
 
 For one-shot production bootstrap, you can instead run:
 

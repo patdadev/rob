@@ -88,6 +88,27 @@ class UserTermsAcceptance:
 
 
 @dataclass(frozen=True)
+class AgeVerificationRecord:
+    id: int
+    guild_id: int
+    discord_user_id: int
+    status: str
+    provider: str
+    age_threshold: int
+    yoti_session_id: str | None
+    yoti_reference_id: str | None
+    yoti_method: str | None
+    yoti_result_summary: str | None
+    manual_review_reason: str | None
+    reviewed_by_user_id: int | None
+    verified_at: datetime | None
+    expires_at: datetime | None
+    revoked_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
 class Sub:
     id: int
     guild_id: int

@@ -1,24 +1,35 @@
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 from typing import Any
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from aiohttp import web
 
 from rob.config.guilds import is_test_guild
 from rob.config.settings import WebhookSettings
+from rob.database.repositories.age_verification import STATUS_NOT_STARTED, AgeVerificationRepository
 from rob.database.connection import Database
 from rob.database.repositories.bot_state import BotStateRepository
 from rob.database.repositories.dommes import DommesRepository
 from rob.database.repositories.sends import SendsRepository
+from rob.services.age_verification_service import (
+    AgeVerificationConfigError,
+    AgeVerificationError,
+    AgeVerificationService,
+    AgeVerificationUnavailableError,
+)
 from rob.services.maintenance_service import MaintenanceService
 from rob.services.bot_notify_client import (
+    notify_bot_age_verification_sync,
     notify_bot_onboarding_webhook_verified,
     notify_bot_send,
 )
 from rob.services.send_service import SendService
 from rob.services.throne_service import ThroneService
+from rob.services.yoti_age_provider import YotiAgeProvider
 from rob.throne.payloads import is_explicit_test_webhook_payload, is_known_test_sender, is_supported_event_type, parse_throne_send_payload
 from rob.throne.security import build_signed_message, secret_matches, validate_timestamp_header, verify_ed25519_signature
 
@@ -27,6 +38,243 @@ log = logging.getLogger(__name__)
 
 async def handle_health(request: web.Request) -> web.Response:
     return web.Response(text="OK")
+
+
+def _serialize_datetime(value) -> str | None:
+    if value is None:
+        return None
+    return value.isoformat()
+
+
+def _age_status_payload(
+    *,
+    service: AgeVerificationService,
+    guild_id: int,
+    discord_user_id: int,
+    record,
+    verification_url: str | None = None,
+) -> dict[str, Any]:
+    status = record.status if record is not None else STATUS_NOT_STARTED
+    expires_at = record.expires_at if record is not None else None
+    return {
+        "status": status,
+        "guild_id": guild_id,
+        "discord_user_id": discord_user_id,
+        "provider": record.provider if record is not None else "yoti",
+        "age_threshold": record.age_threshold if record is not None else service.age_threshold,
+        "verification_url": verification_url,
+        "yoti_session_id": record.yoti_session_id if record is not None else None,
+        "yoti_reference_id": record.yoti_reference_id if record is not None else None,
+        "yoti_method": record.yoti_method if record is not None else None,
+        "yoti_result_summary": record.yoti_result_summary if record is not None else None,
+        "manual_review_reason": record.manual_review_reason if record is not None else None,
+        "verified_at": _serialize_datetime(record.verified_at) if record is not None else None,
+        "expires_at": _serialize_datetime(expires_at),
+        "revoked_at": _serialize_datetime(record.revoked_at) if record is not None else None,
+        "created_at": _serialize_datetime(record.created_at) if record is not None else None,
+        "updated_at": _serialize_datetime(record.updated_at) if record is not None else None,
+    }
+
+
+def _backend_secret_error() -> web.Response:
+    return web.json_response(
+        {"error": "backend_secret_not_configured"},
+        status=503,
+    )
+
+
+def _is_authorized_backend_request(request: web.Request) -> bool:
+    settings: WebhookSettings = request.app["settings"]
+    configured_secret = getattr(settings, "rob_backend_secret", None)
+    if not configured_secret:
+        return False
+    provided = request.headers.get("Authorization", "")
+    expected = f"Bearer {configured_secret}"
+    return hmac.compare_digest(provided, expected)
+
+
+def _redirect_with_query(url: str, **params: str | None) -> str:
+    parts = urlsplit(url)
+    query: dict[str, str] = {}
+    if parts.query:
+        from urllib.parse import parse_qsl
+
+        query.update(dict(parse_qsl(parts.query, keep_blank_values=True)))
+    query.update(
+        dict((key, value) for key, value in (params or {}).items() if value is not None)
+    )
+    return urlunsplit(
+        (
+            parts.scheme,
+            parts.netloc,
+            parts.path,
+            urlencode(query),
+            parts.fragment,
+        )
+    )
+
+
+async def handle_age_verification_start(request: web.Request) -> web.Response:
+    settings: WebhookSettings = request.app["settings"]
+    if not getattr(settings, "rob_backend_secret", None):
+        return _backend_secret_error()
+    if not _is_authorized_backend_request(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid_payload"}, status=400)
+    try:
+        guild_id = int(payload.get("guild_id"))
+        discord_user_id = int(payload.get("discord_user_id"))
+    except (AttributeError, TypeError, ValueError):
+        return web.json_response({"error": "invalid_payload"}, status=400)
+
+    service: AgeVerificationService = request.app["age_verification_service"]
+    repository: AgeVerificationRepository = request.app["age_verification_repository"]
+    try:
+        start = await service.start_verification(
+            guild_id=guild_id,
+            discord_user_id=discord_user_id,
+        )
+    except AgeVerificationUnavailableError as exc:
+        return web.json_response({"error": str(exc)}, status=403)
+    except AgeVerificationConfigError as exc:
+        return web.json_response({"error": str(exc)}, status=503)
+    except AgeVerificationError as exc:
+        return web.json_response({"error": str(exc)}, status=502)
+
+    record = await repository.get(
+        guild_id=guild_id,
+        discord_user_id=discord_user_id,
+    )
+    status_payload = _age_status_payload(
+        service=service,
+        guild_id=guild_id,
+        discord_user_id=discord_user_id,
+        record=record,
+        verification_url=start.verification_url,
+    )
+    status_payload["status"] = start.status
+    status_payload["expires_at"] = _serialize_datetime(start.expires_at)
+    status_payload["yoti_session_id"] = start.session_id
+    return web.json_response(status_payload)
+
+
+async def handle_age_verification_status(request: web.Request) -> web.Response:
+    settings: WebhookSettings = request.app["settings"]
+    if not getattr(settings, "rob_backend_secret", None):
+        return _backend_secret_error()
+    if not _is_authorized_backend_request(request):
+        return web.json_response({"error": "forbidden"}, status=403)
+
+    try:
+        guild_id = int(request.query["guild_id"])
+        discord_user_id = int(request.query["discord_user_id"])
+    except (KeyError, TypeError, ValueError):
+        return web.json_response({"error": "invalid_query"}, status=400)
+
+    service: AgeVerificationService = request.app["age_verification_service"]
+    try:
+        service.ensure_enabled_for(guild_id)
+    except AgeVerificationUnavailableError as exc:
+        return web.json_response({"error": str(exc)}, status=403)
+
+    record = await service.get_status_record(
+        guild_id=guild_id,
+        discord_user_id=discord_user_id,
+    )
+    verification_url: str | None = None
+    provider = getattr(service, "provider", None)
+    if (
+        record is not None
+        and record.status == "pending"
+        and record.yoti_session_id
+        and provider is not None
+    ):
+        verification_url = provider.build_verification_url(record.yoti_session_id)
+    return web.json_response(
+        _age_status_payload(
+            service=service,
+            guild_id=guild_id,
+            discord_user_id=discord_user_id,
+            record=record,
+            verification_url=verification_url,
+        )
+    )
+
+
+async def handle_yoti_notification(request: web.Request) -> web.Response:
+    service: AgeVerificationService = request.app["age_verification_service"]
+    settings: WebhookSettings = request.app["settings"]
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"ok": False, "error": "invalid_json"}, status=400)
+    if not isinstance(payload, dict):
+        return web.json_response({"ok": False, "error": "invalid_json"}, status=400)
+
+    try:
+        record = await service.handle_notification(payload)
+    except AgeVerificationConfigError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=503)
+    except AgeVerificationError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+    if record is not None:
+        await notify_bot_age_verification_sync(
+            notify_base_url=settings.rob_bot_notify_url,
+            secret=settings.rob_ops_secret,
+            guild_id=record.guild_id,
+            discord_user_id=record.discord_user_id,
+        )
+        log.info(
+            "Processed Yoti notification session_id=%s guild_id=%s discord_user_id=%s status=%s",
+            record.yoti_session_id,
+            record.guild_id,
+            record.discord_user_id,
+            record.status,
+        )
+        return web.json_response({"ok": True, "status": record.status})
+
+    return web.json_response({"ok": True, "ignored": True})
+
+
+async def handle_yoti_callback(request: web.Request) -> web.Response:
+    settings: WebhookSettings = request.app["settings"]
+    service: AgeVerificationService = request.app["age_verification_service"]
+    session_id = str(request.query.get("sessionId") or "").strip()
+    status_text = None
+    if session_id:
+        try:
+            record = await service.refresh_session(session_id=session_id)
+        except AgeVerificationError:
+            record = None
+        if record is not None:
+            status_text = record.status
+            await notify_bot_age_verification_sync(
+                notify_base_url=settings.rob_bot_notify_url,
+                secret=settings.rob_ops_secret,
+                guild_id=record.guild_id,
+                discord_user_id=record.discord_user_id,
+            )
+    success_url = getattr(settings, "yoti_success_url", None)
+    if success_url:
+        raise web.HTTPFound(
+            _redirect_with_query(
+                success_url,
+                sessionId=session_id or None,
+                status=status_text,
+            )
+        )
+    return web.Response(
+        text=(
+            "<html><body><p>Thanks - your age verification has been submitted. "
+            "You can return to Discord and run /age-status.</p></body></html>"
+        ),
+        content_type="text/html",
+    )
 
 
 async def handle_throne_webhook(request: web.Request) -> web.Response:
@@ -267,16 +515,36 @@ def create_webhook_app(
     from rob.database.repositories.subs import SubsRepository
 
     app = web.Application()
+    yoti_provider = YotiAgeProvider.from_settings(settings)
+    age_repository = AgeVerificationRepository(database)
+    age_service = AgeVerificationService(
+        age_verifications=age_repository,
+        enabled=getattr(settings, "rob_age_verification_enabled", False),
+        test_only=getattr(settings, "rob_age_verification_test_only", True),
+        age_threshold=getattr(settings, "yoti_age_threshold", 18),
+        provider=yoti_provider,
+    )
     app["settings"] = settings
     app["database"] = database
     app["throne_service"] = ThroneService()
     app["subs_repository"] = SubsRepository(database)
+    app["age_verification_repository"] = age_repository
+    app["age_verification_service"] = age_service
+    app["yoti_age_provider"] = yoti_provider
     app.router.add_get("/health", handle_health)
+    app.router.add_post("/age-verification/start", handle_age_verification_start)
+    app.router.add_get("/age-verification/status", handle_age_verification_status)
+    app.router.add_post("/yoti/notification", handle_yoti_notification)
+    app.router.add_get("/yoti/callback", handle_yoti_callback)
     app.router.add_post("/throne/webhook/{creator_id}/{secret}", handle_throne_webhook)
     app.router.add_post("/webhook/{creator_id}/{secret}", handle_throne_webhook)
 
     async def close_throne_service(_app: web.Application) -> None:
         await _app["throne_service"].close()
 
+    async def close_yoti_provider(_app: web.Application) -> None:
+        await _app["yoti_age_provider"].close()
+
     app.on_cleanup.append(close_throne_service)
+    app.on_cleanup.append(close_yoti_provider)
     return app

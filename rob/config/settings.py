@@ -17,6 +17,10 @@ class BaseSettings:
     rob_ops_port: int
     rob_ops_secret: str | None
     rob_bot_notify_url: str | None
+    rob_backend_secret: str | None
+    rob_age_verification_enabled: bool
+    rob_age_verification_test_only: bool
+    rob_age_verified_role_id: int | None
     throne_parse_test_sends_as_real_sends: bool
     throne_test_gifter_usernames: tuple[str, ...]
     throne_test_send_leaderboard_owner_user_id: int | None
@@ -50,12 +54,24 @@ class WebhookSettings(BaseSettings):
     throne_webhook_signature_header: str
     throne_webhook_signed_message_format: str
     throne_webhook_max_timestamp_skew_seconds: int
+    yoti_environment: str
+    yoti_sdk_id: str | None
+    yoti_api_key: str | None
+    yoti_private_key_path: str | None
+    yoti_age_threshold: int
+    yoti_age_estimation_threshold: int
+    yoti_public_base_url: str | None
+    yoti_callback_url: str | None
+    yoti_notification_url: str | None
+    yoti_success_url: str | None
+    yoti_cancel_url: str | None
 
 
 @dataclass(frozen=True)
 class BotSettings(BaseSettings):
     discord_token: str
     bot_name: str
+    rob_backend_url: str | None
 
 
 def _load_env_file(env_file: str | Path | None) -> None:
@@ -132,6 +148,10 @@ def load_base_settings(env_file: str | Path | None = None) -> BaseSettings:
         rob_ops_port=_env_int("ROB_OPS_PORT", 8811, minimum=1),
         rob_ops_secret=_env_str("ROB_OPS_SECRET") or None,
         rob_bot_notify_url=_env_str("ROB_BOT_NOTIFY_URL") or None,
+        rob_backend_secret=_env_str("ROB_BACKEND_SECRET") or None,
+        rob_age_verification_enabled=_env_bool("ROB_AGE_VERIFICATION_ENABLED", False),
+        rob_age_verification_test_only=_env_bool("ROB_AGE_VERIFICATION_TEST_ONLY", True),
+        rob_age_verified_role_id=_env_optional_int("ROB_AGE_VERIFIED_ROLE_ID"),
         throne_parse_test_sends_as_real_sends=_env_bool(
             "THRONE_PARSE_TEST_SENDS_AS_REAL_SENDS",
             False,
@@ -172,6 +192,10 @@ def load_webhook_settings(env_file: str | Path | None = None) -> WebhookSettings
         rob_ops_port=base.rob_ops_port,
         rob_ops_secret=base.rob_ops_secret,
         rob_bot_notify_url=base.rob_bot_notify_url,
+        rob_backend_secret=base.rob_backend_secret,
+        rob_age_verification_enabled=base.rob_age_verification_enabled,
+        rob_age_verification_test_only=base.rob_age_verification_test_only,
+        rob_age_verified_role_id=base.rob_age_verified_role_id,
         throne_parse_test_sends_as_real_sends=base.throne_parse_test_sends_as_real_sends,
         throne_test_gifter_usernames=base.throne_test_gifter_usernames,
         throne_test_send_leaderboard_owner_user_id=base.throne_test_send_leaderboard_owner_user_id,
@@ -222,6 +246,21 @@ def load_webhook_settings(env_file: str | Path | None = None) -> WebhookSettings
             300,
             minimum=0,
         ),
+        yoti_environment=_env_str("YOTI_ENVIRONMENT", "sandbox"),
+        yoti_sdk_id=_env_str("YOTI_SDK_ID") or None,
+        yoti_api_key=_env_str("YOTI_API_KEY") or None,
+        yoti_private_key_path=_env_str("YOTI_PRIVATE_KEY_PATH") or None,
+        yoti_age_threshold=_env_int("YOTI_AGE_THRESHOLD", 18, minimum=1),
+        yoti_age_estimation_threshold=_env_int(
+            "YOTI_AGE_ESTIMATION_THRESHOLD",
+            21,
+            minimum=1,
+        ),
+        yoti_public_base_url=_env_str("YOTI_PUBLIC_BASE_URL") or None,
+        yoti_callback_url=_env_str("YOTI_CALLBACK_URL") or None,
+        yoti_notification_url=_env_str("YOTI_NOTIFICATION_URL") or None,
+        yoti_success_url=_env_str("YOTI_SUCCESS_URL") or None,
+        yoti_cancel_url=_env_str("YOTI_CANCEL_URL") or None,
         rob_public_base_url=base.rob_public_base_url,
     )
 
@@ -236,6 +275,10 @@ def load_bot_settings(env_file: str | Path | None = None) -> BotSettings:
         rob_ops_port=base.rob_ops_port,
         rob_ops_secret=base.rob_ops_secret,
         rob_bot_notify_url=base.rob_bot_notify_url,
+        rob_backend_secret=base.rob_backend_secret,
+        rob_age_verification_enabled=base.rob_age_verification_enabled,
+        rob_age_verification_test_only=base.rob_age_verification_test_only,
+        rob_age_verified_role_id=base.rob_age_verified_role_id,
         throne_parse_test_sends_as_real_sends=base.throne_parse_test_sends_as_real_sends,
         throne_test_gifter_usernames=base.throne_test_gifter_usernames,
         throne_test_send_leaderboard_owner_user_id=base.throne_test_send_leaderboard_owner_user_id,
@@ -257,6 +300,7 @@ def load_bot_settings(env_file: str | Path | None = None) -> BotSettings:
         rob_terms_owner_user_id=base.rob_terms_owner_user_id,
         discord_token=_env_str("DISCORD_TOKEN", required=True),
         bot_name=_env_str("BOT_NAME", "Rob"),
+        rob_backend_url=_env_str("ROB_BACKEND_URL") or None,
     )
 
 

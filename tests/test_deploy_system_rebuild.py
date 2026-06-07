@@ -114,5 +114,6 @@ def test_prod_installers_and_manual_setup_target_real_prod():
     assert '\\ir ../build/007_send_update_requests.sql' in setup_sql
     assert '\\ir ../build/008_dm_preferences.sql' in setup_sql
     assert '\\ir ../build/009_terms_acceptance.sql' in setup_sql
+    assert '\\ir ../build/010_age_verification.sql' in setup_sql
     assert '\\ir ../grants/prod_rob_bot.sql' in setup_sql
     assert '\\ir ../grants/prod_rob_webhook.sql' in setup_sql

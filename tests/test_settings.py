@@ -16,6 +16,10 @@ def test_load_base_settings_only_requires_database(monkeypatch):
     assert settings.rob_ops_host == "127.0.0.1"
     assert settings.rob_ops_port == 8811
     assert settings.rob_bot_notify_url is None
+    assert settings.rob_backend_secret is None
+    assert settings.rob_age_verification_enabled is False
+    assert settings.rob_age_verification_test_only is True
+    assert settings.rob_age_verified_role_id is None
     assert settings.inactivity_enabled_default is False
     assert settings.inactivity_loop_minutes == 60
     assert settings.rob_public_base_url == "https://leaderboard.robthebot.com"
@@ -47,6 +51,9 @@ def test_load_webhook_settings_does_not_require_discord_token(monkeypatch):
     assert settings.throne_webhook_require_signature is True
     assert settings.throne_test_gifter_usernames == ("marie_123",)
     assert settings.leaderboard_limit == 10
+    assert settings.yoti_environment == "sandbox"
+    assert settings.yoti_sdk_id is None
+    assert settings.yoti_api_key is None
 
 
 
@@ -98,6 +105,63 @@ def test_load_base_settings_supports_terms_env(monkeypatch):
     assert settings.rob_terms_url == "https://example.com/terms"
     assert settings.rob_privacy_url == "https://example.com/privacy"
     assert settings.rob_terms_owner_user_id == 77
+
+
+def test_load_base_settings_supports_age_verification_env(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setenv("ROB_BACKEND_SECRET", "backend-secret")
+    monkeypatch.setenv("ROB_AGE_VERIFICATION_ENABLED", "true")
+    monkeypatch.setenv("ROB_AGE_VERIFICATION_TEST_ONLY", "false")
+    monkeypatch.setenv("ROB_AGE_VERIFIED_ROLE_ID", "99")
+
+    settings = load_base_settings()
+
+    assert settings.rob_backend_secret == "backend-secret"
+    assert settings.rob_age_verification_enabled is True
+    assert settings.rob_age_verification_test_only is False
+    assert settings.rob_age_verified_role_id == 99
+
+
+def test_load_bot_settings_supports_backend_url(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setenv("DISCORD_TOKEN", "discord-token")
+    monkeypatch.setenv("ROB_BACKEND_URL", "https://age.robthebot.com")
+
+    settings = load_bot_settings()
+
+    assert settings.rob_backend_url == "https://age.robthebot.com"
+
+
+def test_load_webhook_settings_supports_yoti_env(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setenv("YOTI_ENVIRONMENT", "production")
+    monkeypatch.setenv("YOTI_SDK_ID", "sdk-123")
+    monkeypatch.setenv("YOTI_API_KEY", "api-key")
+    monkeypatch.setenv("YOTI_PRIVATE_KEY_PATH", "/etc/rob/yoti.pem")
+    monkeypatch.setenv("YOTI_AGE_THRESHOLD", "18")
+    monkeypatch.setenv("YOTI_AGE_ESTIMATION_THRESHOLD", "21")
+    monkeypatch.setenv("YOTI_PUBLIC_BASE_URL", "https://age.robthebot.com")
+    monkeypatch.setenv("YOTI_CALLBACK_URL", "https://age.robthebot.com/yoti/callback")
+    monkeypatch.setenv(
+        "YOTI_NOTIFICATION_URL",
+        "https://age.robthebot.com/yoti/notification",
+    )
+    monkeypatch.setenv("YOTI_SUCCESS_URL", "https://robthebot.com/age-success")
+    monkeypatch.setenv("YOTI_CANCEL_URL", "https://robthebot.com/age-cancelled")
+
+    settings = load_webhook_settings()
+
+    assert settings.yoti_environment == "production"
+    assert settings.yoti_sdk_id == "sdk-123"
+    assert settings.yoti_api_key == "api-key"
+    assert settings.yoti_private_key_path == "/etc/rob/yoti.pem"
+    assert settings.yoti_age_threshold == 18
+    assert settings.yoti_age_estimation_threshold == 21
+    assert settings.yoti_public_base_url == "https://age.robthebot.com"
+    assert settings.yoti_callback_url == "https://age.robthebot.com/yoti/callback"
+    assert settings.yoti_notification_url == "https://age.robthebot.com/yoti/notification"
+    assert settings.yoti_success_url == "https://robthebot.com/age-success"
+    assert settings.yoti_cancel_url == "https://robthebot.com/age-cancelled"
 
 
 def test_load_base_settings_skips_dotenv_when_disabled(monkeypatch):

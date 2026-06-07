@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 from rob.services.bot_ops_server import BotOpsServer
@@ -678,3 +678,56 @@ def test_bot_ops_maintenance_accepts_form_payload():
     assert maintenance_service.reason == "Deploying update"
     assert "Enabled: yes" in response.text
     assert "Reason: Deploying update" in response.text
+
+
+def test_bot_ops_age_verification_sync_routes_to_cog():
+    cog = SimpleNamespace(
+        on_age_verification_status_changed=AsyncMock(
+            return_value=SimpleNamespace(
+                status="verified_18_plus",
+                action="grant",
+                changed=True,
+                error=None,
+            )
+        )
+    )
+    bot = SimpleNamespace(
+        get_cog=lambda name: cog if name == "AgeVerificationCog" else None,
+        user=SimpleNamespace(id=123),
+    )
+    server = BotOpsServer(bot=bot, host="127.0.0.1", port=8811, secret="shared")
+    request = _FakeRequest(
+        payload={"guild_id": 99, "discord_user_id": 555},
+        headers={"X-Rob-Ops-Secret": "shared"},
+    )
+
+    response = asyncio.run(server._handle_age_verification_sync(request))
+    payload = json.loads(response.text)
+
+    assert response.status == 200
+    assert payload["ok"] is True
+    assert payload["status"] == "verified_18_plus"
+    assert payload["action"] == "grant"
+    assert payload["changed"] is True
+    cog.on_age_verification_status_changed.assert_awaited_once_with(
+        guild_id=99,
+        discord_user_id=555,
+    )
+
+
+def test_bot_ops_age_verification_sync_rejects_bad_payload():
+    bot = SimpleNamespace(
+        get_cog=lambda _name: None,
+        user=SimpleNamespace(id=123),
+    )
+    server = BotOpsServer(bot=bot, host="127.0.0.1", port=8811, secret="shared")
+    request = _FakeRequest(
+        payload={"guild_id": "x"},
+        headers={"X-Rob-Ops-Secret": "shared"},
+    )
+
+    response = asyncio.run(server._handle_age_verification_sync(request))
+    payload = json.loads(response.text)
+
+    assert response.status == 400
+    assert payload["error"] == "invalid_payload"

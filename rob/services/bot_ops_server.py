@@ -191,6 +191,10 @@ class BotOpsServer:
             "/onboarding/webhook_verified",
             self._handle_onboarding_webhook_verified,
         )
+        app.router.add_post(
+            "/age-verification/sync",
+            self._handle_age_verification_sync,
+        )
 
         self._runner = web.AppRunner(app, access_log=None)
         await self._runner.setup()
@@ -493,6 +497,55 @@ class BotOpsServer:
                 "advanced": bool(advanced),
                 "guild_id": guild_id,
                 "discord_user_id": discord_user_id,
+            }
+        )
+
+    async def _handle_age_verification_sync(
+        self,
+        request: web.Request,
+    ) -> web.Response:
+        if not self._is_authorized(request):
+            return web.json_response({"error": "forbidden"}, status=403)
+
+        payload = await self._json_payload(request)
+        try:
+            guild_id = int(payload.get("guild_id"))
+            discord_user_id = int(payload.get("discord_user_id"))
+        except (TypeError, ValueError):
+            return web.json_response({"error": "invalid_payload"}, status=400)
+
+        cog = self.bot.get_cog("AgeVerificationCog") if hasattr(self.bot, "get_cog") else None
+        if cog is None:
+            return web.json_response(
+                {"error": "age_verification_cog_unavailable"},
+                status=500,
+            )
+
+        try:
+            result = await cog.on_age_verification_status_changed(
+                guild_id=guild_id,
+                discord_user_id=discord_user_id,
+            )
+        except Exception:
+            log.exception(
+                "Age verification role sync failed guild_id=%s discord_user_id=%s",
+                guild_id,
+                discord_user_id,
+            )
+            return web.json_response(
+                {"error": "age_verification_sync_failed"},
+                status=500,
+            )
+
+        return web.json_response(
+            {
+                "ok": True,
+                "guild_id": guild_id,
+                "discord_user_id": discord_user_id,
+                "status": getattr(result, "status", None),
+                "action": getattr(result, "action", "none"),
+                "changed": bool(getattr(result, "changed", False)),
+                "error": getattr(result, "error", None),
             }
         )
 
