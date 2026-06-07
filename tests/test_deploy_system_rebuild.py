@@ -42,6 +42,8 @@ def test_deploy_scripts_and_docs():
     pre_webhook = Path('deploy/scripts/precheck-webhook.sh').read_text()
     check_bot = Path('deploy/scripts/check-bot-runtime.sh').read_text()
     check_webhook = Path('deploy/scripts/check-webhook-runtime.sh').read_text()
+    check_bot_py = Path('scripts/check_bot_runtime.py').read_text()
+    check_webhook_py = Path('scripts/check_webhook_runtime.py').read_text()
     deploy_bot = Path('deploy/scripts/deploy-bot.sh').read_text()
     deploy_webhook = Path('deploy/scripts/deploy-webhook.sh').read_text()
     bot_dev = Path('deploy/scripts/deploy-bot-dev.sh').read_text()
@@ -64,9 +66,11 @@ def test_deploy_scripts_and_docs():
     assert 'load_env_file ".env"' in pre_bot and 'load_env_file ".env"' in pre_webhook
     assert 'load_env_file ".env"' in check_bot and 'load_env_file ".env"' in check_webhook
     assert 'Invalid .env syntax on line' in pre_bot and 'Invalid .env syntax on line' in pre_webhook
-    assert 'load_bot_settings' in check_bot
-    assert 'load_webhook_settings' in check_webhook
-    assert 'YotiAgeProvider' in check_webhook
+    assert 'scripts/check_bot_runtime.py' in check_bot
+    assert 'scripts/check_webhook_runtime.py' in check_webhook
+    assert 'load_bot_settings' in check_bot_py
+    assert 'load_webhook_settings' in check_webhook_py
+    assert 'YotiAgeProvider' in check_webhook_py
     assert 'ROB_BACKEND_URL' in check_bot
     assert 'ROB_BOT_NOTIFY_URL' in check_webhook
     assert 'exec "${SCRIPT_DIR}/deploy-bot.sh" "$@"' in bot_dev
