@@ -50,6 +50,49 @@ class AgeVerificationCog(commands.Cog):
         service = self.service
         return service is not None and service.is_enabled_for(guild_id)
 
+    async def _ensure_command_available(
+        self,
+        interaction: discord.Interaction,
+        *,
+        command_name: str,
+    ) -> bool:
+        guild_id = interaction.guild_id
+        service = self.service
+
+        if interaction.guild is None or guild_id is None:
+            rendered = error_card(
+                "Not available here",
+                f"`/{command_name}` can't be used in DMs.",
+            )
+        elif service is None:
+            rendered = error_card(
+                "Age verification unavailable",
+                "Rob couldn't load the age-verification tools right now.",
+            )
+        elif not service.enabled:
+            rendered = error_card(
+                "Age verification unavailable",
+                "Rob's age-verification feature is currently disabled on this bot.",
+            )
+        elif service.is_enabled_for(guild_id):
+            return True
+        elif service.test_only:
+            rendered = error_card(
+                "Not available here",
+                f"`/{command_name}` is only available in the test guild right now.",
+            )
+        else:
+            rendered = error_card(
+                "Not available here",
+                f"`/{command_name}` isn't enabled in this server right now.",
+            )
+
+        await interaction.response.send_message(
+            **rendered.send_kwargs(),
+            ephemeral=True,
+        )
+        return False
+
     async def _require_staff(
         self,
         interaction: discord.Interaction,
@@ -235,14 +278,10 @@ class AgeVerificationCog(commands.Cog):
         description="Start the Yoti age-verification flow in the test server.",
     )
     async def verify_age(self, interaction: discord.Interaction) -> None:
-        if interaction.guild is None or not self._feature_enabled(interaction.guild_id):
-            await interaction.response.send_message(
-                **error_card(
-                    "Not available here",
-                    "`/verify-age` is only available in the test guild right now.",
-                ).send_kwargs(),
-                ephemeral=True,
-            )
+        if not await self._ensure_command_available(
+            interaction,
+            command_name="verify-age",
+        ):
             return
         if interaction.user is None or self.backend is None:
             await interaction.response.send_message(
@@ -291,14 +330,10 @@ class AgeVerificationCog(commands.Cog):
         description="Check your current test-server age-verification status.",
     )
     async def age_status(self, interaction: discord.Interaction) -> None:
-        if interaction.guild is None or not self._feature_enabled(interaction.guild_id):
-            await interaction.response.send_message(
-                **error_card(
-                    "Not available here",
-                    "`/age-status` is only available in the test guild right now.",
-                ).send_kwargs(),
-                ephemeral=True,
-            )
+        if not await self._ensure_command_available(
+            interaction,
+            command_name="age-status",
+        ):
             return
         if interaction.user is None or self.backend is None:
             await interaction.response.send_message(
@@ -341,14 +376,10 @@ class AgeVerificationCog(commands.Cog):
         user: discord.Member,
         reason: Optional[str] = None,
     ) -> None:
-        if interaction.guild is None or not self._feature_enabled(interaction.guild_id):
-            await interaction.response.send_message(
-                **error_card(
-                    "Not available here",
-                    "`/age-approve` is only available in the test guild right now.",
-                ).send_kwargs(),
-                ephemeral=True,
-            )
+        if not await self._ensure_command_available(
+            interaction,
+            command_name="age-approve",
+        ):
             return
         if not await self._require_staff(interaction):
             return
@@ -389,14 +420,10 @@ class AgeVerificationCog(commands.Cog):
         user: discord.Member,
         reason: Optional[str] = None,
     ) -> None:
-        if interaction.guild is None or not self._feature_enabled(interaction.guild_id):
-            await interaction.response.send_message(
-                **error_card(
-                    "Not available here",
-                    "`/age-reject` is only available in the test guild right now.",
-                ).send_kwargs(),
-                ephemeral=True,
-            )
+        if not await self._ensure_command_available(
+            interaction,
+            command_name="age-reject",
+        ):
             return
         if not await self._require_staff(interaction):
             return
@@ -437,14 +464,10 @@ class AgeVerificationCog(commands.Cog):
         user: discord.Member,
         reason: Optional[str] = None,
     ) -> None:
-        if interaction.guild is None or not self._feature_enabled(interaction.guild_id):
-            await interaction.response.send_message(
-                **error_card(
-                    "Not available here",
-                    "`/age-revoke` is only available in the test guild right now.",
-                ).send_kwargs(),
-                ephemeral=True,
-            )
+        if not await self._ensure_command_available(
+            interaction,
+            command_name="age-revoke",
+        ):
             return
         if not await self._require_staff(interaction):
             return
