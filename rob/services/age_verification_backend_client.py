@@ -154,6 +154,8 @@ class AgeVerificationBackendClient:
             raise AgeVerificationBackendClientError(
                 "Rob couldn't reach the age verification backend."
             ) from exc
+        except AgeVerificationBackendClientError:
+            raise
         except Exception as exc:  # pragma: no cover - defensive network handling
             log.exception(
                 "Age verification backend request crashed method=%s url=%s",

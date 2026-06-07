@@ -425,11 +425,11 @@ class YotiAgeProvider:
         )
 
     def _auth_mode(self) -> str:
+        if (self.api_key or "").strip():
+            return "bearer"
         environment = (self.environment or "").strip().lower()
         if environment == "sandbox":
             return "signed"
-        if (self.api_key or "").strip():
-            return "bearer"
         return "signed"
 
     def _build_signed_request(

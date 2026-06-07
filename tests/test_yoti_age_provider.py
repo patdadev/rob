@@ -63,6 +63,36 @@ def test_yoti_provider_uses_signed_sdk_auth_for_sandbox(tmp_path):
     assert json.loads((payload_bytes or b"").decode("utf-8")) == {"type": "OVER"}
 
 
+def test_yoti_provider_prefers_bearer_auth_when_api_key_is_present(tmp_path):
+    pem_path = _write_test_private_key(tmp_path)
+    provider = YotiAgeProvider(
+        environment="sandbox",
+        sdk_id="sdk-123",
+        api_key="api-token",
+        private_key_path=str(pem_path),
+        public_base_url="https://age.robthebot.com",
+    )
+
+    request_url, headers, payload_bytes = provider._build_request(
+        "POST",
+        "/api/v1/sessions",
+        json_payload={"type": "OVER"},
+    )
+
+    parsed = urlparse(request_url)
+
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "age.yoti.com"
+    assert parsed.path == "/api/v1/sessions"
+    assert "sdkId=" not in parsed.query
+    assert headers["Authorization"] == "Bearer api-token"
+    assert headers["Yoti-Sdk-Id"] == "sdk-123"
+    assert "X-Yoti-Auth-Id" not in headers
+    assert "X-Yoti-Auth-Digest" not in headers
+    assert headers["Content-Type"] == "application/json"
+    assert json.loads((payload_bytes or b"").decode("utf-8")) == {"type": "OVER"}
+
+
 def test_yoti_provider_requires_existing_private_key_file(tmp_path):
     provider = YotiAgeProvider(
         environment="sandbox",
