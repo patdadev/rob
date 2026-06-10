@@ -670,7 +670,7 @@ inactivity_command() {
   case "${action}" in
     status)
       local default_enabled="${INACTIVITY_ENABLED_DEFAULT:-false}"
-      case "${default_enabled,,}" in
+      case "$(printf '%s' "${default_enabled}" | tr '[:upper:]' '[:lower:]')" in
         1|true|yes|on)
           default_enabled="true"
           ;;

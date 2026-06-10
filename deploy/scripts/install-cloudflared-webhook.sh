@@ -11,6 +11,7 @@ TUNNEL_ID="${TUNNEL_ID:-}"
 CREDENTIALS_FILE="${CREDENTIALS_FILE:-/etc/cloudflared/rob-webhook.json}"
 SOURCE_CREDENTIALS_FILE="${SOURCE_CREDENTIALS_FILE:-}"
 LOGIN_USER="${LOGIN_USER:-${SUDO_USER:-root}}"
+SKIP_DNS_ROUTE="${SKIP_DNS_ROUTE:-}"
 
 log() {
   printf '[install-cloudflared-webhook] %s\n' "$*"
@@ -97,6 +98,30 @@ cloudflared_run() {
   HOME="${user_home}" cloudflared "$@"
 }
 
+origin_cert_path() {
+  local user_home cert_file
+
+  if [[ -n "${TUNNEL_ORIGIN_CERT:-}" ]]; then
+    if [[ -f "${TUNNEL_ORIGIN_CERT}" ]]; then
+      printf '%s\n' "${TUNNEL_ORIGIN_CERT}"
+      return
+    fi
+    warn "TUNNEL_ORIGIN_CERT is set but the file does not exist: ${TUNNEL_ORIGIN_CERT}"
+    return
+  fi
+
+  user_home="$(login_home)"
+  cert_file="${user_home}/.cloudflared/cert.pem"
+  if [[ -f "${cert_file}" ]]; then
+    printf '%s\n' "${cert_file}"
+    return
+  fi
+
+  if [[ -f "/etc/cloudflared/cert.pem" ]]; then
+    printf '%s\n' "/etc/cloudflared/cert.pem"
+  fi
+}
+
 read_tunnel_id_from_credentials() {
   local credentials_file="$1"
   python3 - <<'PY' "${credentials_file}"
@@ -166,6 +191,29 @@ else:
 PY
 }
 
+route_dns_if_possible() {
+  local cert_path lowered_skip
+  lowered_skip="$(printf '%s' "${SKIP_DNS_ROUTE}" | tr '[:upper:]' '[:lower:]')"
+  if [[ "${lowered_skip}" == "1" || "${lowered_skip}" == "true" || "${lowered_skip}" == "yes" || "${lowered_skip}" == "on" ]]; then
+    log "Skipping DNS routing because SKIP_DNS_ROUTE=${SKIP_DNS_ROUTE}."
+    return
+  fi
+
+  cert_path="$(origin_cert_path)"
+  if [[ -z "${cert_path}" ]]; then
+    warn "Skipping DNS routing because no Cloudflare origin certificate is available for API auth on this host."
+    warn "This is expected when reusing an existing tunnel credentials JSON on a new server."
+    warn "If ${PUBLIC_HOSTNAME} already points at tunnel ${TUNNEL_NAME}, no action is required."
+    return
+  fi
+
+  if ! TUNNEL_ORIGIN_CERT="${cert_path}" cloudflared_run tunnel route dns "${TUNNEL_NAME}" "${PUBLIC_HOSTNAME}"; then
+    warn "DNS routing command did not succeed even though an origin certificate was available."
+    warn "Confirm ${PUBLIC_HOSTNAME} already points at tunnel ${TUNNEL_NAME}, or rerun:"
+    warn "TUNNEL_ORIGIN_CERT=${cert_path} cloudflared tunnel route dns ${TUNNEL_NAME} ${PUBLIC_HOSTNAME}"
+  fi
+}
+
 ensure_named_tunnel() {
   local tunnel_id source_credentials
   install -d -m 0750 /etc/cloudflared
@@ -217,10 +265,7 @@ Run cloudflared tunnel login and cloudflared tunnel create ${TUNNEL_NAME} as ${L
   fi
   log "Installed tunnel credentials to ${CREDENTIALS_FILE}."
 
-  if ! cloudflared_run tunnel route dns "${TUNNEL_NAME}" "${PUBLIC_HOSTNAME}"; then
-    warn "DNS routing command did not succeed. Confirm ${PUBLIC_HOSTNAME} already points at tunnel ${TUNNEL_NAME}, or rerun:"
-    warn "cloudflared tunnel route dns ${TUNNEL_NAME} ${PUBLIC_HOSTNAME}"
-  fi
+  route_dns_if_possible
 
   backup_existing_config
   cat > "${CLOUDFLARED_CONFIG}" <<EOF
@@ -269,6 +314,7 @@ Validation commands:
 Notes:
   - This installer uses cloudflared named-tunnel login flow, not token mode.
   - To migrate without changing tracking links, reuse the same tunnel credentials JSON on the new host.
+  - DNS routing changes require a Cloudflare login cert; imported tunnel credentials alone are enough to run the tunnel.
   - Do not expose port 8080 publicly.
   - Do not commit tunnel credentials into the repository.
   - The installed credentials file is ${CREDENTIALS_FILE}.

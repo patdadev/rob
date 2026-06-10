@@ -50,6 +50,7 @@ sudo SOURCE_CREDENTIALS_FILE=/root/rob-webhook.json bash deploy/scripts/install-
 ```
 
 That reuses the same tunnel UUID and existing DNS route, so you do not need to create a new tunnel or reissue tracking links.
+If the new host does not also have a Cloudflare login `cert.pem`, the installer will now skip the DNS API step automatically. That is fine when the hostname is already routed to the existing tunnel.
 
 After the new host is healthy:
 

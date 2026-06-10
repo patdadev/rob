@@ -37,6 +37,8 @@ def test_cloudflared_webhook_remains_local_only():
     assert "tunnel create" in text
     assert "tunnel route dns" in text
     assert "SOURCE_CREDENTIALS_FILE" in text
+    assert "SKIP_DNS_ROUTE" in text
+    assert "origin certificate" in text
     assert "TunnelID" in text
     assert "token-managed" not in text
     assert "ufw allow 8080" not in text
