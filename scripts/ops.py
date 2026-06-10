@@ -492,7 +492,7 @@ async def fetch_live_guild_scan_from_bot_ops(guild_id: int) -> LiveGuildScanResu
     except ValueError:
         return None
 
-    headers = {"User-Agent": "RobOps/1.0 (+https://github.com/notpatdev/rob)"}
+    headers = {"User-Agent": "RobOps/1.0 (+https://github.com/patdadev/rob)"}
     if secret:
         headers["X-Rob-Ops-Secret"] = secret
 
@@ -544,7 +544,7 @@ async def fetch_live_guild_scan_from_discord_rest(guild_id: int) -> LiveGuildSca
 
     headers = {
         "Authorization": f"Bot {token}",
-        "User-Agent": "RobOps/1.0 (+https://github.com/notpatdev/rob)",
+        "User-Agent": "RobOps/1.0 (+https://github.com/patdadev/rob)",
     }
     api_base = "https://discord.com/api/v10"
     try:

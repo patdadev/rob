@@ -90,12 +90,11 @@ BOT_HEALTH_JSON="$(curl -fsS "${health_args[@]}" "${BOT_HEALTH_URL}")"
 printf '%s' "${BOT_HEALTH_JSON}" | "${PYTHON_BIN}" -c 'import json,sys; data=json.load(sys.stdin); assert data.get("ok") is True, data'
 echo "Bot ops health is reachable: ${BOT_HEALTH_URL}"
 
-echo "[8/8] Checking webhook backend reachability"
-if [[ -n "${ROB_BACKEND_URL:-}" ]]; then
-  curl -fsS "${ROB_BACKEND_URL%/}/health" >/dev/null
-  echo "Webhook backend health is reachable: ${ROB_BACKEND_URL%/}/health"
+echo "[8/8] Checking webhook-to-bot notify route config"
+if [[ -n "${ROB_BOT_NOTIFY_URL:-}" ]]; then
+  echo "Bot is configured to receive webhook notifications at: ${ROB_BOT_NOTIFY_URL}"
 else
-  echo "Skipping ROB_BACKEND_URL health check because the variable is unset."
+  echo "WARNING: ROB_BOT_NOTIFY_URL is unset; webhook send notifications will not reach the bot."
 fi
 
 echo

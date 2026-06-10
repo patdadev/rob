@@ -34,13 +34,6 @@ THRONE_WEBHOOK_SIGNATURE_HEADER=X-Signature-Ed25519
 THRONE_WEBHOOK_SIGNED_MESSAGE_FORMAT=timestamp_dot_body
 THRONE_WEBHOOK_MAX_TIMESTAMP_SKEW_SECONDS=300
 THRONE_PARSE_TEST_SENDS_AS_REAL_SENDS=false
-ROB_BACKEND_SECRET=replace
-ROB_AGE_VERIFICATION_ENABLED=true
-ROB_AGE_VERIFICATION_TEST_ONLY=true
-YOTI_ENVIRONMENT=sandbox
-YOTI_SDK_ID=replace
-YOTI_PRIVATE_KEY_PATH=/etc/rob-backend/secrets/yoti-sandbox.pem
-YOTI_PUBLIC_BASE_URL=https://throne.robthebot.com
 ```
 
 ## Canonical install sequence
@@ -72,9 +65,5 @@ curl -I https://throne.robthebot.com/health
 Cloudflared should route:
 
 - `throne.robthebot.com -> http://127.0.0.1:8080`
-
-Age verification can reuse that same public hostname. If you later add
-`age.robthebot.com`, point it at the same tunnel/origin and update
-`YOTI_PUBLIC_BASE_URL` plus the bot's `ROB_BACKEND_URL` together.
 
 Do not expose port `8080` publicly.

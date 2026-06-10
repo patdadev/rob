@@ -7,7 +7,9 @@ ORIGIN_URL="${ORIGIN_URL:-http://127.0.0.1:8080}"
 CONFIG_FILE="${CONFIG_FILE:-/etc/cloudflared/config.yml}"
 CLOUDFLARED_CONFIG="${CONFIG_FILE}"
 TUNNEL_NAME="${TUNNEL_NAME:-rob-webhook}"
+TUNNEL_ID="${TUNNEL_ID:-}"
 CREDENTIALS_FILE="${CREDENTIALS_FILE:-/etc/cloudflared/rob-webhook.json}"
+SOURCE_CREDENTIALS_FILE="${SOURCE_CREDENTIALS_FILE:-}"
 LOGIN_USER="${LOGIN_USER:-${SUDO_USER:-root}}"
 
 log() {
@@ -95,6 +97,29 @@ cloudflared_run() {
   HOME="${user_home}" cloudflared "$@"
 }
 
+read_tunnel_id_from_credentials() {
+  local credentials_file="$1"
+  python3 - <<'PY' "${credentials_file}"
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    print("")
+    raise SystemExit(0)
+
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+value = str(payload.get("TunnelID", "")).strip()
+print(value)
+PY
+}
+
 ensure_login_certificate() {
   local user_home cert_file
   user_home="$(login_home)"
@@ -145,27 +170,51 @@ ensure_named_tunnel() {
   local tunnel_id source_credentials
   install -d -m 0750 /etc/cloudflared
 
-  tunnel_id="$(discover_existing_tunnel_id)"
-  if [[ -z "${tunnel_id}" ]]; then
-    log "Creating named tunnel ${TUNNEL_NAME}."
-    local create_output
-    create_output="$(cloudflared_run tunnel create "${TUNNEL_NAME}" 2>&1)"
-    printf '%s\n' "${create_output}"
-    tunnel_id="$(printf '%s\n' "${create_output}" | grep -Eo '[0-9a-fA-F-]{36}' | head -n 1 || true)"
-    [[ -n "${tunnel_id}" ]] || die "Could not determine tunnel UUID after creation."
+  tunnel_id="${TUNNEL_ID}"
+  if [[ -n "${SOURCE_CREDENTIALS_FILE}" ]]; then
+    [[ -f "${SOURCE_CREDENTIALS_FILE}" ]] || die "SOURCE_CREDENTIALS_FILE does not exist: ${SOURCE_CREDENTIALS_FILE}"
+    source_credentials="${SOURCE_CREDENTIALS_FILE}"
+    if [[ -z "${tunnel_id}" ]]; then
+      tunnel_id="$(read_tunnel_id_from_credentials "${source_credentials}")"
+    fi
+    log "Using imported tunnel credentials from ${source_credentials}."
+  elif [[ -f "${CREDENTIALS_FILE}" ]]; then
+    source_credentials="${CREDENTIALS_FILE}"
+    if [[ -z "${tunnel_id}" ]]; then
+      tunnel_id="$(read_tunnel_id_from_credentials "${source_credentials}")"
+    fi
+    log "Reusing installed tunnel credentials at ${source_credentials}."
   else
-    log "Using existing named tunnel ${TUNNEL_NAME} (${tunnel_id})."
-  fi
+    ensure_login_certificate
 
-  source_credentials="$(login_home)/.cloudflared/${tunnel_id}.json"
-  if [[ ! -f "${source_credentials}" ]]; then
-    die "Expected named tunnel credentials were not found at:
+    tunnel_id="$(discover_existing_tunnel_id)"
+    if [[ -z "${tunnel_id}" ]]; then
+      log "Creating named tunnel ${TUNNEL_NAME}."
+      local create_output
+      create_output="$(cloudflared_run tunnel create "${TUNNEL_NAME}" 2>&1)"
+      printf '%s\n' "${create_output}"
+      tunnel_id="$(printf '%s\n' "${create_output}" | grep -Eo '[0-9a-fA-F-]{36}' | head -n 1 || true)"
+      [[ -n "${tunnel_id}" ]] || die "Could not determine tunnel UUID after creation."
+    else
+      log "Using existing named tunnel ${TUNNEL_NAME} (${tunnel_id})."
+    fi
+
+    source_credentials="$(login_home)/.cloudflared/${tunnel_id}.json"
+    if [[ ! -f "${source_credentials}" ]]; then
+      die "Expected named tunnel credentials were not found at:
 ${source_credentials}
 
 Run cloudflared tunnel login and cloudflared tunnel create ${TUNNEL_NAME} as ${LOGIN_USER}, then rerun this script."
+    fi
   fi
 
-  install -m 0640 "${source_credentials}" "${CREDENTIALS_FILE}"
+  [[ -n "${tunnel_id}" ]] || die "Could not determine tunnel UUID from the named tunnel credentials."
+
+  if [[ "${source_credentials}" != "${CREDENTIALS_FILE}" ]]; then
+    install -m 0640 "${source_credentials}" "${CREDENTIALS_FILE}"
+  else
+    chmod 0640 "${CREDENTIALS_FILE}"
+  fi
   log "Installed tunnel credentials to ${CREDENTIALS_FILE}."
 
   if ! cloudflared_run tunnel route dns "${TUNNEL_NAME}" "${PUBLIC_HOSTNAME}"; then
@@ -219,6 +268,7 @@ Validation commands:
 
 Notes:
   - This installer uses cloudflared named-tunnel login flow, not token mode.
+  - To migrate without changing tracking links, reuse the same tunnel credentials JSON on the new host.
   - Do not expose port 8080 publicly.
   - Do not commit tunnel credentials into the repository.
   - The installed credentials file is ${CREDENTIALS_FILE}.
@@ -230,7 +280,6 @@ main() {
   ensure_root
   install_cloudflared
   warn_webhook_env_values
-  ensure_login_certificate
   ensure_named_tunnel
   install_or_refresh_service
   restart_and_verify

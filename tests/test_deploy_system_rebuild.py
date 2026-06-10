@@ -70,8 +70,8 @@ def test_deploy_scripts_and_docs():
     assert 'scripts/check_webhook_runtime.py' in check_webhook
     assert 'load_bot_settings' in check_bot_py
     assert 'load_webhook_settings' in check_webhook_py
-    assert 'YotiAgeProvider' in check_webhook_py
-    assert 'ROB_BACKEND_URL' in check_bot
+    assert 'notify_url=' in check_bot_py
+    assert 'public_base=' in check_webhook_py
     assert 'ROB_BOT_NOTIFY_URL' in check_webhook
     assert 'exec "${SCRIPT_DIR}/deploy-bot.sh" "$@"' in bot_dev
     assert 'exec "${SCRIPT_DIR}/deploy-webhook.sh" "$@"' in webhook_dev
@@ -120,8 +120,8 @@ def test_prod_installers_and_manual_setup_target_real_prod():
     assert 'rob-webhook.service' in webhook_script
     assert 'rob_prod' in bot_script
     assert 'rob_prod' in webhook_script
-    assert 'notpatdev/rob.git' in bot_script
-    assert 'notpatdev/rob.git' in webhook_script
+    assert 'patdadev/rob.git' in bot_script
+    assert 'patdadev/rob.git' in webhook_script
     assert 'CREATE ROLE prod_rob_bot LOGIN' in setup_sql
     assert 'CREATE ROLE prod_rob_webhook LOGIN' in setup_sql
     assert 'CREATE DATABASE rob_prod OWNER doadmin' in setup_sql
@@ -129,6 +129,5 @@ def test_prod_installers_and_manual_setup_target_real_prod():
     assert '\\ir ../build/007_send_update_requests.sql' in setup_sql
     assert '\\ir ../build/008_dm_preferences.sql' in setup_sql
     assert '\\ir ../build/009_terms_acceptance.sql' in setup_sql
-    assert '\\ir ../build/010_age_verification.sql' in setup_sql
     assert '\\ir ../grants/prod_rob_bot.sql' in setup_sql
     assert '\\ir ../grants/prod_rob_webhook.sql' in setup_sql

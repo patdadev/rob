@@ -2,7 +2,7 @@
 
 The old split deploy workflows have been replaced by a single workflow: **Deploy Rob Codebase** in `.github/workflows/deploy-codebase.yml`.
 
-The canonical Rob repo is now `notpatdev/rob`. Any earlier rehearsal/bootstrap repo references should be treated as legacy history, not as the live source of truth, and not as a code-history merge from the legacy `notpatdev/robthebot` repository.
+The canonical Rob repo is now `patdadev/rob`. Any earlier rehearsal/bootstrap repo references should be treated as legacy history, not as the live source of truth, and not as a code-history merge from the legacy `notpatdev/robthebot` repository.
 
 ## Deployment flow
 
@@ -37,10 +37,12 @@ If schema build/grants are required, run manually (admin action):
 
 - `scripts/db/build/001_core_schema.sql`
 - `scripts/db/build/002_indexes.sql`
-- `scripts/db/build/003_achievements.sql`
 - `scripts/db/build/004_sub_send_names.sql`
 - `scripts/db/build/005_count_recovery.sql`
 - `scripts/db/build/006_send_change_requests.sql`
+- `scripts/db/build/007_send_update_requests.sql`
+- `scripts/db/build/008_dm_preferences.sql`
+- `scripts/db/build/009_terms_acceptance.sql`
 - `scripts/db/grants/*.sql`
 
 SQLite data migration remains separate and is not part of deployment.
@@ -49,7 +51,7 @@ SQLite data migration remains separate and is not part of deployment.
 
 When bootstrapping a fresh host or validating a fresh checkout:
 
-1. Clone from `https://github.com/notpatdev/rob.git`.
+1. Clone from `https://github.com/patdadev/rob.git`.
 2. Copy Actions secrets, environments, and protection rules into the active repo if GitHub is being rebuilt.
 3. Verify workflow wiring in the active repo before deploy.
 4. Rehearse services and imported data against `rob_dev_v2` if you are doing a migration dry run.
@@ -72,14 +74,6 @@ Current production examples live in:
 - `deploy/examples/webhook.prod.env.example`
 
 The webhook host should stay on `127.0.0.1:8080` behind Cloudflared, and it should notify the bot over the private ops bridge (`ROB_BOT_NOTIFY_URL`) instead of polling the database for send cards.
-
-If age verification is enabled, there is still no separate age-verification
-service to deploy. The existing webhook app serves those routes. The bot should
-point `ROB_BACKEND_URL` at either:
-
-- `https://throne.robthebot.com` for the simplest setup, or
-- `https://age.robthebot.com` if that hostname is explicitly routed to the same
-  webhook origin
 
 If either service points at an older database, `scripts/check_db.py` will fail because Rob v2 expects `db_build_version` and the new v2 schema tables.
 

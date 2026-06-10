@@ -41,14 +41,12 @@ GRANT SELECT ON
   subs,
   sub_send_names,
   vib_settings,
-  vib_leaderboard,
-  age_verifications
+  vib_leaderboard
 TO prod_rob_webhook;
 
 GRANT SELECT, INSERT, UPDATE ON
   sends,
-  bot_users,
-  age_verifications
+  bot_users
 TO prod_rob_webhook;
 
 GRANT SELECT, UPDATE ON
@@ -58,12 +56,10 @@ TO prod_rob_webhook;
 
 GRANT USAGE, SELECT, UPDATE ON SEQUENCE sends_id_seq TO prod_rob_webhook;
 GRANT USAGE, SELECT, UPDATE ON SEQUENCE bot_users_id_seq TO prod_rob_webhook;
-GRANT USAGE, SELECT, UPDATE ON SEQUENCE age_verifications_id_seq TO prod_rob_webhook;
 
 REVOKE CREATE ON SCHEMA public FROM prod_rob_webhook;
 REVOKE DELETE ON TABLE sends FROM prod_rob_webhook;
 REVOKE DELETE ON TABLE bot_users FROM prod_rob_webhook;
-REVOKE DELETE ON TABLE age_verifications FROM prod_rob_webhook;
 
 -- ---------------------------------------------------------------------------
 -- Production: prod_rob_bot on rob_prod
@@ -101,14 +97,12 @@ GRANT SELECT ON
   subs,
   sub_send_names,
   vib_settings,
-  vib_leaderboard,
-  age_verifications
+  vib_leaderboard
 TO prod_rob_webhook;
 
 GRANT SELECT, INSERT, UPDATE ON
   sends,
-  bot_users,
-  age_verifications
+  bot_users
 TO prod_rob_webhook;
 
 GRANT SELECT, UPDATE ON
@@ -118,12 +112,10 @@ TO prod_rob_webhook;
 
 GRANT USAGE, SELECT, UPDATE ON SEQUENCE sends_id_seq TO prod_rob_webhook;
 GRANT USAGE, SELECT, UPDATE ON SEQUENCE bot_users_id_seq TO prod_rob_webhook;
-GRANT USAGE, SELECT, UPDATE ON SEQUENCE age_verifications_id_seq TO prod_rob_webhook;
 
 REVOKE CREATE ON SCHEMA public FROM prod_rob_webhook;
 REVOKE DELETE ON TABLE sends FROM prod_rob_webhook;
 REVOKE DELETE ON TABLE bot_users FROM prod_rob_webhook;
-REVOKE DELETE ON TABLE age_verifications FROM prod_rob_webhook;
 
 -- If webhook code needs more access, add the smallest specific grant required.
 -- Do not grant CREATE, ALTER, DROP, or TRUNCATE to runtime users.

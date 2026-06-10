@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/notpatdev/rob.git}"
+REPO_URL="${REPO_URL:-https://github.com/patdadev/rob.git}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 APP_ROOT="${APP_ROOT:-/opt/rob-webhook}"
 APP_DIR="${APP_DIR:-${APP_ROOT}/app}"
@@ -9,6 +9,7 @@ SERVICE_NAME="${SERVICE_NAME:-rob-webhook.service}"
 SERVICE_SOURCE_REL="${SERVICE_SOURCE_REL:-deploy/systemd/rob-webhook.service}"
 DEPLOY_SCRIPT_SOURCE_REL="${DEPLOY_SCRIPT_SOURCE_REL:-deploy/scripts/deploy-webhook.sh}"
 DEPLOY_SCRIPT_LINK="${DEPLOY_SCRIPT_LINK:-${APP_ROOT}/deploy-webhook.sh}"
+RUNTIME_CHECK_SCRIPT_REL="${RUNTIME_CHECK_SCRIPT_REL:-deploy/scripts/check-webhook-runtime.sh}"
 RUNTIME_USER="${RUNTIME_USER:-rob}"
 RUNTIME_GROUP="${RUNTIME_GROUP:-rob}"
 DEPLOY_USER="${DEPLOY_USER:-${SUDO_USER:-}}"
@@ -27,6 +28,10 @@ warn() {
 die() {
   printf '[install-webhook] error: %s\n' "$*" >&2
   exit 1
+}
+
+ensure_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
 }
 
 run_as_deploy() {
@@ -68,14 +73,37 @@ ensure_runtime_user() {
 }
 
 install_packages() {
+  local packages=(
+    git
+    python3
+    python3-venv
+    python3-pip
+    curl
+    ca-certificates
+    sudo
+  )
+  local missing=()
+  local package=""
+
   if ! command -v apt-get >/dev/null 2>&1; then
     die "This installer currently supports Debian/Ubuntu hosts with apt-get."
   fi
 
-  log "Installing system packages"
+  for package in "${packages[@]}"; do
+    if ! dpkg -s "${package}" >/dev/null 2>&1; then
+      missing+=("${package}")
+    fi
+  done
+
+  if [[ "${#missing[@]}" -eq 0 ]]; then
+    log "Required system packages already installed."
+    return
+  fi
+
+  log "Installing missing system packages: ${missing[*]}"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -y
-  apt-get install -y git python3 python3-venv python3-pip curl ca-certificates sudo
+  apt-get install -y "${missing[@]}"
 }
 
 clone_or_update_repo() {
@@ -87,6 +115,7 @@ clone_or_update_repo() {
   if [[ -d "${APP_DIR}/.git" ]]; then
     log "Updating existing checkout in ${APP_DIR}"
     chown -R "${DEPLOY_USER}:${deploy_group}" "${APP_DIR}"
+    run_as_deploy git -C "${APP_DIR}" remote set-url origin "${REPO_URL}"
     run_as_deploy git -C "${APP_DIR}" fetch origin
     run_as_deploy git -C "${APP_DIR}" checkout "${DEPLOY_BRANCH}"
     run_as_deploy git -C "${APP_DIR}" pull --ff-only origin "${DEPLOY_BRANCH}"
@@ -100,7 +129,7 @@ clone_or_update_repo() {
 install_python_environment() {
   log "Creating or updating virtual environment"
   run_as_deploy "${PYTHON_BIN}" -m venv "${APP_DIR}/.venv"
-  run_as_deploy "${APP_DIR}/.venv/bin/python" -m pip install --upgrade pip
+  run_as_deploy "${APP_DIR}/.venv/bin/python" -m pip install --upgrade pip setuptools wheel
   run_as_deploy "${APP_DIR}/.venv/bin/pip" install -r "${APP_DIR}/requirements.txt"
 
   log "Running compile checks"
@@ -213,8 +242,13 @@ maybe_enable_and_start() {
 
   log "Starting ${SERVICE_NAME}"
   systemctl restart "${SERVICE_NAME}"
-  sleep 2
-  curl -fsS "${HEALTH_URL}" >/dev/null
+
+  log "Running webhook runtime verification"
+  APP_DIR="${APP_DIR}" \
+  SERVICE_NAME="${SERVICE_NAME}" \
+  PYTHON_BIN="${APP_DIR}/.venv/bin/python" \
+  HEALTH_URL="${HEALTH_URL}" \
+  bash "${APP_DIR}/${RUNTIME_CHECK_SCRIPT_REL}"
 }
 
 print_summary() {
@@ -233,12 +267,14 @@ Next steps:
   1. Edit ${APP_DIR}/.env with the real PostgreSQL and webhook values.
   2. Keep THRONE_WEBHOOK_BASE_URL set to https://throne.robthebot.com.
   3. Confirm ROB_BOT_NOTIFY_URL points at the bot server's private ops bridge before sending live traffic.
-  4. Run ${DEPLOY_SCRIPT_LINK} after pushing updates, or restart the service manually once the .env file is ready.
+  4. Run sudo bash ${APP_DIR}/${RUNTIME_CHECK_SCRIPT_REL} whenever you want a full webhook runtime verification.
+  5. Run ${DEPLOY_SCRIPT_LINK} after pushing updates, or restart the service manually once the .env file is ready.
 EOF
 }
 
 main() {
   ensure_root
+  ensure_cmd systemctl
   ensure_deploy_user
   ensure_runtime_user
   install_packages

@@ -36,6 +36,8 @@ def test_cloudflared_webhook_remains_local_only():
     assert "tunnel login" in text
     assert "tunnel create" in text
     assert "tunnel route dns" in text
+    assert "SOURCE_CREDENTIALS_FILE" in text
+    assert "TunnelID" in text
     assert "token-managed" not in text
     assert "ufw allow 8080" not in text
     assert "firewall-cmd" not in text
@@ -49,10 +51,12 @@ def test_prod_installers_use_prod_database_and_service_names():
     bot_template = bot_text.split("cat > \"${env_file}\" <<'EOF'", 1)[1].split('EOF', 1)[0]
     webhook_template = webhook_text.split("cat > \"${env_file}\" <<'EOF'", 1)[1].split('EOF', 1)[0]
 
-    assert "https://github.com/notpatdev/rob.git" in bot_text
-    assert "https://github.com/notpatdev/rob.git" in webhook_text
+    assert "https://github.com/patdadev/rob.git" in bot_text
+    assert "https://github.com/patdadev/rob.git" in webhook_text
     assert "rob-bot.service" in bot_text
     assert "rob-webhook.service" in webhook_text
+    assert "check-bot-runtime.sh" in bot_text
+    assert "check-webhook-runtime.sh" in webhook_text
     assert "rob_prod" in bot_template
     assert "rob_prod" in webhook_template
     assert "rob_dev_v2" not in bot_template

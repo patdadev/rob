@@ -25,7 +25,6 @@ Current manual DB build order before applying grants:
 6. `scripts/db/build/007_send_update_requests.sql`
 7. `scripts/db/build/008_dm_preferences.sql`
 8. `scripts/db/build/009_terms_acceptance.sql`
-9. `scripts/db/build/010_age_verification.sql`
 
 For one-shot production bootstrap, you can instead run:
 

@@ -25,17 +25,9 @@ DISCORD_TOKEN=replace
 DISCORD_GUILD_ID=replace
 BOT_NAME=Rob
 THRONE_WEBHOOK_BASE_URL=https://throne.robthebot.com
-ROB_BACKEND_URL=https://throne.robthebot.com
-ROB_BACKEND_SECRET=replace
-ROB_AGE_VERIFICATION_ENABLED=true
-ROB_AGE_VERIFICATION_TEST_ONLY=true
-ROB_AGE_VERIFIED_ROLE_ID=replace
 ```
 
 `THRONE_WEBHOOK_BASE_URL` is optional on bot hosts, but recommended when bot flows need to render webhook URLs.
-`ROB_BACKEND_URL` can reuse `https://throne.robthebot.com` because the webhook
-app already serves the age-verification backend routes. A dedicated
-`https://age.robthebot.com` hostname is optional, not required.
 
 ## Canonical install sequence
 

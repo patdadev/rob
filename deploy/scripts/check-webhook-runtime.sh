@@ -99,11 +99,8 @@ fi
 curl -fsS "${HEALTH_URL}" >/dev/null
 echo "Local webhook health is reachable: ${HEALTH_URL}"
 
-echo "[9/10] Checking public webhook and age-verification hosts"
+echo "[9/10] Checking public webhook host"
 check_public_health "${THRONE_WEBHOOK_BASE_URL:-https://throne.robthebot.com}" "Webhook public host"
-if [[ -n "${YOTI_PUBLIC_BASE_URL:-}" && "${YOTI_PUBLIC_BASE_URL}" != "${THRONE_WEBHOOK_BASE_URL:-}" ]]; then
-  check_public_health "${YOTI_PUBLIC_BASE_URL}" "Age verification public host"
-fi
 
 echo "[10/10] Checking webhook-to-bot notify route if configured"
 if [[ -n "${ROB_BOT_NOTIFY_URL:-}" ]]; then

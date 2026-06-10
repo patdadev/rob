@@ -20,11 +20,6 @@ The webhook server is the HTTP-only side of Rob.
 - Health check: `GET /health`
 - Webhook route: `POST /throne/webhook/{creator_id}/{secret}`
 - The webhook runtime loads `WebhookSettings` only and can start without `DISCORD_TOKEN`.
-- The same webhook app also serves the age-verification backend routes:
-  - `POST /age-verification/start`
-  - `GET /age-verification/status`
-  - `POST /yoti/notification`
-  - `GET /yoti/callback`
 
 ## Required environment
 
@@ -46,36 +41,6 @@ The webhook server is the HTTP-only side of Rob.
 
 `DISCORD_TOKEN` is not required here.
 
-When Yoti age verification is enabled on the webhook backend, also set:
-
-- `ROB_AGE_VERIFICATION_ENABLED=true`
-- `ROB_BACKEND_SECRET`
-- `YOTI_ENVIRONMENT=sandbox`
-- `YOTI_SDK_ID`
-- `YOTI_PRIVATE_KEY_PATH`
-- `YOTI_PUBLIC_BASE_URL` or explicit `YOTI_CALLBACK_URL` plus `YOTI_NOTIFICATION_URL`
-
-Yoti sandbox uses Client SDK ID + `.pem` private key. Store the `.pem` only on the backend server and never commit it.
-
-## Public hostname for age verification
-
-Age verification does not need a separate process or port. It reuses the same
-webhook origin on `127.0.0.1:8080`.
-
-You have two valid public-host options:
-
-1. Quickest: reuse `https://throne.robthebot.com`
-2. Optional: add `https://age.robthebot.com` as a second hostname that points to
-   the same Cloudflare tunnel/origin
-
-If you choose the dedicated host, keep these in sync:
-
-- Bot host: `ROB_BACKEND_URL=https://age.robthebot.com`
-- Webhook host: `YOTI_PUBLIC_BASE_URL=https://age.robthebot.com`
-
-If you have not created `age.robthebot.com` yet, do not point `ROB_BACKEND_URL`
-at it yet. Use `https://throne.robthebot.com` until DNS/tunnel routing exists.
-
 ## Runtime verification
 
 Run this on the webhook host after editing `.env` or after a deploy:
@@ -85,8 +50,7 @@ sudo bash deploy/scripts/check-webhook-runtime.sh
 ```
 
 It validates the parsed webhook settings, DB grants/schema, systemd state,
-local `/health`, the public webhook host, the optional Yoti public host, and
-the bot-notify bridge route when configured.
+local `/health`, the public webhook host, and the bot-notify bridge route when configured.
 
 ## Bot notification checklist
 

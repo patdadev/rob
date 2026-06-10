@@ -6,9 +6,6 @@ Target routing:
 
 - `https://throne.robthebot.com` -> `http://127.0.0.1:8080`
 - Route the hostname to the local webhook origin so `/health`, `/webhook/*`, and `/throne/webhook/*` stay reachable through the same tunnel host.
-- Optional second hostname: `https://age.robthebot.com` -> `http://127.0.0.1:8080`
-- The age-verification backend lives on the same webhook app/origin; it is not a
-  separate service.
 
 Safety rules:
 
@@ -37,6 +34,32 @@ curl -I https://throne.robthebot.com/health
 
 The Cloudflared installer now uses the browser-based `cloudflared tunnel login` flow and named tunnel routing. It does not prompt for a token-managed tunnel key.
 
+## Moving to a new server without changing tracking links
+
+Keep the same named tunnel and hostname route. The public URLs stay the same as long as the DNS record still points at the same tunnel UUID.
+
+Recommended cutover:
+
+1. On the old webhook host, copy `/etc/cloudflared/rob-webhook.json` somewhere safe.
+2. Copy that JSON file to the new webhook host over SSH or another secure channel.
+3. Install the webhook app on the new host and confirm `http://127.0.0.1:8080/health` works locally.
+4. Run the Cloudflared installer on the new host with the copied credentials:
+
+```bash
+sudo SOURCE_CREDENTIALS_FILE=/root/rob-webhook.json bash deploy/scripts/install-cloudflared-webhook.sh
+```
+
+That reuses the same tunnel UUID and existing DNS route, so you do not need to create a new tunnel or reissue tracking links.
+
+After the new host is healthy:
+
+```bash
+curl -I https://throne.robthebot.com/health
+sudo systemctl status cloudflared --no-pager
+```
+
+Once traffic is confirmed on the new host, stop `cloudflared` on the old host.
+
 ## Verify services
 
 ```bash
@@ -45,36 +68,3 @@ sudo journalctl -u cloudflared -n 100 --no-pager
 sudo systemctl status rob-webhook.service --no-pager
 sudo journalctl -u rob-webhook.service -n 100 --no-pager
 ```
-
-## Optional: add `age.robthebot.com`
-
-If you want a dedicated public hostname for age verification, point it to the
-same tunnel and same origin:
-
-```bash
-cloudflared tunnel route dns rob-webhook age.robthebot.com
-sudo nano /etc/cloudflared/config.yml
-sudo systemctl restart cloudflared
-curl -I https://age.robthebot.com/health
-```
-
-Add a second ingress block in `/etc/cloudflared/config.yml` so both hostnames
-route to the same local webhook app:
-
-```yaml
-ingress:
-  - hostname: throne.robthebot.com
-    service: http://127.0.0.1:8080
-  - hostname: age.robthebot.com
-    service: http://127.0.0.1:8080
-  - service: http_status:404
-```
-
-Then keep the runtime settings aligned:
-
-- Bot host: `ROB_BACKEND_URL=https://age.robthebot.com`
-- Webhook host: `YOTI_PUBLIC_BASE_URL=https://age.robthebot.com`
-
-If you have not completed those DNS/tunnel steps yet, use
-`https://throne.robthebot.com` for both the bot backend URL and Yoti public
-base URL as the fast path.
