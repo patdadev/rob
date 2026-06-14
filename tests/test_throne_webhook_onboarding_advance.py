@@ -16,8 +16,10 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from rob.config.guilds import MAIN_GUILD_ID, TEST_GUILD_ID
 from rob.throne import webhooks as webhooks_mod
+
+TEST_GUILD_ID = 1506597978251591813
+MAIN_GUILD_ID = 1485460387355820034
 
 pytestmark = pytest.mark.asyncio
 
@@ -258,9 +260,11 @@ async def test_real_send_in_test_guild_triggers_auto_advance(
 # ---------------------------------------------------------------------------
 
 
-async def test_main_guild_webhook_does_not_trigger_auto_advance(
+async def test_auto_advance_triggers_in_any_guild(
     monkeypatch,
 ):
+    # Onboarding auto-advance is no longer test-guild-only: a webhook in any
+    # guild notifies the bot to advance the onboarding DM.
     settings = _fake_settings()
     creator = _fake_creator(guild_id=MAIN_GUILD_ID)
     send = SimpleNamespace(id=99, guild_id=MAIN_GUILD_ID)
@@ -269,23 +273,10 @@ async def test_main_guild_webhook_does_not_trigger_auto_advance(
     )
 
     async with TestClient(TestServer(app)) as client:
-        # Explicit test path
-        resp1 = await _post(client, {"type": "test_webhook", "data": {}})
-        assert resp1.status == 200
-        # Real send path
-        resp2 = await _post(
-            client,
-            {
-                "type": "gift_purchased",
-                "data": {
-                    "gifter": {"username": "real_user"},
-                    "orderId": "ord-4",
-                    "price": "5.00",
-                },
-            },
-        )
-        assert resp2.status == 200
-        notify_mock.assert_not_called()
+        resp = await _post(client, {"type": "test_webhook", "data": {}})
+        assert resp.status == 200
+        notify_mock.assert_awaited()
+        assert notify_mock.await_args.kwargs["guild_id"] == MAIN_GUILD_ID
 
 
 # ---------------------------------------------------------------------------

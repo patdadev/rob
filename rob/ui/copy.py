@@ -59,8 +59,7 @@ def webhook_refresh_message(webhook_url: str) -> str:
         "Once you've entered the new link, click Save Settings and then Test Webhook to make sure it works.\n\n"
         "Thanks\n"
         "Pat\n\n"
-        "-# This is automated. No need to respond.\n\n"
-        "When Throne confirms it worked, press **Yes** below."
+        "-# This is automated. No need to respond."
     )
 
 
@@ -73,6 +72,5 @@ def webhook_upgrade_message(*, throne_name: str, webhook_url: str) -> str:
         f"`{webhook_url}`\n\n"
         "Once done, click Save Settings and Test Webhook.\n\n"
         "---\n"
-        "-# This is automated! Have a spectacular day!\n\n"
-        "When Throne confirms it worked, press **Yes** below so Rob can finish the reconnect."
+        "-# This is automated! Have a spectacular day!"
     )

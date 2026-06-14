@@ -1,10 +1,10 @@
 """Assign/remove the configured leaderboard access role for a member.
 
-Test-guild only. Holding the role (``vib_settings.leaderboard_view_role_id``)
-grants use of ``/leaderboard`` and, via Discord channel permissions configured
-on the role, read access to the ``#leaderboard`` channel. Members opt in/out
-through the Dom/me DM setup or the ``/preferences`` command; this helper makes
-their actual Discord role membership match that choice.
+Holding the role (``vib_settings.leaderboard_view_role_id``) grants use of
+``/leaderboard`` and, via Discord channel permissions configured on the role,
+read access to the ``#leaderboard`` channel. Members opt in/out through the
+Dom/me DM setup or the ``/preferences`` command; this helper makes their actual
+Discord role membership match that choice.
 
 Rob needs the ``Manage Roles`` permission and must sit above the access role in
 the role hierarchy for assignment to succeed. The helper never raises — it logs
@@ -17,8 +17,6 @@ from __future__ import annotations
 import logging
 
 import discord
-
-from rob.config.guilds import is_test_guild
 
 log = logging.getLogger(__name__)
 
@@ -36,9 +34,6 @@ async def apply_leaderboard_access(
     (including no-op cases), ``False`` when Rob could not complete the change
     (no role configured, role/guild/member missing, or missing permissions).
     """
-
-    if not is_test_guild(guild_id):
-        return False
 
     settings_repo = getattr(bot, "guild_settings_repo", None) or getattr(
         bot, "vib_settings_repo", None

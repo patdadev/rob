@@ -1431,8 +1431,6 @@ class BotOpsServer:
         if user is None:
             user = await self.bot.fetch_user(discord_user_id)
 
-        settings = await self.bot.guild_settings_repo.get(guild_id)
-        from rob.discord.cogs.registration import NotYetButton, YesButton
         from rob.ui.cards.registration import throne_setup_card
         from rob.ui.copy import (
             WEBHOOK_REFRESH_TITLE,
@@ -1440,7 +1438,6 @@ class BotOpsServer:
             webhook_refresh_message,
             webhook_upgrade_message,
         )
-        from rob.ui.render import add_card_actions
 
         if mode == "refresh":
             title = WEBHOOK_REFRESH_TITLE
@@ -1453,14 +1450,6 @@ class BotOpsServer:
             )
 
         rendered = throne_setup_card(description, title=title)
-        add_card_actions(
-            rendered.view,
-            YesButton(
-                domme_id=domme_id,
-                send_track_channel_id=settings.send_track_channel_id if settings is not None else None,
-            ),
-            NotYetButton(),
-        )
         await user.send(**rendered.send_kwargs())
 
     @staticmethod

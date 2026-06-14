@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from rob.config.guilds import MAIN_GUILD_ID, TEST_GUILD_ID
 from rob.database.repositories.terms import (
     STATUS_ACCEPTED,
     STATUS_DECLINED,
@@ -17,6 +16,9 @@ from rob.services.terms_service import (
     TermsError,
     TermsService,
 )
+
+TEST_GUILD_ID = 1506597978251591813
+MAIN_GUILD_ID = 1485460387355820034
 
 
 class _FakeTermsRepo:
@@ -76,9 +78,10 @@ def _service(*, repo=None, version="2026-06-05", terms_url=None, privacy_url=Non
     )
 
 
-def test_terms_service_enabled_only_for_test_guild():
+def test_terms_service_enabled_for_any_guild():
     assert TermsService.is_enabled_for(TEST_GUILD_ID) is True
-    assert TermsService.is_enabled_for(MAIN_GUILD_ID) is False
+    assert TermsService.is_enabled_for(MAIN_GUILD_ID) is True
+    assert TermsService.is_enabled_for(123456789) is True
     assert TermsService.is_enabled_for(None) is False
 
 

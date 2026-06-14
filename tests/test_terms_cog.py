@@ -6,9 +6,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
-from rob.config.guilds import TEST_GUILD_ID
 from rob.discord.cogs.terms import TermsCog
 from rob.ui.cards.terms import ID_TERMS_ACCEPT
+
+TEST_GUILD_ID = 1506597978251591813
 
 
 class _FakeMessage:
@@ -245,7 +246,7 @@ def test_terms_reset_command_rejects_non_privileged_user():
     assert "Only the bot owner or a server manager" in message
 
 
-def test_terms_reset_command_is_test_guild_only():
+def test_terms_reset_command_requires_a_server():
     bot = _FakeBot()
     bot.terms_service.is_enabled_for.return_value = False
     cog = TermsCog(bot)
@@ -259,4 +260,4 @@ def test_terms_reset_command_is_test_guild_only():
 
     bot.terms_service.reset_for_user.assert_not_awaited()
     message = interaction.response.send_message.await_args.args[0]
-    assert "only available in the test guild" in message
+    assert "can only be used in a server" in message

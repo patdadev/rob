@@ -6,7 +6,6 @@ from typing import Any
 
 from aiohttp import web
 
-from rob.config.guilds import is_test_guild
 from rob.config.settings import WebhookSettings
 from rob.database.connection import Database
 from rob.database.repositories.bot_state import BotStateRepository
@@ -92,11 +91,10 @@ async def handle_throne_webhook(request: web.Request) -> web.Response:
     parsed = parse_throne_send_payload(creator_id=creator_id, payload=payload)
     explicit_test = is_explicit_test_webhook_payload(payload, parsed)
     known_test_sender = is_known_test_sender(parsed.gifter_username, test_gifter_usernames=set(settings.throne_test_gifter_usernames))
-    in_test_guild = is_test_guild(matched_creator.guild_id)
     log.info(
         "Throne webhook received creator_id=%s guild_id=%s discord_user_id=%s "
         "event_type=%s gifter=%s explicit_test=%s known_test_sender=%s "
-        "parse_test_as_real=%s test_guild=%s",
+        "parse_test_as_real=%s",
         creator_id,
         matched_creator.guild_id,
         matched_creator.discord_user_id,
@@ -105,7 +103,6 @@ async def handle_throne_webhook(request: web.Request) -> web.Response:
         explicit_test,
         known_test_sender,
         settings.throne_parse_test_sends_as_real_sends,
-        in_test_guild,
     )
 
     notify_state: dict[str, bool] = {"sent": False}
@@ -120,16 +117,6 @@ async def handle_throne_webhook(request: web.Request) -> web.Response:
         We additionally guard against multiple notifications per webhook
         delivery so the bot ops endpoint sees one POST per inbound event.
         """
-
-        if not in_test_guild:
-            log.info(
-                "Onboarding auto-advance skipped (not test guild) "
-                "guild_id=%s discord_user_id=%s reason=%s",
-                matched_creator.guild_id,
-                matched_creator.discord_user_id,
-                reason,
-            )
-            return
         if notify_state["sent"]:
             log.info(
                 "Onboarding auto-advance already notified for this webhook "

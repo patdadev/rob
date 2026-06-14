@@ -48,11 +48,9 @@ def test_terms_prompt_card_has_links_and_accept_decline_buttons():
     )
     assert _find_button(rendered.view, custom_id=ID_TERMS_ACCEPT) is not None
     assert _find_button(rendered.view, custom_id=ID_TERMS_DECLINE) is not None
-    link_buttons = _find_link_buttons(rendered.view)
-    assert sorted({button.label for button in link_buttons}) == [
-        "Privacy Notice",
-        "Terms of Use",
-    ]
+    labels = {button.label for button in _find_link_buttons(rendered.view)}
+    assert any("Terms of Use" in label for label in labels)
+    assert any("Privacy Notice" in label for label in labels)
 
 
 def test_terms_accepted_card_disables_accept_and_removes_decline():

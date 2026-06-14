@@ -8,7 +8,6 @@ import logging
 
 import discord
 
-from rob.config.guilds import is_test_guild
 from rob.database.repositories.bot_state import BotStateRepository
 from rob.database.repositories.guild_settings import GuildSettingsRepository
 from rob.database.repositories.leaderboards import LeaderboardsRepository
@@ -99,11 +98,8 @@ class LeaderboardService:
         guild_id: int,
         entries: list[LeaderboardEntry],
     ) -> list[LeaderboardEntry]:
-        """For the test guild only, drop entries whose Dom/me opted out of the
-        leaderboard. Outside the test guild this is a no-op."""
+        """Drop entries whose Dom/me opted out of the leaderboard."""
 
-        if not is_test_guild(guild_id):
-            return entries
         if self.dommes is None or not entries:
             return entries
         registered = await self.dommes.list_for_guild(guild_id)
@@ -235,18 +231,13 @@ class LeaderboardService:
             return None
         if leader.total_cents <= 0 and leader.send_count <= 0:
             return None
-        if is_test_guild(guild_id):
-            filtered = await self._filter_entries_for_guild(guild_id, [leader])
-            if not filtered:
-                return None
-            leader = filtered[0]
+        filtered = await self._filter_entries_for_guild(guild_id, [leader])
+        if not filtered:
+            return None
+        leader = filtered[0]
         return leader
 
     async def maybe_post_leader_alert(self, guild_id: int, *, previous_leader_user_id: int | None) -> bool:
-        # NEW LEADER ALERT is disabled in the test guild as part of the
-        # DM-first preference system.
-        if is_test_guild(guild_id):
-            return False
         if await self._rob_offline_for_guild(guild_id):
             return False
         if await self.maintenance.is_enabled():

@@ -1,8 +1,7 @@
-"""``/settings`` slash command for the test guild only.
+"""``/settings`` and ``/preferences`` slash commands.
 
 Lets a registered Dom/me change their leaderboard visibility, and any member
-opt into the leaderboard access role. All other guilds receive an ephemeral
-"not available here" response.
+opt into the leaderboard access role.
 """
 
 from __future__ import annotations
@@ -14,7 +13,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from rob.config.guilds import is_test_guild
 from rob.discord.leaderboard_access import apply_leaderboard_access
 from rob.ui.cards.dm_onboarding import PreferencesView
 from rob.ui.cards.errors import error_card
@@ -28,17 +26,10 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-def _not_available_response() -> dict:
-    return error_card(
-        "Not available here",
-        "`/settings` is only available in the test guild right now.",
-    ).send_kwargs()
-
-
 class SettingsCog(commands.Cog):
     settings_group = app_commands.Group(
         name="settings",
-        description="Manage your Rob preferences (test guild only).",
+        description="Manage your Rob preferences.",
     )
 
     def __init__(self, bot: "RobBot") -> None:
@@ -62,8 +53,14 @@ class SettingsCog(commands.Cog):
         choice.
         """
 
-        if not is_test_guild(interaction.guild_id):
-            await interaction.response.send_message(**_not_available_response(), ephemeral=True)
+        if interaction.guild_id is None:
+            await interaction.response.send_message(
+                **error_card(
+                    "Use this in the server",
+                    "Run this command from within the server, not in DMs.",
+                ).send_kwargs(),
+                ephemeral=True,
+            )
             return
 
         member = interaction.user

@@ -4,8 +4,10 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from rob.config.guilds import MAIN_GUILD_ID, TEST_GUILD_ID
 from rob.discord.leaderboard_access import apply_leaderboard_access
+
+TEST_GUILD_ID = 1506597978251591813
+MAIN_GUILD_ID = 1485460387355820034
 
 
 class _Role:
@@ -90,13 +92,11 @@ def test_returns_false_when_role_not_configured():
     member.add_roles.assert_not_awaited()
 
 
-def test_returns_false_outside_test_guild():
+def test_works_for_any_guild():
     member = _Member(roles=[])
     bot = _Bot(role_id=99, guild=_Guild(_Role(99), member))
     ok = asyncio.run(
         apply_leaderboard_access(bot, guild_id=MAIN_GUILD_ID, user_id=7, enabled=True)
     )
-    assert ok is False
-    # Should short-circuit before touching settings or roles.
-    bot.guild_settings_repo.get.assert_not_awaited()
-    member.add_roles.assert_not_awaited()
+    assert ok is True
+    member.add_roles.assert_awaited_once()

@@ -1,12 +1,13 @@
-"""Test-guild-only leaderboard filtering."""
+"""Leaderboard opt-out filtering (applies to every guild)."""
 
 from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
 
-from rob.config.guilds import MAIN_GUILD_ID, TEST_GUILD_ID
 from rob.services.leaderboard_service import LeaderboardService
+
+GUILD_ID = 1506597978251591813
 
 
 class _FakeDommes:
@@ -34,43 +35,31 @@ def _make_service(dommes_repo):
     )
 
 
-def test_filter_drops_opted_out_dommes_in_test_guild():
+def test_filter_drops_opted_out_dommes():
     dommes = _FakeDommes([
-        SimpleNamespace(guild_id=TEST_GUILD_ID, discord_user_id=1, leaderboard_visible=True),
-        SimpleNamespace(guild_id=TEST_GUILD_ID, discord_user_id=2, leaderboard_visible=False),
+        SimpleNamespace(guild_id=GUILD_ID, discord_user_id=1, leaderboard_visible=True),
+        SimpleNamespace(guild_id=GUILD_ID, discord_user_id=2, leaderboard_visible=False),
     ])
     service = _make_service(dommes)
     entries = [_entry(1), _entry(2), _entry(3)]
 
-    result = asyncio.run(service._filter_entries_for_guild(TEST_GUILD_ID, entries))
+    result = asyncio.run(service._filter_entries_for_guild(GUILD_ID, entries))
 
+    # Only the opted-in, registered Dom/me survives.
     assert [e.user_id for e in result] == [1]
-
-
-def test_filter_is_noop_outside_test_guild():
-    dommes = _FakeDommes([
-        SimpleNamespace(guild_id=MAIN_GUILD_ID, discord_user_id=1, leaderboard_visible=False),
-    ])
-    service = _make_service(dommes)
-    entries = [_entry(1), _entry(2)]
-
-    result = asyncio.run(service._filter_entries_for_guild(MAIN_GUILD_ID, entries))
-
-    assert result is entries  # untouched
-    assert dommes.calls == 0
+    assert dommes.calls == 1
 
 
 def test_filter_noop_when_dommes_repo_missing():
     service = _make_service(None)
     entries = [_entry(1)]
-    result = asyncio.run(service._filter_entries_for_guild(TEST_GUILD_ID, entries))
+    result = asyncio.run(service._filter_entries_for_guild(GUILD_ID, entries))
     assert result is entries
 
 
-def test_maybe_post_leader_alert_disabled_in_test_guild():
-    service = _make_service(None)
-    # Should short-circuit without touching maintenance/bot_state.
-    result = asyncio.run(
-        service.maybe_post_leader_alert(TEST_GUILD_ID, previous_leader_user_id=None)
-    )
-    assert result is False
+def test_filter_noop_when_no_entries():
+    dommes = _FakeDommes([])
+    service = _make_service(dommes)
+    result = asyncio.run(service._filter_entries_for_guild(GUILD_ID, []))
+    assert result == []
+    assert dommes.calls == 0

@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from rob.config.guilds import is_test_guild
 from rob.database.repositories.terms import (
     STATUS_ACCEPTED,
     STATUS_PENDING,
@@ -44,7 +43,7 @@ class TermsService:
 
     @staticmethod
     def is_enabled_for(guild_id: int | None) -> bool:
-        return is_test_guild(guild_id)
+        return guild_id is not None
 
     @property
     def links(self) -> TermsLinks:

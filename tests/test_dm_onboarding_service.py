@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from rob.config.guilds import MAIN_GUILD_ID, TEST_GUILD_ID
 from rob.database.repositories.domme_onboarding import (
     STAGE_AWAITING_PREFERENCES,
     STAGE_AWAITING_THRONE_INPUT,
@@ -21,6 +20,9 @@ from rob.services.dm_onboarding_service import (
     DMOnboardingService,
     OnboardingError,
 )
+
+TEST_GUILD_ID = 1506597978251591813
+MAIN_GUILD_ID = 1485460387355820034
 
 
 class _FakeOnboardingRepo:
@@ -76,16 +78,11 @@ def _service(*, onboarding=None, dommes=None, throne=None, registration=None):
     )
 
 
-def test_onboarding_enabled_only_for_test_guild():
+def test_onboarding_enabled_for_any_guild():
     assert DMOnboardingService.is_enabled_for(TEST_GUILD_ID) is True
-    assert DMOnboardingService.is_enabled_for(MAIN_GUILD_ID) is False
+    assert DMOnboardingService.is_enabled_for(MAIN_GUILD_ID) is True
+    assert DMOnboardingService.is_enabled_for(123456789) is True
     assert DMOnboardingService.is_enabled_for(None) is False
-
-
-def test_start_outside_test_guild_raises():
-    service = _service()
-    with pytest.raises(OnboardingError):
-        asyncio.run(service.start(guild_id=MAIN_GUILD_ID, discord_user_id=1))
 
 
 def test_start_creates_onboarding_state():
@@ -237,9 +234,9 @@ def test_defer_migration_sets_future_timestamp():
     assert call["until"] > datetime.now(timezone.utc)
 
 
-def test_defer_migration_outside_test_guild_raises():
+def test_defer_migration_requires_registered_domme():
     service = _service()
     with pytest.raises(OnboardingError):
         asyncio.run(
-            service.defer_migration(guild_id=MAIN_GUILD_ID, discord_user_id=42)
+            service.defer_migration(guild_id=TEST_GUILD_ID, discord_user_id=42)
         )

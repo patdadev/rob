@@ -228,7 +228,7 @@ def test_non_usd_throne_send_is_converted_to_usd_with_original_metadata():
 
 
 def test_main_guild_offline_throne_send_is_saved_without_discord_queue():
-    from rob.config.guilds import MAIN_GUILD_ID
+    MAIN_GUILD_ID = 1485460387355820034
 
     sends = _FakeSendsRepo()
     subs = _FakeSubsRepo()
@@ -251,7 +251,7 @@ def test_main_guild_offline_throne_send_is_saved_without_discord_queue():
 
 
 def test_dev_guild_offline_mode_does_not_change_throne_queue_status():
-    from rob.config.guilds import TEST_GUILD_ID
+    TEST_GUILD_ID = 1506597978251591813
 
     sends = _FakeSendsRepo()
     subs = _FakeSubsRepo()

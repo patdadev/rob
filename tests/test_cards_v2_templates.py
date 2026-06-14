@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from rob.config.guilds import TEST_GUILD_ID
 from rob.database.repositories.models import (
     LeaderboardEntry,
     LeaderboardSummary,
@@ -18,6 +17,8 @@ from rob.ui.cards.send import send_card
 from rob.ui.copy import throne_setup_steps
 from rob.ui.theme import COLOR_LEADER_ALERT, COLOR_SEND
 
+TEST_GUILD_ID = 1506597978251591813
+
 
 def _send(
     sub_name: str | None = None,
@@ -25,6 +26,7 @@ def _send(
     item_image_url: str | None = None,
     is_test_send: bool = False,
     guild_id: int = 1,
+    source: str = "throne_webhook",
 ) -> SendRecord:
     now = datetime.now(timezone.utc)
     return SendRecord(
@@ -38,7 +40,7 @@ def _send(
         1099,
         "USD",
         None,
-        "throne_webhook",
+        source,
         "Flowers",
         item_image_url,
         None,
@@ -110,7 +112,7 @@ def test_send_card_renders_thumbnail_image_and_currency_name():
 
 
 def test_send_card_without_image_uses_text_display_and_no_footer():
-    msg = send_card(send=_send("gifter_name"), domme_label="@Domme", sub_display="gifter_name with no nickname claimed")
+    msg = send_card(send=_send("gifter_name", source="manual:paypal"), domme_label="@Domme", sub_display="gifter_name with no nickname claimed")
     container = msg.view.children[0]
     contents = "\n".join(str(getattr(ch, "content", "")) for ch in container.children)
     assert [type(child).__name__ for child in container.children] == [
@@ -137,7 +139,7 @@ def test_send_card_adjustment_note_placement_and_non_usd_currency_display():
         1099,
         "EUR",
         None,
-        "throne_webhook",
+        "manual:paypal",
         "Flowers",
         None,
         None,

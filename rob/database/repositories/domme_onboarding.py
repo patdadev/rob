@@ -1,4 +1,4 @@
-"""Repository for the DM-based Dom/me onboarding flow (test guild only).
+"""Repository for the DM-based Dom/me onboarding flow.
 
 Onboarding state is short-lived flow data — Throne input that has been entered
 but not yet confirmed, the DM channel/message ids the bot is editing in place,
@@ -97,6 +97,27 @@ class DommeOnboardingRepository:
                 WHERE guild_id = $1 AND discord_user_id = $2
                 """,
                 guild_id,
+                discord_user_id,
+            )
+        return _build(row) if row is not None else None
+
+    async def get_active_for_user(
+        self, *, discord_user_id: int
+    ) -> DommeOnboardingState | None:
+        """Return the user's most recent in-progress onboarding (any guild).
+
+        DM interactions carry no guild context, so callers resolve which guild a
+        flow belongs to by looking the active row up by user id.
+        """
+
+        async with self.database.acquire() as connection:
+            row = await connection.fetchrow(
+                """
+                SELECT * FROM domme_onboarding_state
+                WHERE discord_user_id = $1 AND stage <> 'completed'
+                ORDER BY last_interaction_at DESC
+                LIMIT 1
+                """,
                 discord_user_id,
             )
         return _build(row) if row is not None else None
