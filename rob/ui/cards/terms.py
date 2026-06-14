@@ -18,8 +18,8 @@ TERMS_PREFIX = "rob:terms:"
 ID_TERMS_ACCEPT = f"{TERMS_PREFIX}accept"
 ID_TERMS_DECLINE = f"{TERMS_PREFIX}decline"
 _UNAVAILABLE_MESSAGE = (
-    "These Terms are not available right now. Run any Rob command in the test "
-    "server and I'll send a fresh copy."
+    "These Terms are not available right now. Run any Rob command in the server "
+    "and I'll send a fresh copy."
 )
 
 
@@ -127,41 +127,46 @@ class _TermsPromptLayout(discord.ui.LayoutView):
         *,
         terms_url: str,
         privacy_url: str,
-        cog: Any | None,
+        version: str | None = None,
+        cog: Any | None = None,
     ) -> None:
         super().__init__(timeout=None)
         container = discord.ui.Container(accent_color=COLOR_INFO)
-        container.add_item(
-            discord.ui.TextDisplay("### Rob's Terms of Use and Privacy Notice")
-        )
+        container.add_item(discord.ui.TextDisplay("## 👋 Welcome to Rob!"))
         container.add_item(
             discord.ui.TextDisplay(
-                "To continue using Rob's awesome features, you'll need to accept "
-                "the Terms of Use and Privacy Notice."
+                "Quick one-time bit of housekeeping before you start: please review "
+                "and accept Rob's **Terms of Use** and **Privacy Notice**."
             )
         )
         container.add_item(discord.ui.Separator())
         container.add_item(
             discord.ui.TextDisplay(
-                "Please open and review both documents below before choosing "
-                "whether to accept or decline."
+                "Tap to read each one — they cover what Rob tracks and how your "
+                "data is handled:"
             )
         )
         container.add_item(
             discord.ui.ActionRow(
-                _document_link_button(label="Terms of Use", url=terms_url),
-                _document_link_button(label="Privacy Notice", url=privacy_url),
+                _document_link_button(label="📜 Terms of Use", url=terms_url),
+                _document_link_button(label="🔒 Privacy Notice", url=privacy_url),
             )
         )
         container.add_item(discord.ui.Separator())
         container.add_item(
             discord.ui.TextDisplay(
-                "Once you've reviewed both documents, you can accept or decline below."
+                "All good? Tap **Accept** to unlock Rob's features. Not right now? "
+                "You can **Decline** and come back any time."
             )
         )
         container.add_item(
             discord.ui.ActionRow(AcceptButton(cog), DeclineButton(cog))
         )
+        if version:
+            container.add_item(discord.ui.Separator())
+            container.add_item(
+                discord.ui.TextDisplay(f"-# One-time step • Terms version {version}")
+            )
         self.add_item(container)
 
 
@@ -169,12 +174,14 @@ def terms_prompt_card(
     *,
     terms_url: str,
     privacy_url: str,
+    version: str | None = None,
     cog: Any | None = None,
 ) -> RenderedMessage:
     return RenderedMessage(
         view=_TermsPromptLayout(
             terms_url=terms_url,
             privacy_url=privacy_url,
+            version=version,
             cog=cog,
         )
     )
@@ -201,10 +208,11 @@ class _TermsOutcomeLayout(discord.ui.LayoutView):
 def terms_accepted_card() -> RenderedMessage:
     return RenderedMessage(
         view=_TermsOutcomeLayout(
-            title="Thanks! ❤️",
+            title="🎉 You're all set!",
             body=(
-                "Thanks for accepting Rob's Terms of Use and Privacy Notice.\n\n"
-                "You're now able to use Rob's features."
+                "Thanks for accepting Rob's Terms of Use and Privacy Notice — "
+                "you're good to go.\n\n"
+                "Head back to the server and run any Rob command to get started."
             ),
             color=COLOR_SUCCESS,
             button=AcceptButton(label="Accepted", disabled=True),
@@ -217,9 +225,9 @@ def terms_declined_card() -> RenderedMessage:
         view=_TermsOutcomeLayout(
             title="No worries!",
             body=(
-                "Not a problem.\n\n"
-                "If you ever change your mind, run any Rob command in the server "
-                "and I'll send these through again."
+                "No problem at all. You won't be able to use Rob's features until "
+                "you accept — but you can change your mind any time. Just run any "
+                "Rob command in the server and I'll send these through again."
             ),
             color=COLOR_DANGER,
             button=DeclineButton(label="Declined", disabled=True),

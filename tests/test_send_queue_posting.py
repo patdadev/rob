@@ -14,8 +14,10 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from rob.config.guilds import MAIN_GUILD_ID, TEST_GUILD_ID
 from rob.services.send_queue_service import SendQueueService
+
+TEST_GUILD_ID = 1506597978251591813
+MAIN_GUILD_ID = 1485460387355820034
 
 
 class _FakeMaintenance:

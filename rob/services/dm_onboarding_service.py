@@ -14,7 +14,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from rob.config.guilds import is_test_guild
 from rob.database.repositories.domme_onboarding import (
     STAGE_AWAITING_PREFERENCES,
     STAGE_AWAITING_THRONE_INPUT,
@@ -58,7 +57,7 @@ class DMOnboardingService:
 
     @staticmethod
     def is_enabled_for(guild_id: int | None) -> bool:
-        return is_test_guild(guild_id)
+        return guild_id is not None
 
     # -- stage 1: intro -> modal submission --------------------------------
 

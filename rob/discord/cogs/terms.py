@@ -122,7 +122,7 @@ class TermsCog(commands.Cog):
     def _stale_text() -> str:
         return (
             "That Terms message is no longer active. Run any Rob command in the "
-            "test server and I'll send a fresh copy."
+            "server and I'll send a fresh copy."
         )
 
     async def _send_terms_dm(
@@ -137,6 +137,7 @@ class TermsCog(commands.Cog):
         rendered = terms_prompt_card(
             terms_url=service.terms_url,
             privacy_url=service.privacy_url,
+            version=service.terms_version,
             cog=self,
         )
         try:
@@ -275,7 +276,7 @@ class TermsCog(commands.Cog):
             return
         if interaction.guild is None or not service.is_enabled_for(interaction.guild_id):
             await interaction.response.send_message(
-                "This command is only available in the test guild.",
+                "This command can only be used in a server.",
                 ephemeral=True,
             )
             return
@@ -292,25 +293,25 @@ class TermsCog(commands.Cog):
             if had_state:
                 message = (
                     "Your Terms acceptance state has been reset. The next gated "
-                    "command you run in the test guild will send a fresh Terms DM."
+                    "command you run will send a fresh Terms DM."
                 )
             else:
                 message = (
                     "You didn't have an active Terms state, so there was nothing "
-                    "to clear. The next gated command you run in the test guild "
-                    "will still send a fresh Terms DM."
+                    "to clear. The next gated command you run will still send a "
+                    "fresh Terms DM."
                 )
         else:
             mention = getattr(target, "mention", None) or self._display_name(target)
             if had_state:
                 message = (
                     f"Reset Terms acceptance for {mention}. Their next gated "
-                    "command in the test guild will send a fresh Terms DM."
+                    "command will send a fresh Terms DM."
                 )
             else:
                 message = (
                     f"{mention} didn't have an active Terms state, so there was "
-                    "nothing to clear. Their next gated command in the test guild "
-                    "will still send a fresh Terms DM."
+                    "nothing to clear. Their next gated command will still send a "
+                    "fresh Terms DM."
                 )
         await interaction.response.send_message(message, ephemeral=True)

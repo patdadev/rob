@@ -25,9 +25,6 @@ no-op) inside the live LayoutView while a separate persistent ``View``
 held the real callbacks. After a restart, the persistent view registered
 in :meth:`DMOnboardingCog.register_persistent_views` acts as the
 fallback route for the same custom IDs.
-
-All onboarding behavior is gated to the test guild (see
-:func:`rob.config.guilds.is_test_guild`).
 """
 
 from __future__ import annotations
@@ -38,7 +35,6 @@ import logging
 import discord
 from discord.ext import commands
 
-from rob.config.guilds import is_test_guild
 from rob.discord.leaderboard_access import apply_leaderboard_access
 from rob.services.dm_onboarding_service import (
     DMOnboardingService,
@@ -147,7 +143,7 @@ class DMOnboardingCog(commands.Cog):
         """
 
         service = self.service
-        if service is None or not is_test_guild(guild_id):
+        if service is None:
             return False, None, "DM onboarding is not available here."
 
         log.info(
@@ -200,10 +196,10 @@ class DMOnboardingCog(commands.Cog):
         guild_id: int,
         default_leaderboard_visible: bool = True,
     ) -> discord.Message | None:
-        """Send the migration prompt DM to an already-registered Dom/me in
-        the test guild. Returns the message (or ``None`` on failure)."""
+        """Send the migration prompt DM to an already-registered Dom/me.
+        Returns the message (or ``None`` on failure)."""
 
-        if not is_test_guild(guild_id):
+        if guild_id is None:
             return None
         rendered = migration_prompt_card(
             name=getattr(user, "display_name", None) or user.name,
@@ -250,21 +246,17 @@ class DMOnboardingCog(commands.Cog):
     async def _resolve_guild_id_for_user(self, user_id: int) -> int | None:
         """Look up the guild an in-progress onboarding belongs to.
 
-        DM interactions have no ``interaction.guild`` set, so the cog can't
-        otherwise tell which guild the flow was started from. The flow is
-        test-guild only, so we look up the row by ``TEST_GUILD_ID``.
+        DM interactions have no ``interaction.guild`` set, so the cog resolves
+        which guild a flow belongs to by finding the user's most recent
+        in-progress onboarding row.
         """
 
         repo = getattr(self.bot, "domme_onboarding_repo", None)
         if repo is None:
             return None
-        from rob.config.guilds import TEST_GUILD_ID
 
         try:
-            state = await repo.get(
-                guild_id=TEST_GUILD_ID,
-                discord_user_id=user_id,
-            )
+            state = await repo.get_active_for_user(discord_user_id=user_id)
         except Exception:
             log.exception("Onboarding state lookup failed user_id=%s", user_id)
             return None
@@ -341,7 +333,7 @@ class DMOnboardingCog(commands.Cog):
         guild_id = interaction.guild_id or await self._resolve_guild_id_for_user(
             interaction.user.id
         )
-        if guild_id is None or not is_test_guild(guild_id):
+        if guild_id is None:
             log.warning(
                 "Onboarding open_modal rejected (no guild or wrong guild) "
                 "user_id=%s guild_id=%s",
@@ -376,7 +368,7 @@ class DMOnboardingCog(commands.Cog):
             guild_id,
         )
         service = self.service
-        if service is None or not is_test_guild(guild_id):
+        if service is None:
             await interaction.response.send_message(
                 "This setup isn't available right now.", ephemeral=True
             )
@@ -451,7 +443,7 @@ class DMOnboardingCog(commands.Cog):
         )
         guild_id = await self._resolve_guild_id_for_user(interaction.user.id)
         service = self.service
-        if guild_id is None or service is None or not is_test_guild(guild_id):
+        if guild_id is None or service is None:
             await interaction.response.send_message(
                 "This setup isn't available right now.", ephemeral=True
             )
@@ -506,7 +498,7 @@ class DMOnboardingCog(commands.Cog):
         log.info("handle_identity_no user_id=%s", interaction.user.id)
         guild_id = await self._resolve_guild_id_for_user(interaction.user.id)
         service = self.service
-        if guild_id is None or service is None or not is_test_guild(guild_id):
+        if guild_id is None or service is None:
             await interaction.response.send_message(
                 "This setup isn't available right now.", ephemeral=True
             )
@@ -545,7 +537,7 @@ class DMOnboardingCog(commands.Cog):
 
         log.info("handle_webhook_retry user_id=%s", interaction.user.id)
         guild_id = await self._resolve_guild_id_for_user(interaction.user.id)
-        if guild_id is None or not is_test_guild(guild_id):
+        if guild_id is None:
             await interaction.response.send_message(
                 "This setup isn't available right now.", ephemeral=True
             )
@@ -610,7 +602,7 @@ class DMOnboardingCog(commands.Cog):
         log.info("handle_save_preferences user_id=%s", interaction.user.id)
         guild_id = await self._resolve_guild_id_for_user(interaction.user.id)
         service = self.service
-        if guild_id is None or service is None or not is_test_guild(guild_id):
+        if guild_id is None or service is None:
             await interaction.response.send_message(
                 "This setup isn't available right now.", ephemeral=True
             )
@@ -660,10 +652,6 @@ class DMOnboardingCog(commands.Cog):
         log.info("handle_migration_save user_id=%s", interaction.user.id)
         guild_id = await self._resolve_guild_id_for_user(interaction.user.id)
         if guild_id is None:
-            from rob.config.guilds import TEST_GUILD_ID
-
-            guild_id = TEST_GUILD_ID
-        if not is_test_guild(guild_id):
             await interaction.response.send_message(
                 "This setup isn't available here.", ephemeral=True
             )
@@ -726,10 +714,6 @@ class DMOnboardingCog(commands.Cog):
         log.info("handle_migration_defer user_id=%s", interaction.user.id)
         guild_id = await self._resolve_guild_id_for_user(interaction.user.id)
         if guild_id is None:
-            from rob.config.guilds import TEST_GUILD_ID
-
-            guild_id = TEST_GUILD_ID
-        if not is_test_guild(guild_id):
             await interaction.response.send_message(
                 "This setup isn't available here.", ephemeral=True
             )
@@ -810,12 +794,10 @@ class DMOnboardingCog(commands.Cog):
             guild_id,
         )
         service = self.service
-        if service is None or not is_test_guild(guild_id):
+        if service is None:
             log.info(
-                "Webhook auto-advance skipped (service=%s test_guild=%s) "
+                "Webhook auto-advance skipped (service unavailable) "
                 "user_id=%s guild_id=%s",
-                service is not None,
-                is_test_guild(guild_id),
                 discord_user_id,
                 guild_id,
             )

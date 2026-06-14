@@ -4,7 +4,6 @@ import hashlib
 
 import discord
 
-from rob.config.guilds import is_test_guild
 from rob.database.repositories.models import SendRecord
 from rob.ui.render import RenderedMessage, require_components_v2
 from rob.ui.theme import COLOR_SEND
@@ -69,7 +68,7 @@ def send_card(
     del rank
     require_components_v2()
     view = discord.ui.LayoutView(timeout=1800)
-    if send.source == "throne_webhook" and is_test_guild(send.guild_id):
+    if send.source == "throne_webhook":
         body = (
             f"{_throne_headline(send, domme_label=domme_label)}\n\n"
             f"**Amount:** {_amount_text(send)}"

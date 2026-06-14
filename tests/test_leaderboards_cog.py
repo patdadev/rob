@@ -4,9 +4,10 @@ import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from rob.config.guilds import TEST_GUILD_ID
 from rob.database.repositories.models import LatestTrackedSend, LeaderboardEntry, PersonalStatsSummary
 from rob.discord.cogs.leaderboards import LeaderboardsCog
+
+TEST_GUILD_ID = 1506597978251591813
 
 
 class _FakeResponse:

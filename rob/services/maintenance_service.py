@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 
 from rob.database.repositories.bot_state import BotStateRepository
-from rob.config.guilds import is_main_guild
 from rob.database.repositories.models import MaintenanceState
 from rob.services.leaderboard_status import LeaderboardStatus
 from rob.utils.time import utc_now
@@ -57,7 +56,8 @@ class MaintenanceService:
         return await self.bot_state.get_bool(ROB_OFFLINE_MODE_KEY, default=False)
 
     async def is_rob_offline_for_guild(self, guild_id: int | None) -> bool:
-        return is_main_guild(guild_id) and await self.is_rob_offline_enabled()
+        del guild_id  # Rob-offline is a global toggle; applies to every guild.
+        return await self.is_rob_offline_enabled()
 
     async def get_leaderboard_status(self, guild_id: int | None = None) -> LeaderboardStatus:
         if await self.is_rob_offline_for_guild(guild_id):

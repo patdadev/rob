@@ -1,7 +1,6 @@
 """Components V2 cards for the DM-based Dom/me onboarding flow.
 
-All cards here are test-guild-only. Gating to ``is_test_guild`` is the
-caller's responsibility. The interaction handlers live on
+The interaction handlers live on
 :class:`rob.discord.cogs.dm_onboarding.DMOnboardingCog` and the
 orchestration on :class:`rob.services.dm_onboarding_service.DMOnboardingService`.
 

@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from rob.config.guilds import MAIN_GUILD_ID, TEST_GUILD_ID
 from rob.discord.cogs.dm_onboarding import (
     DMOnboardingCog,
     _read_prefs_from_interaction,
@@ -27,6 +26,9 @@ from rob.ui.cards.dm_onboarding import (
     LEADERBOARD_HIDE_VALUE,
 )
 
+TEST_GUILD_ID = 1506597978251591813
+MAIN_GUILD_ID = 1485460387355820034
+
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -39,6 +41,9 @@ class _FakeOnboardingRepo:
         self.set_dm_message_calls: list[dict] = []
 
     async def get(self, *, guild_id, discord_user_id):
+        return self.state
+
+    async def get_active_for_user(self, *, discord_user_id):
         return self.state
 
     async def set_dm_message(self, **kwargs):
@@ -168,19 +173,6 @@ def _make_interaction(
 # ---------------------------------------------------------------------------
 
 
-def test_start_onboarding_dm_outside_test_guild_returns_error():
-    bot = _FakeBot()
-    cog = DMOnboardingCog(bot)
-    user = _FakeUser()
-    ok, message, err = asyncio.run(
-        cog.start_onboarding_dm(user=user, guild_id=MAIN_GUILD_ID)
-    )
-    assert ok is False
-    assert message is None
-    assert err is not None
-    bot.dm_onboarding_service.start.assert_not_awaited()
-
-
 def test_start_onboarding_dm_test_guild_sends_intro_and_stores_message():
     bot = _FakeBot()
     cog = DMOnboardingCog(bot)
@@ -241,15 +233,6 @@ def test_handle_open_modal_uses_stored_guild_id_in_dm_context():
     interaction = _make_interaction(guild_id=None)
     asyncio.run(cog.handle_open_modal(interaction))
     interaction.response.send_modal.assert_awaited_once()
-
-
-def test_handle_open_modal_outside_test_guild_short_circuits():
-    bot = _FakeBot()
-    cog = DMOnboardingCog(bot)
-    interaction = _make_interaction(guild_id=MAIN_GUILD_ID)
-    asyncio.run(cog.handle_open_modal(interaction))
-    interaction.response.send_modal.assert_not_awaited()
-    interaction.response.send_message.assert_awaited_once()
 
 
 def test_handle_modal_submit_edits_stored_dm_with_identity_card():
@@ -621,44 +604,6 @@ def test_register_domme_routes_to_dm_cog_in_test_guild():
     dm_cog.start_onboarding_dm.assert_awaited_once_with(
         user=member, guild_id=TEST_GUILD_ID
     )
-    interaction.response.send_message.assert_awaited_once()
-
-
-def test_register_domme_uses_legacy_flow_outside_test_guild():
-    from unittest.mock import patch
-
-    from rob.discord.cogs.registration import RegistrationCog
-
-    bot = MagicMock()
-    bot.maintenance_service = MagicMock()
-    bot.maintenance_service.registrations_blocked = AsyncMock(return_value=False)
-    bot.guild_settings_repo = MagicMock()
-    bot.guild_settings_repo.get = AsyncMock(
-        return_value=SimpleNamespace(
-            domme_role_id=10, send_track_channel_id=99
-        )
-    )
-    dm_cog = MagicMock()
-    dm_cog.start_onboarding_dm = AsyncMock()
-    bot.get_cog = MagicMock(return_value=dm_cog)
-
-    cog = RegistrationCog(bot)
-    member = MagicMock()
-    member.id = 42
-    member.send = AsyncMock()
-    interaction = SimpleNamespace(
-        guild=SimpleNamespace(id=MAIN_GUILD_ID),
-        user=member,
-        response=MagicMock(),
-    )
-    interaction.response.send_message = AsyncMock()
-
-    with patch(
-        "rob.discord.cogs.registration.member_has_role", return_value=True
-    ):
-        asyncio.run(cog.register_domme.callback(cog, interaction))
-
-    dm_cog.start_onboarding_dm.assert_not_awaited()
     interaction.response.send_message.assert_awaited_once()
 
 
