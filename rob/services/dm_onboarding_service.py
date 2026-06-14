@@ -177,7 +177,6 @@ class DMOnboardingService:
         *,
         guild_id: int,
         discord_user_id: int,
-        notifications_enabled: bool,
         leaderboard_visible: bool,
     ) -> None:
         if not self.is_enabled_for(guild_id):
@@ -188,7 +187,6 @@ class DMOnboardingService:
         await self.dommes.set_preferences(
             guild_id=guild_id,
             discord_user_id=discord_user_id,
-            send_notifications_enabled=notifications_enabled,
             leaderboard_visible=leaderboard_visible,
             confirm=True,
         )

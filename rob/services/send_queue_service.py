@@ -3,11 +3,9 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
-from datetime import datetime, timezone
 
 import discord
 
-from rob.config.guilds import is_test_guild
 from rob.database.repositories.dommes import DommesRepository
 from rob.database.repositories.guild_settings import GuildSettingsRepository
 from rob.database.repositories.leaderboards import LeaderboardsRepository
@@ -316,13 +314,6 @@ class SendQueueService:
             await self.sends.update_status(send.id, "queued_maintenance")
             return False
 
-        # Test guild: DM the Dom/me directly instead of posting publicly.
-        # The leaderboard is still updated by the caller; only the public
-        # send-tracking channel post is replaced by a DM. The NEW LEADER
-        # ALERT is also suppressed for the test guild.
-        if is_test_guild(send.guild_id):
-            return await self._post_send_via_dm(send)
-
         settings = await self.guild_settings.get(send.guild_id)
         if settings is None or settings.send_track_channel_id is None:
             await self.sends.mark_failed(send.id, error="Missing send tracking channel configuration.")
@@ -375,93 +366,4 @@ class SendQueueService:
                 send.id,
                 send.guild_id,
             )
-        return True
-
-    async def _post_send_via_dm(self, send) -> bool:
-        """Test-guild-only path: DM the Dom/me about the send.
-
-        Honors the Dom/me's ``send_notifications_enabled`` and
-        ``notifications_snoozed_until`` preferences. On any DM failure we
-        log and mark the send as posted (with a note) so the queue does not
-        retry forever. NEW LEADER ALERT is intentionally not invoked here.
-        """
-
-        recipient_user_id = int(send.domme_user_id)
-        notifications_enabled = True
-        snoozed_until = None
-
-        if self.dommes is not None:
-            domme = await self.dommes.get_by_user_id(int(send.guild_id), recipient_user_id)
-            if domme is not None:
-                notifications_enabled = domme.send_notifications_enabled
-                snoozed_until = domme.notifications_snoozed_until
-
-        if not notifications_enabled:
-            await self.sends.mark_posted(send.id, message_id=None)
-            log.info(
-                "Test-guild send id=%s skipped DM: notifications disabled for user %s.",
-                send.id,
-                recipient_user_id,
-            )
-            return True
-
-        if snoozed_until is not None and snoozed_until > datetime.now(timezone.utc):
-            await self.sends.mark_posted(send.id, message_id=None)
-            log.info(
-                "Test-guild send id=%s skipped DM: notifications snoozed until %s for user %s.",
-                send.id,
-                snoozed_until.isoformat(),
-                recipient_user_id,
-            )
-            return True
-
-        try:
-            user = self.bot.get_user(recipient_user_id) or await self.bot.fetch_user(recipient_user_id)
-        except (discord.NotFound, discord.HTTPException) as exc:
-            log.warning(
-                "Test-guild send id=%s could not fetch user %s: %s",
-                send.id,
-                recipient_user_id,
-                exc,
-            )
-            await self.sends.mark_posted(send.id, message_id=None)
-            return True
-
-        try:
-            throne_url = await self._resolve_throne_url(send)
-            msg = send_card(
-                send=send,
-                domme_label=f"<@{recipient_user_id}>",
-                sub_display=build_sub_display(
-                    send,
-                    test_gifter_usernames=self.test_gifter_usernames,
-                ),
-                throne_url=throne_url,
-            )
-            message = await user.send(**msg.send_kwargs())
-        except discord.Forbidden:
-            log.warning(
-                "Test-guild send id=%s could not DM user %s: forbidden.",
-                send.id,
-                recipient_user_id,
-            )
-            await self.sends.mark_posted(send.id, message_id=None)
-            return True
-        except discord.HTTPException as exc:
-            log.warning(
-                "Test-guild send id=%s DM failed for user %s: %s",
-                send.id,
-                recipient_user_id,
-                exc,
-            )
-            await self.sends.mark_posted(send.id, message_id=None)
-            return True
-
-        await self.sends.mark_posted(send.id, message_id=message.id)
-        log.info(
-            "Test-guild send id=%s delivered via DM to user %s message_id=%s",
-            send.id,
-            recipient_user_id,
-            message.id,
-        )
         return True

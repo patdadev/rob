@@ -48,7 +48,6 @@ ID_INTRO_MODAL_FIELD = f"{ONBOARDING_PREFIX}intro:modal:throne_input"
 ID_IDENTITY_YES = f"{ONBOARDING_PREFIX}identity:yes"
 ID_IDENTITY_NO = f"{ONBOARDING_PREFIX}identity:no"
 ID_WEBHOOK_RETRY = f"{ONBOARDING_PREFIX}webhook:retry"
-ID_PREFS_NOTIFICATIONS = f"{ONBOARDING_PREFIX}prefs:notifications"
 ID_PREFS_LEADERBOARD = f"{ONBOARDING_PREFIX}prefs:leaderboard"
 ID_PREFS_LEADERBOARD_ACCESS = f"{ONBOARDING_PREFIX}prefs:leaderboard_access"
 ID_PREFS_SAVE = f"{ONBOARDING_PREFIX}prefs:save"
@@ -56,14 +55,11 @@ ID_PREFS_SAVE = f"{ONBOARDING_PREFIX}prefs:save"
 MIGRATION_PREFIX = "rob:dm_migration:"
 ID_MIGRATION_OPEN_PREFS = f"{MIGRATION_PREFIX}open_prefs"
 ID_MIGRATION_DEFER = f"{MIGRATION_PREFIX}defer_7d"
-ID_MIGRATION_NOTIFICATIONS = f"{MIGRATION_PREFIX}notifications"
 ID_MIGRATION_LEADERBOARD = f"{MIGRATION_PREFIX}leaderboard"
 ID_MIGRATION_LEADERBOARD_ACCESS = f"{MIGRATION_PREFIX}leaderboard_access"
 ID_MIGRATION_SAVE = f"{MIGRATION_PREFIX}save"
 
 # Preference option values stored on each ``SelectOption``.
-NOTIFY_ON_VALUE = "notify_on"
-NOTIFY_OFF_VALUE = "notify_off"
 LEADERBOARD_SHOW_VALUE = "leaderboard_show"
 LEADERBOARD_HIDE_VALUE = "leaderboard_hide"
 LEADERBOARD_ACCESS_ON_VALUE = "leaderboard_access_on"
@@ -478,14 +474,14 @@ def webhook_waiting_card(*, cog: Any | None = None) -> RenderedMessage:
 
 
 class PreferencesView(discord.ui.LayoutView):
-    """Notification + leaderboard preferences via Components V2.
+    """Leaderboard preferences via Components V2.
 
-    Up to three selects live inside the container with a Save button as the
-    final action row. ``show_domme_controls`` toggles the Dom/me-only
-    notification + "appear on leaderboard" selects (turned off for non-Dom/mes
-    using ``/preferences``). ``show_leaderboard_access`` toggles the universal
-    "leaderboard access" select that, on save, has Rob grant/remove the access
-    role (which opens the #leaderboard channel and the /leaderboard command).
+    Two selects can live inside the container with a Save button as the final
+    action row. ``show_domme_controls`` toggles the Dom/me-only "appear on
+    leaderboard" select (turned off for non-Dom/mes using ``/preferences``).
+    ``show_leaderboard_access`` toggles the universal "leaderboard access"
+    select that, on save, has Rob grant/remove the access role (which opens the
+    #leaderboard channel and the /leaderboard command).
 
     The select objects are always created so the ``chosen_*`` properties stay
     safe to read; only the requested ones are rendered.
@@ -494,10 +490,8 @@ class PreferencesView(discord.ui.LayoutView):
     def __init__(
         self,
         *,
-        default_notifications_enabled: bool = True,
         default_leaderboard_visible: bool = True,
         default_leaderboard_access: bool = False,
-        notifications_custom_id: str = ID_PREFS_NOTIFICATIONS,
         leaderboard_custom_id: str = ID_PREFS_LEADERBOARD,
         leaderboard_access_custom_id: str = ID_PREFS_LEADERBOARD_ACCESS,
         save_custom_id: str = ID_PREFS_SAVE,
@@ -510,28 +504,9 @@ class PreferencesView(discord.ui.LayoutView):
         cog: Any | None = None,
     ) -> None:
         super().__init__(timeout=None)
-        self._default_notifications_enabled = default_notifications_enabled
         self._default_leaderboard_visible = default_leaderboard_visible
         self._default_leaderboard_access = default_leaderboard_access
 
-        self.notifications_select = _AckSelect(
-            custom_id=notifications_custom_id,
-            placeholder="📬 Send notifications",
-            min_values=1,
-            max_values=1,
-            options=[
-                discord.SelectOption(
-                    label="📬 DM me when a send comes in",
-                    value=NOTIFY_ON_VALUE,
-                    default=default_notifications_enabled,
-                ),
-                discord.SelectOption(
-                    label="🔕 Don’t DM me about sends",
-                    value=NOTIFY_OFF_VALUE,
-                    default=not default_notifications_enabled,
-                ),
-            ],
-        )
         self.leaderboard_select = _AckSelect(
             custom_id=leaderboard_custom_id,
             placeholder="📊 Leaderboard visibility",
@@ -577,13 +552,6 @@ class PreferencesView(discord.ui.LayoutView):
         container.add_item(discord.ui.Separator())
 
         if show_domme_controls:
-            container.add_item(discord.ui.TextDisplay("### 📬 Send notifications"))
-            container.add_item(
-                discord.ui.TextDisplay("How should Rob ping you when a send lands?")
-            )
-            container.add_item(discord.ui.ActionRow(self.notifications_select))
-            container.add_item(discord.ui.Separator())
-
             container.add_item(discord.ui.TextDisplay("### 📊 Leaderboard visibility"))
             container.add_item(
                 discord.ui.TextDisplay(
@@ -620,13 +588,6 @@ class PreferencesView(discord.ui.LayoutView):
         self.add_item(container)
 
     @property
-    def chosen_notifications_enabled(self) -> bool:
-        values = self.notifications_select.values
-        if not values:
-            return self._default_notifications_enabled
-        return values[0] == NOTIFY_ON_VALUE
-
-    @property
     def chosen_leaderboard_visible(self) -> bool:
         values = self.leaderboard_select.values
         if not values:
@@ -643,7 +604,6 @@ class PreferencesView(discord.ui.LayoutView):
 
 def preferences_card(
     *,
-    default_notifications_enabled: bool = True,
     default_leaderboard_visible: bool = True,
     default_leaderboard_access: bool = False,
     show_domme_controls: bool = True,
@@ -651,7 +611,6 @@ def preferences_card(
     cog: Any | None = None,
 ) -> RenderedMessage:
     view = PreferencesView(
-        default_notifications_enabled=default_notifications_enabled,
         default_leaderboard_visible=default_leaderboard_visible,
         default_leaderboard_access=default_leaderboard_access,
         show_domme_controls=show_domme_controls,
@@ -670,7 +629,6 @@ class _SuccessLayout(discord.ui.LayoutView):
     def __init__(
         self,
         *,
-        notifications_enabled: bool,
         leaderboard_visible: bool,
         leaderboard_access: bool | None = None,
     ) -> None:
@@ -684,9 +642,9 @@ class _SuccessLayout(discord.ui.LayoutView):
         )
         container.add_item(
             discord.ui.TextDisplay(
-                "I’ll always respect your choices about notifications and the "
-                "leaderboard, and you can tweak them any time with `/preferences` "
-                "in the server."
+                "Your sends will show up in the send-tracking channel. I’ll always "
+                "respect your leaderboard choices, and you can tweak them any time "
+                "with `/preferences` in the server."
             )
         )
         container.add_item(discord.ui.Separator())
@@ -695,17 +653,12 @@ class _SuccessLayout(discord.ui.LayoutView):
                 "If anything ever looks off, give me a shout with `/report`."
             )
         )
-        notify_line = (
-            "📬 DM notifications on"
-            if notifications_enabled
-            else "🔕 DM notifications off"
-        )
         lb_line = (
             "👑 Shown on the leaderboard"
             if leaderboard_visible
             else "🙈 Hidden from the leaderboard"
         )
-        summary = f"{notify_line}  •  {lb_line}"
+        summary = lb_line
         if leaderboard_access is not None:
             access_line = (
                 "🔑 Leaderboard access on"
@@ -720,13 +673,11 @@ class _SuccessLayout(discord.ui.LayoutView):
 
 def success_card(
     *,
-    notifications_enabled: bool = True,
     leaderboard_visible: bool = True,
     leaderboard_access: bool | None = None,
 ) -> RenderedMessage:
     return RenderedMessage(
         view=_SuccessLayout(
-            notifications_enabled=notifications_enabled,
             leaderboard_visible=leaderboard_visible,
             leaderboard_access=leaderboard_access,
         )
@@ -747,14 +698,12 @@ class MigrationPromptView(discord.ui.LayoutView):
         self,
         *,
         name: str | None = None,
-        default_notifications_enabled: bool = True,
         default_leaderboard_visible: bool = True,
         default_leaderboard_access: bool = False,
         cog: Any | None = None,
     ) -> None:
         super().__init__(timeout=None)
         display = (name or "there").strip() or "there"
-        self._default_notifications_enabled = default_notifications_enabled
         self._default_leaderboard_visible = default_leaderboard_visible
         self._default_leaderboard_access = default_leaderboard_access
 
@@ -762,41 +711,17 @@ class MigrationPromptView(discord.ui.LayoutView):
         container.add_item(discord.ui.TextDisplay(f"## 👋 Hey {display}, Rob here!"))
         container.add_item(
             discord.ui.TextDisplay(
-                "As announced by Pat earlier this week, I’ll be changing how "
-                "I send you notifications about sends made to you through "
-                "automatic tracking."
+                "As announced by Pat earlier this week, I’m tidying up how Rob "
+                "handles the leaderboard for your automatically-tracked sends."
             )
         )
         container.add_item(discord.ui.Separator())
         container.add_item(
             discord.ui.TextDisplay(
-                "Rob can now DM you directly when a send comes in, and you "
-                "can also choose whether you appear on the leaderboard or "
-                "keep things private."
+                "Your sends still post in the send-tracking channel. You can choose "
+                "whether you appear on the leaderboard and whether you can see it."
             )
         )
-        container.add_item(discord.ui.Separator())
-
-        container.add_item(discord.ui.TextDisplay("### 📬 Send notifications"))
-        self.notifications_select = _AckSelect(
-            custom_id=ID_MIGRATION_NOTIFICATIONS,
-            placeholder="📬 Send notifications",
-            min_values=1,
-            max_values=1,
-            options=[
-                discord.SelectOption(
-                    label="📬 DM me when a send comes in",
-                    value=NOTIFY_ON_VALUE,
-                    default=default_notifications_enabled,
-                ),
-                discord.SelectOption(
-                    label="🔕 Do not DM me about sends",
-                    value=NOTIFY_OFF_VALUE,
-                    default=not default_notifications_enabled,
-                ),
-            ],
-        )
-        container.add_item(discord.ui.ActionRow(self.notifications_select))
         container.add_item(discord.ui.Separator())
 
         container.add_item(discord.ui.TextDisplay("### 📊 Leaderboard visibility"))
@@ -868,13 +793,6 @@ class MigrationPromptView(discord.ui.LayoutView):
         # attribute here for back-compat.
 
     @property
-    def chosen_notifications_enabled(self) -> bool:
-        values = self.notifications_select.values
-        if not values:
-            return self._default_notifications_enabled
-        return values[0] == NOTIFY_ON_VALUE
-
-    @property
     def chosen_leaderboard_visible(self) -> bool:
         values = self.leaderboard_select.values
         if not values:
@@ -892,14 +810,12 @@ class MigrationPromptView(discord.ui.LayoutView):
 def migration_prompt_card(
     *,
     name: str | None = None,
-    default_notifications_enabled: bool = True,
     default_leaderboard_visible: bool = True,
     default_leaderboard_access: bool = False,
     cog: Any | None = None,
 ) -> RenderedMessage:
     view = MigrationPromptView(
         name=name,
-        default_notifications_enabled=default_notifications_enabled,
         default_leaderboard_visible=default_leaderboard_visible,
         default_leaderboard_access=default_leaderboard_access,
         cog=cog,

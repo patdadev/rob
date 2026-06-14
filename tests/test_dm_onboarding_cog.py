@@ -21,13 +21,10 @@ from rob.discord.cogs.dm_onboarding import (
 from rob.services.dm_onboarding_service import OnboardingError
 from rob.ui.cards.dm_onboarding import (
     ID_MIGRATION_LEADERBOARD,
-    ID_MIGRATION_NOTIFICATIONS,
     ID_PREFS_LEADERBOARD,
     ID_PREFS_LEADERBOARD_ACCESS,
-    ID_PREFS_NOTIFICATIONS,
     LEADERBOARD_ACCESS_ON_VALUE,
     LEADERBOARD_HIDE_VALUE,
-    NOTIFY_OFF_VALUE,
 )
 
 
@@ -407,15 +404,11 @@ def test_handle_save_preferences_persists_and_renders_success_card():
     )
     user._last_message = dm_message
     # Build a fake message with components that the helper can read.
-    select_notify = SimpleNamespace(
-        custom_id=ID_PREFS_NOTIFICATIONS, values=[NOTIFY_OFF_VALUE]
-    )
     select_lb = SimpleNamespace(
         custom_id=ID_PREFS_LEADERBOARD, values=[LEADERBOARD_HIDE_VALUE]
     )
     fake_components = [
         SimpleNamespace(children=[
-            SimpleNamespace(children=[select_notify]),
             SimpleNamespace(children=[select_lb]),
         ]),
     ]
@@ -428,7 +421,6 @@ def test_handle_save_preferences_persists_and_renders_success_card():
     bot.dm_onboarding_service.save_preferences.assert_awaited_once_with(
         guild_id=TEST_GUILD_ID,
         discord_user_id=42,
-        notifications_enabled=False,
         leaderboard_visible=False,
     )
     assert dm_message.edits, "success card should be edited into stored DM"
@@ -529,7 +521,7 @@ def test_missing_dm_during_edit_does_not_raise():
         cog._edit_stored_dm(
             guild_id=TEST_GUILD_ID,
             discord_user_id=42,
-            rendered=success_card(notifications_enabled=True, leaderboard_visible=True),
+            rendered=success_card(leaderboard_visible=True),
         )
     )
     assert ok is False
@@ -567,15 +559,11 @@ def test_handle_migration_save_persists_preferences():
         )
     )
     cog = DMOnboardingCog(bot)
-    select_notify = SimpleNamespace(
-        custom_id=ID_MIGRATION_NOTIFICATIONS, values=[NOTIFY_OFF_VALUE]
-    )
     select_lb = SimpleNamespace(
         custom_id=ID_MIGRATION_LEADERBOARD, values=[LEADERBOARD_HIDE_VALUE]
     )
     fake_components = [
         SimpleNamespace(children=[
-            SimpleNamespace(children=[select_notify]),
             SimpleNamespace(children=[select_lb]),
         ]),
     ]
@@ -586,7 +574,6 @@ def test_handle_migration_save_persists_preferences():
     asyncio.run(cog.handle_migration_save(interaction))
     bot.dommes_repo.set_preferences.assert_awaited_once()
     kwargs = bot.dommes_repo.set_preferences.await_args.kwargs
-    assert kwargs["send_notifications_enabled"] is False
     assert kwargs["leaderboard_visible"] is False
     assert kwargs["confirm"] is True
     assert kwargs["clear_defer"] is True
@@ -682,14 +669,11 @@ def test_register_domme_uses_legacy_flow_outside_test_guild():
 
 def test_read_prefs_from_interaction_defaults_when_no_data():
     interaction = SimpleNamespace(view=None, message=None)
-    # (notifications_enabled, leaderboard_visible, leaderboard_access)
-    assert _read_prefs_from_interaction(interaction) == (True, True, False)
+    # (leaderboard_visible, leaderboard_access)
+    assert _read_prefs_from_interaction(interaction) == (True, False)
 
 
 def test_read_prefs_from_interaction_parses_components_when_view_missing():
-    select_notify = SimpleNamespace(
-        custom_id=ID_PREFS_NOTIFICATIONS, values=[NOTIFY_OFF_VALUE]
-    )
     select_lb = SimpleNamespace(
         custom_id=ID_PREFS_LEADERBOARD, values=[LEADERBOARD_HIDE_VALUE]
     )
@@ -697,12 +681,12 @@ def test_read_prefs_from_interaction_parses_components_when_view_missing():
         custom_id=ID_PREFS_LEADERBOARD_ACCESS, values=[LEADERBOARD_ACCESS_ON_VALUE]
     )
     components = [
-        SimpleNamespace(children=[select_notify, select_lb, select_access]),
+        SimpleNamespace(children=[select_lb, select_access]),
     ]
     interaction = SimpleNamespace(
         view=None, message=SimpleNamespace(components=components)
     )
-    assert _read_prefs_from_interaction(interaction) == (False, False, True)
+    assert _read_prefs_from_interaction(interaction) == (False, True)
 
 
 # ---------------------------------------------------------------------------

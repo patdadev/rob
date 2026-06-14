@@ -10,9 +10,6 @@ from rob.ui.cards.dm_onboarding import (
     LEADERBOARD_ACCESS_OFF_VALUE,
     LEADERBOARD_ACCESS_ON_VALUE,
     LEADERBOARD_HIDE_VALUE,
-    LEADERBOARD_SHOW_VALUE,
-    NOTIFY_OFF_VALUE,
-    NOTIFY_ON_VALUE,
     PreferencesView,
     build_intro_modal,
     identity_confirm_card,
@@ -76,10 +73,8 @@ def test_webhook_waiting_card_renders():
 
 
 def test_preferences_view_defaults_and_save_button():
-    view = PreferencesView(default_notifications_enabled=True, default_leaderboard_visible=False)
+    view = PreferencesView(default_leaderboard_visible=False)
     # Defaults are reflected in select options.
-    notify_defaults = [o for o in view.notifications_select.options if o.default]
-    assert notify_defaults and notify_defaults[0].value == NOTIFY_ON_VALUE
     lb_defaults = [o for o in view.leaderboard_select.options if o.default]
     assert lb_defaults and lb_defaults[0].value == LEADERBOARD_HIDE_VALUE
 
@@ -90,17 +85,14 @@ def test_preferences_view_defaults_and_save_button():
 
 def test_preferences_view_chosen_values_default_to_true():
     view = PreferencesView()
-    # No values set yet, properties fall back to True.
-    assert view.chosen_notifications_enabled is True
+    # No values set yet, the leaderboard property falls back to True.
     assert view.chosen_leaderboard_visible is True
 
 
 def test_preferences_view_chosen_values_reflect_selection():
     view = PreferencesView()
-    view.notifications_select._values = [NOTIFY_OFF_VALUE]  # type: ignore[attr-defined]
-    view.leaderboard_select._values = [LEADERBOARD_SHOW_VALUE]  # type: ignore[attr-defined]
-    assert view.chosen_notifications_enabled is False
-    assert view.chosen_leaderboard_visible is True
+    view.leaderboard_select._values = [LEADERBOARD_HIDE_VALUE]  # type: ignore[attr-defined]
+    assert view.chosen_leaderboard_visible is False
 
 
 def test_preferences_card_returns_view():
@@ -134,23 +126,22 @@ def test_preferences_view_access_only_hides_domme_controls():
         if isinstance(item, discord.ui.Select)
     }
     assert ID_PREFS_LEADERBOARD_ACCESS in rendered_select_ids
-    assert "rob:dm_onboarding:prefs:notifications" not in rendered_select_ids
     assert "rob:dm_onboarding:prefs:leaderboard" not in rendered_select_ids
     # Save button is still present.
     assert _has_button_with_id(view, "rob:dm_onboarding:prefs:save")
 
 
 def test_success_card_messages_reflect_choices():
-    rendered_on = success_card(notifications_enabled=True, leaderboard_visible=True)
-    rendered_off = success_card(notifications_enabled=False, leaderboard_visible=False)
+    rendered_on = success_card(leaderboard_visible=True)
+    rendered_off = success_card(leaderboard_visible=False)
     on_text = " ".join(
         i.content for i in rendered_on.view.walk_children() if isinstance(i, discord.ui.TextDisplay)
     )
     off_text = " ".join(
         i.content for i in rendered_off.view.walk_children() if isinstance(i, discord.ui.TextDisplay)
     )
-    assert "DM" in on_text
-    assert "off" in off_text.lower()
+    assert "Shown on the leaderboard" in on_text
+    assert "hidden" in off_text.lower()
 
 
 def test_migration_card_has_save_and_defer_buttons_inside_container():
@@ -325,5 +316,5 @@ def test_preferences_view_selects_ack_interactions():
     # Discord doesn't show "This interaction failed" mid-preference-selection.
     view = preferences_card().view
     interaction = _fake_interaction()
-    asyncio.run(view.notifications_select.callback(interaction))
+    asyncio.run(view.leaderboard_select.callback(interaction))
     interaction.response.defer.assert_awaited_once()
