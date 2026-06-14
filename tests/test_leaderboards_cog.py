@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+from rob.config.guilds import TEST_GUILD_ID
 from rob.database.repositories.models import LatestTrackedSend, LeaderboardEntry, PersonalStatsSummary
 from rob.discord.cogs.leaderboards import LeaderboardsCog
 
@@ -25,8 +26,8 @@ class _FakeMember:
 
 
 class _FakeGuild:
-    def __init__(self, members: dict[int, _FakeMember]):
-        self.id = 1
+    def __init__(self, members: dict[int, _FakeMember], guild_id: int = 1):
+        self.id = guild_id
         self._members = members
 
     def get_member(self, user_id: int):
@@ -90,7 +91,14 @@ class _FakeLeaderboardsRepo:
 
 
 class _FakeBot:
-    def __init__(self, *, domme_role_id: int | None, sub_role_id: int | None):
+    def __init__(
+        self,
+        *,
+        domme_role_id: int | None,
+        sub_role_id: int | None,
+        leaderboard_view_role_id: int | None = None,
+        mod_role_id: int | None = None,
+    ):
         self.settings = SimpleNamespace(
             throne_parse_test_sends_as_real_sends=False,
             throne_test_gifter_usernames=("marie_123",),
@@ -102,11 +110,15 @@ class _FakeBot:
         self.leaderboards_repo = _FakeLeaderboardsRepo()
         self._domme_role_id = domme_role_id
         self._sub_role_id = sub_role_id
+        self._leaderboard_view_role_id = leaderboard_view_role_id
+        self._mod_role_id = mod_role_id
 
     async def _get_settings(self, _guild_id: int):
         return SimpleNamespace(
             domme_role_id=self._domme_role_id,
             sub_role_id=self._sub_role_id,
+            leaderboard_view_role_id=self._leaderboard_view_role_id,
+            mod_role_id=self._mod_role_id,
         )
 
 
@@ -161,3 +173,65 @@ def test_leaderboard_member_without_roles_gets_role_guidance():
     assert payload["ephemeral"] is False
     text = _message_text(payload)
     assert "could not find Dom/me or Sub roles" in text
+
+
+# ---------------------------------------------------------------------------
+# Test-guild leaderboard access-role gating
+# ---------------------------------------------------------------------------
+
+
+def _deep_text(payload: dict) -> str:
+    view = payload["view"]
+    parts: list[str] = []
+    for item in view.walk_children():
+        content = getattr(item, "content", None)
+        if content:
+            parts.append(str(content))
+    return "\n".join(parts)
+
+
+def test_leaderboard_blocked_in_test_guild_without_access_role():
+    viewer = _FakeMember(user_id=10, display_name="Pat", role_ids=[11])
+    guild = _FakeGuild({10: viewer}, guild_id=TEST_GUILD_ID)
+    interaction = _FakeInteraction(user=viewer, guild=guild)
+    cog = LeaderboardsCog(
+        _FakeBot(domme_role_id=11, sub_role_id=22, leaderboard_view_role_id=500)
+    )
+
+    asyncio.run(LeaderboardsCog.leaderboard.callback(cog, interaction, user=None))
+
+    payload = interaction.response.messages[0]
+    assert payload["ephemeral"] is True
+    assert "members-only" in _deep_text(payload)
+
+
+def test_leaderboard_allowed_in_test_guild_with_access_role():
+    # Viewer holds the access role (500) and the Dom/me role (11).
+    viewer = _FakeMember(user_id=10, display_name="Pat", role_ids=[500, 11])
+    guild = _FakeGuild({10: viewer}, guild_id=TEST_GUILD_ID)
+    interaction = _FakeInteraction(user=viewer, guild=guild)
+    cog = LeaderboardsCog(
+        _FakeBot(domme_role_id=11, sub_role_id=22, leaderboard_view_role_id=500)
+    )
+
+    asyncio.run(LeaderboardsCog.leaderboard.callback(cog, interaction, user=None))
+
+    payload = interaction.response.messages[0]
+    assert payload["ephemeral"] is False
+    assert "Send Stats | Dom/me" in _message_text(payload)
+
+
+def test_leaderboard_open_in_test_guild_when_no_access_role_configured():
+    # No access role configured -> viewing stays open even in the test guild.
+    viewer = _FakeMember(user_id=10, display_name="Pat", role_ids=[11])
+    guild = _FakeGuild({10: viewer}, guild_id=TEST_GUILD_ID)
+    interaction = _FakeInteraction(user=viewer, guild=guild)
+    cog = LeaderboardsCog(
+        _FakeBot(domme_role_id=11, sub_role_id=22, leaderboard_view_role_id=None)
+    )
+
+    asyncio.run(LeaderboardsCog.leaderboard.callback(cog, interaction, user=None))
+
+    payload = interaction.response.messages[0]
+    assert payload["ephemeral"] is False
+    assert "Send Stats | Dom/me" in _message_text(payload)

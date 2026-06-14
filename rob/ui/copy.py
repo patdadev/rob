@@ -17,6 +17,11 @@ PERMISSION_ROLE_NOT_CONFIGURED = (
 PERMISSION_ROLE_MISSING = (
     "Rob checked the little permission clipboard and your name was not on it."
 )
+PERMISSION_LEADERBOARD_ROLE_MISSING = (
+    "The leaderboard is members-only and your name wasn't on Rob's list. "
+    "Opt in with `/preferences` (or during Dom/me setup) to get the leaderboard "
+    "access role, then try again."
+)
 
 DOMME_REGISTERED_TITLE = "You're registered!"
 DOMME_REGISTERED_BODY = (

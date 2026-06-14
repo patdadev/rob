@@ -6,6 +6,9 @@ import discord
 import pytest
 
 from rob.ui.cards.dm_onboarding import (
+    ID_PREFS_LEADERBOARD_ACCESS,
+    LEADERBOARD_ACCESS_OFF_VALUE,
+    LEADERBOARD_ACCESS_ON_VALUE,
     LEADERBOARD_HIDE_VALUE,
     LEADERBOARD_SHOW_VALUE,
     NOTIFY_OFF_VALUE,
@@ -26,6 +29,13 @@ from rob.ui.cards.dm_onboarding import onboarding_error_card  # noqa: E402
 def _has_button_with_id(view: discord.ui.LayoutView, custom_id: str) -> bool:
     for item in view.walk_children():
         if isinstance(item, discord.ui.Button) and item.custom_id == custom_id:
+            return True
+    return False
+
+
+def _has_select_with_id(view: discord.ui.LayoutView, custom_id: str) -> bool:
+    for item in view.walk_children():
+        if isinstance(item, discord.ui.Select) and item.custom_id == custom_id:
             return True
     return False
 
@@ -96,6 +106,38 @@ def test_preferences_view_chosen_values_reflect_selection():
 def test_preferences_card_returns_view():
     rendered = preferences_card()
     assert isinstance(rendered.view, PreferencesView)
+
+
+def test_preferences_view_has_leaderboard_access_select():
+    view = PreferencesView(default_leaderboard_access=True)
+    assert view.leaderboard_access_select.custom_id == ID_PREFS_LEADERBOARD_ACCESS
+    assert _has_select_with_id(view, ID_PREFS_LEADERBOARD_ACCESS)
+    access_defaults = [o for o in view.leaderboard_access_select.options if o.default]
+    assert access_defaults and access_defaults[0].value == LEADERBOARD_ACCESS_ON_VALUE
+
+
+def test_preferences_view_chosen_access_defaults_false_and_reflects_selection():
+    view = PreferencesView()
+    assert view.chosen_leaderboard_access is False
+    view.leaderboard_access_select._values = [LEADERBOARD_ACCESS_ON_VALUE]  # type: ignore[attr-defined]
+    assert view.chosen_leaderboard_access is True
+    view.leaderboard_access_select._values = [LEADERBOARD_ACCESS_OFF_VALUE]  # type: ignore[attr-defined]
+    assert view.chosen_leaderboard_access is False
+
+
+def test_preferences_view_access_only_hides_domme_controls():
+    # /preferences for a non-Dom/me: only the access select is rendered.
+    view = PreferencesView(show_domme_controls=False, show_leaderboard_access=True)
+    rendered_select_ids = {
+        item.custom_id
+        for item in view.walk_children()
+        if isinstance(item, discord.ui.Select)
+    }
+    assert ID_PREFS_LEADERBOARD_ACCESS in rendered_select_ids
+    assert "rob:dm_onboarding:prefs:notifications" not in rendered_select_ids
+    assert "rob:dm_onboarding:prefs:leaderboard" not in rendered_select_ids
+    # Save button is still present.
+    assert _has_button_with_id(view, "rob:dm_onboarding:prefs:save")
 
 
 def test_success_card_messages_reflect_choices():

@@ -6,12 +6,15 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from rob.ui.cards.errors import error_card
+from rob.config.guilds import is_test_guild
+from rob.discord.permissions import is_staff_member
+from rob.ui.cards.errors import error_card, error_permission
 from rob.ui.cards.stats import (
     DommeStatsCardData,
     SubStatsCardData,
     leaderboard_personal_stats_card,
 )
+from rob.ui.copy import PERMISSION_LEADERBOARD_ROLE_MISSING
 
 if TYPE_CHECKING:
     from rob.discord.client import RobBot
@@ -56,6 +59,30 @@ class LeaderboardsCog(commands.Cog):
         guild_id = interaction.guild.id
         user_id = target_user.id
         settings = await self.bot.guild_settings_repo.get(guild_id)
+
+        # Test guild only: viewing the leaderboard requires the configured
+        # access role (the same role that grants #leaderboard channel access).
+        # Staff (admins / mod role) always bypass. Outside the test guild, or
+        # when no access role is configured, viewing stays open as before.
+        if is_test_guild(guild_id):
+            view_role_id = (
+                getattr(settings, "leaderboard_view_role_id", None)
+                if settings is not None
+                else None
+            )
+            if view_role_id is not None:
+                viewer = interaction.user
+                viewer_roles = getattr(viewer, "roles", None) or []
+                has_view_role = any(
+                    getattr(role, "id", None) == view_role_id for role in viewer_roles
+                )
+                if not has_view_role and not is_staff_member(viewer, settings):
+                    await interaction.response.send_message(
+                        **error_permission(PERMISSION_LEADERBOARD_ROLE_MISSING).send_kwargs(),
+                        ephemeral=True,
+                    )
+                    return
+
         domme_role_id = settings.domme_role_id if settings is not None else None
         sub_role_id = settings.sub_role_id if settings is not None else None
         has_domme_role = domme_role_id is not None and any(role.id == domme_role_id for role in target_user.roles)

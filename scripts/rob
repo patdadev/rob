@@ -112,10 +112,18 @@ Usage:
   rob offline off
   rob offline status
   rob logs [bot|webhook|all]
+  rob status
+  rob fix-me [--dry-run] [--rotate-secret] [--yes]
 
 Notes:
   - Guild-scoped commands accept --guild or --guild-id.
-  - ROB_DEFAULT_GUILD_ID or DISCORD_GUILD_ID can be used as a fallback.
+  - ROB_DEFAULT_GUILD_ID or DISCORD_GUILD_ID can be used as a fallback. If
+    neither is set and exactly one guild is configured, it is auto-detected,
+    so --guild can be omitted on a single-guild (e.g. test) server.
+  - rob status shows the ops URL, DB, auto-detected guild, ops health, and
+    local service states.
+  - rob fix-me prepares one host to run both the bot and webhook over loopback
+    (DB stays remote); see deploy/scripts/fix-me.sh --help.
   - Send additions/removals are approval-gated: the target Dom/me must approve
     them in Discord before Rob changes tracked totals.
   - rob clear rob_dev_v2 only prints SQL. It does not execute it.
@@ -208,6 +216,25 @@ ops_post_form() {
   http_request POST "${path}" "$@"
 }
 
+autodetect_guild_id() {
+  # Echo the single configured guild id when exactly one exists, else nothing.
+  # Used as a fallback so guild-scoped commands can be run flagless on a
+  # one-guild (e.g. test) server. Never fails the caller.
+  [[ -n "${DATABASE_URL:-}" ]] || return 0
+  command -v psql >/dev/null 2>&1 || return 0
+
+  local out
+  out="$(psql "${DATABASE_URL}" -X -A -t -P pager=off \
+    -c 'SELECT guild_id FROM vib_settings' 2>/dev/null || true)"
+  out="$(printf '%s\n' "${out}" | sed '/^[[:space:]]*$/d')"
+
+  local count
+  count="$(printf '%s\n' "${out}" | grep -c . || true)"
+  if [[ "${count}" -eq 1 ]]; then
+    printf '%s' "${out}"
+  fi
+}
+
 collect_guild_option() {
   GUILD_ID="${ROB_DEFAULT_GUILD_ID:-${DISCORD_GUILD_ID:-}}"
   REMAINING_ARGS=()
@@ -229,7 +256,14 @@ collect_guild_option() {
     shift || true
   done
 
-  [[ -n "${GUILD_ID}" ]] || die "this command requires --guild <guild_id>."
+  if [[ -z "${GUILD_ID}" ]]; then
+    GUILD_ID="$(autodetect_guild_id)"
+    if [[ -n "${GUILD_ID}" ]]; then
+      warn "no --guild given; using the only configured guild: ${GUILD_ID}"
+    fi
+  fi
+
+  [[ -n "${GUILD_ID}" ]] || die "this command requires --guild <guild_id> (or set ROB_DEFAULT_GUILD_ID; a single configured guild is auto-detected)."
   [[ "${GUILD_ID}" =~ ^[0-9]+$ ]] || die "guild id must be numeric."
 }
 
@@ -981,6 +1015,64 @@ logs_command() {
   exec journalctl "${args[@]}" -n "${ROB_LOG_LINES}" -f
 }
 
+fix_me_command() {
+  local script="${APP_ROOT}/deploy/scripts/fix-me.sh"
+  [[ -f "${script}" ]] || die "fix-me script not found at ${script}"
+  exec bash "${script}" "$@"
+}
+
+status_command() {
+  print_heading "Rob Status"
+
+  local ops_url
+  ops_url="$(resolve_ops_base_url)"
+  printf 'Ops base URL: %s\n' "${ops_url}"
+
+  if [[ -n "${DATABASE_URL:-}" ]]; then
+    printf 'Database:     %s\n' "$(database_name_from_url)"
+  else
+    printf 'Database:     (DATABASE_URL not set)\n'
+  fi
+
+  local guild
+  guild="$(autodetect_guild_id)"
+  if [[ -n "${guild}" ]]; then
+    printf 'Guild:        %s (auto-detected)\n' "${guild}"
+  else
+    printf 'Guild:        (none / multiple — pass --guild)\n'
+  fi
+
+  printf '\nBot ops /health: '
+  if command -v curl >/dev/null 2>&1; then
+    local -a args
+    args=(-fsS --connect-timeout 5)
+    if [[ -n "${ROB_OPS_SECRET:-}" ]]; then
+      args+=(-H "X-Rob-Ops-Secret: ${ROB_OPS_SECRET}")
+    fi
+    if curl "${args[@]}" "${ops_url}/health" >/dev/null 2>&1; then
+      printf 'ok\n'
+    else
+      printf 'unreachable\n'
+    fi
+  else
+    printf '(curl not available)\n'
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    local printed_header=""
+    local svc
+    for svc in "${ROB_BOT_SERVICE}" "${ROB_WEBHOOK_SERVICE}"; do
+      if systemctl cat "${svc}" >/dev/null 2>&1; then
+        if [[ -z "${printed_header}" ]]; then
+          printf '\nServices:\n'
+          printed_header="yes"
+        fi
+        printf '  %-20s %s\n' "${svc}" "$(systemctl is-active "${svc}" 2>/dev/null || echo unknown)"
+      fi
+    done
+  fi
+}
+
 cmd="${1:-}"
 [[ -n "${cmd}" ]] || {
   usage
@@ -1042,6 +1134,12 @@ case "${cmd}" in
     ;;
   logs)
     logs_command "$@"
+    ;;
+  status)
+    status_command "$@"
+    ;;
+  fix-me)
+    fix_me_command "$@"
     ;;
   *)
     usage

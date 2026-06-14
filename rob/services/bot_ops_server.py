@@ -44,6 +44,7 @@ GUILD_ROLE_FIELDS = (
     "sub_role_id",
     "mod_role_id",
     "inactive_role_id",
+    "leaderboard_view_role_id",
 )
 
 GUILD_ROLE_LABELS = {
@@ -51,6 +52,7 @@ GUILD_ROLE_LABELS = {
     "sub_role_id": "Sub Role",
     "mod_role_id": "Moderator Role",
     "inactive_role_id": "Inactive Role",
+    "leaderboard_view_role_id": "Leaderboard Access Role",
 }
 
 GUILD_ROLE_MATCH_TOKENS = {
@@ -58,6 +60,13 @@ GUILD_ROLE_MATCH_TOKENS = {
     "sub_role_id": ("sub", "subs"),
     "mod_role_id": ("mod", "mods", "moderator", "staff", "admin"),
     "inactive_role_id": ("inactive", "inactivity", "away"),
+    "leaderboard_view_role_id": (
+        "leaderboard access",
+        "leaderboard",
+        "leader board",
+        "board access",
+        "vip",
+    ),
 }
 
 SCAN_APPLY_FIELD_ORDER = (*GUILD_CHANNEL_FIELDS, *GUILD_ROLE_FIELDS)

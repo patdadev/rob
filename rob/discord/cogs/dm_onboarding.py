@@ -39,17 +39,21 @@ import discord
 from discord.ext import commands
 
 from rob.config.guilds import is_test_guild
+from rob.discord.leaderboard_access import apply_leaderboard_access
 from rob.services.dm_onboarding_service import (
     DMOnboardingService,
     OnboardingError,
 )
 from rob.ui.cards.dm_onboarding import (
     ID_MIGRATION_LEADERBOARD,
+    ID_MIGRATION_LEADERBOARD_ACCESS,
     ID_MIGRATION_NOTIFICATIONS,
     ID_PREFS_LEADERBOARD,
+    ID_PREFS_LEADERBOARD_ACCESS,
     ID_PREFS_NOTIFICATIONS,
     IdentityNoButton,
     IdentityYesButton,
+    LEADERBOARD_ACCESS_ON_VALUE,
     LEADERBOARD_SHOW_VALUE,
     MigrationDeferButton,
     MigrationOpenPrefsButton,
@@ -617,8 +621,8 @@ class DMOnboardingCog(commands.Cog):
             )
             return
 
-        notifications_enabled, leaderboard_visible = _read_prefs_from_interaction(
-            interaction
+        notifications_enabled, leaderboard_visible, leaderboard_access = (
+            _read_prefs_from_interaction(interaction)
         )
 
         await interaction.response.defer()
@@ -639,9 +643,17 @@ class DMOnboardingCog(commands.Cog):
             await interaction.followup.send(str(exc), ephemeral=True)
             return
 
+        await apply_leaderboard_access(
+            self.bot,
+            guild_id=guild_id,
+            user_id=interaction.user.id,
+            enabled=leaderboard_access,
+        )
+
         rendered = success_card(
             notifications_enabled=notifications_enabled,
             leaderboard_visible=leaderboard_visible,
+            leaderboard_access=leaderboard_access,
         )
         await self._edit_or_resend(
             interaction=interaction,
@@ -671,8 +683,8 @@ class DMOnboardingCog(commands.Cog):
             )
             return
 
-        notifications_enabled, leaderboard_visible = _read_prefs_from_interaction(
-            interaction
+        notifications_enabled, leaderboard_visible, leaderboard_access = (
+            _read_prefs_from_interaction(interaction)
         )
         await interaction.response.defer()
         try:
@@ -695,9 +707,17 @@ class DMOnboardingCog(commands.Cog):
             )
             return
 
+        await apply_leaderboard_access(
+            self.bot,
+            guild_id=guild_id,
+            user_id=interaction.user.id,
+            enabled=leaderboard_access,
+        )
+
         rendered = success_card(
             notifications_enabled=notifications_enabled,
             leaderboard_visible=leaderboard_visible,
+            leaderboard_access=leaderboard_access,
         )
         try:
             if interaction.message is not None:
@@ -926,27 +946,34 @@ class DMOnboardingCog(commands.Cog):
 
 def _read_prefs_from_interaction(
     interaction: discord.Interaction,
-) -> tuple[bool, bool]:
+) -> tuple[bool, bool, bool]:
     """Pull current preference selections off the interaction.
 
     Reads from the live :class:`PreferencesView` / :class:`MigrationPromptView`
     if the button belongs to one, falling back to scanning the message's
-    component data for select state. Defaults to ``(True, True)``.
+    component data for select state. Returns
+    ``(notifications_enabled, leaderboard_visible, leaderboard_access)``,
+    defaulting to ``(True, True, False)``.
     """
 
     notifications_enabled = True
     leaderboard_visible = True
+    leaderboard_access = False
 
     view = getattr(interaction, "view", None)
     if isinstance(view, (PreferencesView, MigrationPromptView)):
-        return view.chosen_notifications_enabled, view.chosen_leaderboard_visible
+        return (
+            view.chosen_notifications_enabled,
+            view.chosen_leaderboard_visible,
+            view.chosen_leaderboard_access,
+        )
 
     message = getattr(interaction, "message", None)
     if message is None:
-        return notifications_enabled, leaderboard_visible
+        return notifications_enabled, leaderboard_visible, leaderboard_access
 
     def _match_select(item: Any) -> None:
-        nonlocal notifications_enabled, leaderboard_visible
+        nonlocal notifications_enabled, leaderboard_visible, leaderboard_access
         custom_id = getattr(item, "custom_id", None)
         if custom_id in (ID_PREFS_NOTIFICATIONS, ID_MIGRATION_NOTIFICATIONS):
             values = getattr(item, "values", []) or []
@@ -956,6 +983,13 @@ def _read_prefs_from_interaction(
             values = getattr(item, "values", []) or []
             if values:
                 leaderboard_visible = values[0] == LEADERBOARD_SHOW_VALUE
+        elif custom_id in (
+            ID_PREFS_LEADERBOARD_ACCESS,
+            ID_MIGRATION_LEADERBOARD_ACCESS,
+        ):
+            values = getattr(item, "values", []) or []
+            if values:
+                leaderboard_access = values[0] == LEADERBOARD_ACCESS_ON_VALUE
 
     for row in getattr(message, "components", []) or []:
         for child in getattr(row, "children", []) or []:
@@ -964,7 +998,7 @@ def _read_prefs_from_interaction(
             # Check one level deeper (current: select inside ActionRow inside container).
             for grandchild in getattr(child, "children", []) or []:
                 _match_select(grandchild)
-    return notifications_enabled, leaderboard_visible
+    return notifications_enabled, leaderboard_visible, leaderboard_access
 
 
 async def setup(bot: "RobBot") -> None:

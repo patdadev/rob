@@ -50,6 +50,7 @@ ID_IDENTITY_NO = f"{ONBOARDING_PREFIX}identity:no"
 ID_WEBHOOK_RETRY = f"{ONBOARDING_PREFIX}webhook:retry"
 ID_PREFS_NOTIFICATIONS = f"{ONBOARDING_PREFIX}prefs:notifications"
 ID_PREFS_LEADERBOARD = f"{ONBOARDING_PREFIX}prefs:leaderboard"
+ID_PREFS_LEADERBOARD_ACCESS = f"{ONBOARDING_PREFIX}prefs:leaderboard_access"
 ID_PREFS_SAVE = f"{ONBOARDING_PREFIX}prefs:save"
 
 MIGRATION_PREFIX = "rob:dm_migration:"
@@ -57,6 +58,7 @@ ID_MIGRATION_OPEN_PREFS = f"{MIGRATION_PREFIX}open_prefs"
 ID_MIGRATION_DEFER = f"{MIGRATION_PREFIX}defer_7d"
 ID_MIGRATION_NOTIFICATIONS = f"{MIGRATION_PREFIX}notifications"
 ID_MIGRATION_LEADERBOARD = f"{MIGRATION_PREFIX}leaderboard"
+ID_MIGRATION_LEADERBOARD_ACCESS = f"{MIGRATION_PREFIX}leaderboard_access"
 ID_MIGRATION_SAVE = f"{MIGRATION_PREFIX}save"
 
 # Preference option values stored on each ``SelectOption``.
@@ -64,6 +66,30 @@ NOTIFY_ON_VALUE = "notify_on"
 NOTIFY_OFF_VALUE = "notify_off"
 LEADERBOARD_SHOW_VALUE = "leaderboard_show"
 LEADERBOARD_HIDE_VALUE = "leaderboard_hide"
+LEADERBOARD_ACCESS_ON_VALUE = "leaderboard_access_on"
+LEADERBOARD_ACCESS_OFF_VALUE = "leaderboard_access_off"
+
+
+# ---------------------------------------------------------------------------
+# Small presentation helpers
+# ---------------------------------------------------------------------------
+
+
+def _progress(step: int, total: int = 5) -> str:
+    """Return a subtle one-line progress indicator, e.g.
+
+    ``-# Step 2 of 5  ▰▰▱▱▱``
+
+    Rendered as Discord small text so it sits quietly above the heading and
+    helps the Dom/me see how far through setup they are.
+    """
+
+    step = max(0, min(step, total))
+    filled = "▰" * step
+    empty = "▱" * (total - step)
+    if step >= total:
+        return f"-# ✅ All done  {filled}"
+    return f"-# Step {step} of {total}  {filled}{empty}"
 
 
 _UNAVAILABLE_MESSAGE = (
@@ -279,18 +305,18 @@ class _IntroLayout(discord.ui.LayoutView):
         display = (name or "there").strip() or "there"
 
         container = discord.ui.Container(accent_color=COLOR_INFO)
-        container.add_item(discord.ui.TextDisplay(f"## Hey {display}, Rob here!"))
+        container.add_item(discord.ui.TextDisplay(_progress(1)))
+        container.add_item(discord.ui.TextDisplay(f"## 👋 Hey {display}, Rob here!"))
         container.add_item(
             discord.ui.TextDisplay(
-                "Thanks for wanting to sign up to Throne tracking. Before we "
-                "can start tracking your notifications, we need to do some "
-                "initial setup first."
+                "Thanks for signing up for **Throne tracking**! It only takes a "
+                "minute — I'll walk you through it one step at a time."
             )
         )
         container.add_item(discord.ui.Separator())
         container.add_item(
             discord.ui.TextDisplay(
-                "Firstly, what was your Throne username or link?"
+                "**First up:** what's your Throne username or profile link?"
             )
         )
         container.add_item(discord.ui.Separator())
@@ -351,18 +377,19 @@ class _IdentityConfirmLayout(discord.ui.LayoutView):
         display = (throne_display_name or throne_handle or "").strip() or throne_handle
 
         container = discord.ui.Container(accent_color=COLOR_INFO)
+        container.add_item(discord.ui.TextDisplay(_progress(2)))
+        container.add_item(discord.ui.TextDisplay("## 🔎 Quick check"))
         container.add_item(
             discord.ui.TextDisplay(
-                "Thanks! Just to make sure I’ve got the right details does "
-                "this look right?"
+                "Nice one! I found a Throne profile — does this look right to you?"
             )
         )
         container.add_item(discord.ui.Separator())
         container.add_item(
-            discord.ui.TextDisplay(f"**Throne Username:** {throne_handle}")
+            discord.ui.TextDisplay(f"**Throne username:** {throne_handle}")
         )
         container.add_item(
-            discord.ui.TextDisplay(f"**Name as appears on Throne:** {display}")
+            discord.ui.TextDisplay(f"**Name on Throne:** {display}")
         )
         container.add_item(discord.ui.Separator())
         container.add_item(
@@ -392,40 +419,39 @@ class _WebhookSetupLayout(discord.ui.LayoutView):
     def __init__(self, *, webhook_url: str, cog: Any | None) -> None:
         super().__init__(timeout=None)
         container = discord.ui.Container(accent_color=COLOR_WARNING)
+        container.add_item(discord.ui.TextDisplay(_progress(3)))
+        container.add_item(discord.ui.TextDisplay("## 🔗 Connect Throne to Rob"))
         container.add_item(
             discord.ui.TextDisplay(
-                "## Awesome, now here comes the bit with the most steps."
-            )
-        )
-        container.add_item(
-            discord.ui.TextDisplay(
-                "To help Rob get your sends the second they are sent, we "
-                "need to setup “Webhooks” inside of Throne. Here’s how:"
+                "This is the one fiddly bit — it lets Rob hear about your sends "
+                "the moment they happen. Follow along:"
             )
         )
         container.add_item(discord.ui.Separator())
         container.add_item(
             discord.ui.TextDisplay(
-                "**1.** Open Throne\n"
-                "**2.** Go to your webhook settings / integrations area\n"
-                "**3.** Add Rob’s webhook URL (below)\n"
-                "**4.** Save the settings\n"
-                "**5.** Click Test Webhook in Throne"
+                "**1.** Open Throne → **Settings** → **Integrations**\n"
+                "**2.** Scroll to **Webhooks** and click **Enable Webhooks**\n"
+                "**3.** Under **Subscriber URLs**, click **Add URL**\n"
+                "**4.** Paste Rob’s URL (below), then click **Save Settings**\n"
+                "**5.** Click **Test Webhook** and wait for the success message"
             )
         )
         container.add_item(discord.ui.Separator())
-        container.add_item(discord.ui.TextDisplay("**Rob’s webhook URL:**"))
+        container.add_item(
+            discord.ui.TextDisplay("**📋 Rob’s webhook URL** (tap to copy):")
+        )
         container.add_item(discord.ui.TextDisplay(f"```\n{webhook_url}\n```"))
         container.add_item(discord.ui.Separator())
         container.add_item(
             discord.ui.TextDisplay(
-                "Once you’ve clicked “Test Webhook” come back here to see if "
-                "Rob picked up your Test Send!"
+                "Once you’ve hit **Test Webhook**, hang tight here — I’ll update "
+                "this message automatically the second your test send lands. 🎉"
             )
         )
         container.add_item(discord.ui.Separator())
         container.add_item(
-            discord.ui.TextDisplay("**Status:** Nothing from Throne just yet…")
+            discord.ui.TextDisplay("**Status:** ⏳ Waiting for Throne…")
         )
         container.add_item(discord.ui.Separator())
         container.add_item(discord.ui.ActionRow(WebhookRetryButton(cog)))
@@ -452,11 +478,17 @@ def webhook_waiting_card(*, cog: Any | None = None) -> RenderedMessage:
 
 
 class PreferencesView(discord.ui.LayoutView):
-    """Stage 6: notification + leaderboard preferences via Components V2.
+    """Notification + leaderboard preferences via Components V2.
 
-    Two selects live inside the container, with a Save button as the final
-    action row inside the same container so it sits in the bottom-left of
-    the card.
+    Up to three selects live inside the container with a Save button as the
+    final action row. ``show_domme_controls`` toggles the Dom/me-only
+    notification + "appear on leaderboard" selects (turned off for non-Dom/mes
+    using ``/preferences``). ``show_leaderboard_access`` toggles the universal
+    "leaderboard access" select that, on save, has Rob grant/remove the access
+    role (which opens the #leaderboard channel and the /leaderboard command).
+
+    The select objects are always created so the ``chosen_*`` properties stay
+    safe to read; only the requested ones are rendered.
     """
 
     def __init__(
@@ -464,29 +496,24 @@ class PreferencesView(discord.ui.LayoutView):
         *,
         default_notifications_enabled: bool = True,
         default_leaderboard_visible: bool = True,
+        default_leaderboard_access: bool = False,
         notifications_custom_id: str = ID_PREFS_NOTIFICATIONS,
         leaderboard_custom_id: str = ID_PREFS_LEADERBOARD,
+        leaderboard_access_custom_id: str = ID_PREFS_LEADERBOARD_ACCESS,
         save_custom_id: str = ID_PREFS_SAVE,
+        show_domme_controls: bool = True,
+        show_leaderboard_access: bool = True,
         intro_lines: tuple[str, ...] = (
-            "## And just like that, the hard bit is done.",
-            "Now just tell Rob how you want things handled from here.",
+            "## 🎉 Almost there — the hard part’s done!",
+            "Now just tell Rob how you’d like things handled from here.",
         ),
         cog: Any | None = None,
     ) -> None:
         super().__init__(timeout=None)
+        self._default_notifications_enabled = default_notifications_enabled
+        self._default_leaderboard_visible = default_leaderboard_visible
+        self._default_leaderboard_access = default_leaderboard_access
 
-        container = discord.ui.Container(accent_color=COLOR_INFO)
-        for line in intro_lines:
-            container.add_item(discord.ui.TextDisplay(line))
-        container.add_item(discord.ui.Separator())
-
-        # ---- Section 1: Notifications ----
-        container.add_item(discord.ui.TextDisplay("### 📬 Send notifications"))
-        container.add_item(
-            discord.ui.TextDisplay(
-                "How should Rob notify you when a send comes in?"
-            )
-        )
         self.notifications_select = _AckSelect(
             custom_id=notifications_custom_id,
             placeholder="📬 Send notifications",
@@ -499,21 +526,11 @@ class PreferencesView(discord.ui.LayoutView):
                     default=default_notifications_enabled,
                 ),
                 discord.SelectOption(
-                    label="🔕 Do not DM me about sends",
+                    label="🔕 Don’t DM me about sends",
                     value=NOTIFY_OFF_VALUE,
                     default=not default_notifications_enabled,
                 ),
             ],
-        )
-        container.add_item(discord.ui.ActionRow(self.notifications_select))
-        container.add_item(discord.ui.Separator())
-
-        # ---- Section 2: Leaderboard ----
-        container.add_item(discord.ui.TextDisplay("### 📊 Leaderboard visibility"))
-        container.add_item(
-            discord.ui.TextDisplay(
-                "Should Rob show you on the server leaderboard?"
-            )
         )
         self.leaderboard_select = _AckSelect(
             custom_id=leaderboard_custom_id,
@@ -527,18 +544,69 @@ class PreferencesView(discord.ui.LayoutView):
                     default=default_leaderboard_visible,
                 ),
                 discord.SelectOption(
-                    label="🔒 Keep me off the leaderboard",
+                    label="🙈 Keep me off the leaderboard",
                     value=LEADERBOARD_HIDE_VALUE,
                     default=not default_leaderboard_visible,
                 ),
             ],
         )
-        container.add_item(discord.ui.ActionRow(self.leaderboard_select))
+        self.leaderboard_access_select = _AckSelect(
+            custom_id=leaderboard_access_custom_id,
+            placeholder="🔑 Leaderboard access",
+            min_values=1,
+            max_values=1,
+            options=[
+                discord.SelectOption(
+                    label="🔑 Give me leaderboard access",
+                    value=LEADERBOARD_ACCESS_ON_VALUE,
+                    description="Unlocks #leaderboard and /leaderboard",
+                    default=default_leaderboard_access,
+                ),
+                discord.SelectOption(
+                    label="🚫 No leaderboard access",
+                    value=LEADERBOARD_ACCESS_OFF_VALUE,
+                    description="Keep the leaderboard hidden from me",
+                    default=not default_leaderboard_access,
+                ),
+            ],
+        )
+
+        container = discord.ui.Container(accent_color=COLOR_INFO)
+        for line in intro_lines:
+            container.add_item(discord.ui.TextDisplay(line))
         container.add_item(discord.ui.Separator())
+
+        if show_domme_controls:
+            container.add_item(discord.ui.TextDisplay("### 📬 Send notifications"))
+            container.add_item(
+                discord.ui.TextDisplay("How should Rob ping you when a send lands?")
+            )
+            container.add_item(discord.ui.ActionRow(self.notifications_select))
+            container.add_item(discord.ui.Separator())
+
+            container.add_item(discord.ui.TextDisplay("### 📊 Leaderboard visibility"))
+            container.add_item(
+                discord.ui.TextDisplay(
+                    "Should your totals appear **on** the leaderboard for others to see?"
+                )
+            )
+            container.add_item(discord.ui.ActionRow(self.leaderboard_select))
+            container.add_item(discord.ui.Separator())
+
+        if show_leaderboard_access:
+            container.add_item(discord.ui.TextDisplay("### 🔑 Leaderboard access"))
+            container.add_item(
+                discord.ui.TextDisplay(
+                    "Want to **see** the leaderboard? Rob will give you the access "
+                    "role so the #leaderboard channel and `/leaderboard` open up."
+                )
+            )
+            container.add_item(discord.ui.ActionRow(self.leaderboard_access_select))
+            container.add_item(discord.ui.Separator())
+
         container.add_item(
             discord.ui.TextDisplay(
-                "-# You can always change these settings later with `/settings` "
-                "in your DMs or in the server."
+                "-# You can change these any time with `/preferences` in the server."
             )
         )
         container.add_item(discord.ui.Separator())
@@ -555,26 +623,39 @@ class PreferencesView(discord.ui.LayoutView):
     def chosen_notifications_enabled(self) -> bool:
         values = self.notifications_select.values
         if not values:
-            return True
+            return self._default_notifications_enabled
         return values[0] == NOTIFY_ON_VALUE
 
     @property
     def chosen_leaderboard_visible(self) -> bool:
         values = self.leaderboard_select.values
         if not values:
-            return True
+            return self._default_leaderboard_visible
         return values[0] == LEADERBOARD_SHOW_VALUE
+
+    @property
+    def chosen_leaderboard_access(self) -> bool:
+        values = self.leaderboard_access_select.values
+        if not values:
+            return self._default_leaderboard_access
+        return values[0] == LEADERBOARD_ACCESS_ON_VALUE
 
 
 def preferences_card(
     *,
     default_notifications_enabled: bool = True,
     default_leaderboard_visible: bool = True,
+    default_leaderboard_access: bool = False,
+    show_domme_controls: bool = True,
+    show_leaderboard_access: bool = True,
     cog: Any | None = None,
 ) -> RenderedMessage:
     view = PreferencesView(
         default_notifications_enabled=default_notifications_enabled,
         default_leaderboard_visible=default_leaderboard_visible,
+        default_leaderboard_access=default_leaderboard_access,
+        show_domme_controls=show_domme_controls,
+        show_leaderboard_access=show_leaderboard_access,
         cog=cog,
     )
     return RenderedMessage(view=view)
@@ -591,29 +672,27 @@ class _SuccessLayout(discord.ui.LayoutView):
         *,
         notifications_enabled: bool,
         leaderboard_visible: bool,
+        leaderboard_access: bool | None = None,
     ) -> None:
         super().__init__(timeout=None)
         container = discord.ui.Container(accent_color=COLOR_SUCCESS)
+        container.add_item(discord.ui.TextDisplay(_progress(5)))
         container.add_item(
             discord.ui.TextDisplay(
-                "## And just like that, you’ve now got me tracking your "
-                "throne sends!"
+                "## 🎉 You’re all set — Rob’s now tracking your Throne sends!"
             )
         )
         container.add_item(
             discord.ui.TextDisplay(
-                "Keep in mind I’ll always respect your wishes when it comes "
-                "to being notified about a send or being shown on the "
-                "leaderboard. And you can always change these settings in "
-                "future by running `/settings` in these DM’s or in the "
-                "server!"
+                "I’ll always respect your choices about notifications and the "
+                "leaderboard, and you can tweak them any time with `/preferences` "
+                "in the server."
             )
         )
         container.add_item(discord.ui.Separator())
         container.add_item(
             discord.ui.TextDisplay(
-                "If something stops working or doesn’t appear to be working "
-                "correctly, then report it via `/report`!"
+                "If anything ever looks off, give me a shout with `/report`."
             )
         )
         notify_line = (
@@ -624,12 +703,18 @@ class _SuccessLayout(discord.ui.LayoutView):
         lb_line = (
             "👑 Shown on the leaderboard"
             if leaderboard_visible
-            else "🔒 Hidden from the leaderboard"
+            else "🙈 Hidden from the leaderboard"
         )
+        summary = f"{notify_line}  •  {lb_line}"
+        if leaderboard_access is not None:
+            access_line = (
+                "🔑 Leaderboard access on"
+                if leaderboard_access
+                else "🚫 Leaderboard access off"
+            )
+            summary = f"{summary}  •  {access_line}"
         container.add_item(discord.ui.Separator())
-        container.add_item(
-            discord.ui.TextDisplay(f"-# {notify_line}  •  {lb_line}")
-        )
+        container.add_item(discord.ui.TextDisplay(f"-# {summary}"))
         self.add_item(container)
 
 
@@ -637,11 +722,13 @@ def success_card(
     *,
     notifications_enabled: bool = True,
     leaderboard_visible: bool = True,
+    leaderboard_access: bool | None = None,
 ) -> RenderedMessage:
     return RenderedMessage(
         view=_SuccessLayout(
             notifications_enabled=notifications_enabled,
             leaderboard_visible=leaderboard_visible,
+            leaderboard_access=leaderboard_access,
         )
     )
 
@@ -662,13 +749,17 @@ class MigrationPromptView(discord.ui.LayoutView):
         name: str | None = None,
         default_notifications_enabled: bool = True,
         default_leaderboard_visible: bool = True,
+        default_leaderboard_access: bool = False,
         cog: Any | None = None,
     ) -> None:
         super().__init__(timeout=None)
         display = (name or "there").strip() or "there"
+        self._default_notifications_enabled = default_notifications_enabled
+        self._default_leaderboard_visible = default_leaderboard_visible
+        self._default_leaderboard_access = default_leaderboard_access
 
         container = discord.ui.Container(accent_color=COLOR_INFO)
-        container.add_item(discord.ui.TextDisplay(f"## Hey {display}, Rob here!"))
+        container.add_item(discord.ui.TextDisplay(f"## 👋 Hey {display}, Rob here!"))
         container.add_item(
             discord.ui.TextDisplay(
                 "As announced by Pat earlier this week, I’ll be changing how "
@@ -729,6 +820,30 @@ class MigrationPromptView(discord.ui.LayoutView):
         )
         container.add_item(discord.ui.ActionRow(self.leaderboard_select))
         container.add_item(discord.ui.Separator())
+
+        container.add_item(discord.ui.TextDisplay("### 🔑 Leaderboard access"))
+        self.leaderboard_access_select = _AckSelect(
+            custom_id=ID_MIGRATION_LEADERBOARD_ACCESS,
+            placeholder="🔑 Leaderboard access",
+            min_values=1,
+            max_values=1,
+            options=[
+                discord.SelectOption(
+                    label="🔑 Give me leaderboard access",
+                    value=LEADERBOARD_ACCESS_ON_VALUE,
+                    description="Unlocks #leaderboard and /leaderboard",
+                    default=default_leaderboard_access,
+                ),
+                discord.SelectOption(
+                    label="🚫 No leaderboard access",
+                    value=LEADERBOARD_ACCESS_OFF_VALUE,
+                    description="Keep the leaderboard hidden from me",
+                    default=not default_leaderboard_access,
+                ),
+            ],
+        )
+        container.add_item(discord.ui.ActionRow(self.leaderboard_access_select))
+        container.add_item(discord.ui.Separator())
         container.add_item(
             discord.ui.TextDisplay(
                 "-# Please note you can defer for 7 days and we’ll revisit "
@@ -756,15 +871,22 @@ class MigrationPromptView(discord.ui.LayoutView):
     def chosen_notifications_enabled(self) -> bool:
         values = self.notifications_select.values
         if not values:
-            return True
+            return self._default_notifications_enabled
         return values[0] == NOTIFY_ON_VALUE
 
     @property
     def chosen_leaderboard_visible(self) -> bool:
         values = self.leaderboard_select.values
         if not values:
-            return True
+            return self._default_leaderboard_visible
         return values[0] == LEADERBOARD_SHOW_VALUE
+
+    @property
+    def chosen_leaderboard_access(self) -> bool:
+        values = self.leaderboard_access_select.values
+        if not values:
+            return self._default_leaderboard_access
+        return values[0] == LEADERBOARD_ACCESS_ON_VALUE
 
 
 def migration_prompt_card(
@@ -772,12 +894,14 @@ def migration_prompt_card(
     name: str | None = None,
     default_notifications_enabled: bool = True,
     default_leaderboard_visible: bool = True,
+    default_leaderboard_access: bool = False,
     cog: Any | None = None,
 ) -> RenderedMessage:
     view = MigrationPromptView(
         name=name,
         default_notifications_enabled=default_notifications_enabled,
         default_leaderboard_visible=default_leaderboard_visible,
+        default_leaderboard_access=default_leaderboard_access,
         cog=cog,
     )
     return RenderedMessage(view=view)

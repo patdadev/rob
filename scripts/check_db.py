@@ -17,6 +17,7 @@ REQUIRED_DB_BUILD_VERSIONS = (
     "007_send_update_requests",
     "008_dm_preferences",
     "009_terms_acceptance",
+    "010_leaderboard_access_role",
 )
 
 REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {
@@ -125,6 +126,7 @@ REQUIRED_TABLE_COLUMNS: dict[str, set[str]] = {
         "sub_role_id",
         "mod_role_id",
         "inactive_role_id",
+        "leaderboard_view_role_id",
         "carlbot_user_id",
         "created_at",
         "updated_at",
@@ -483,6 +485,12 @@ async def main() -> None:
                         "Terms acceptance schema is missing.\n"
                         "Run scripts/db/build/009_terms_acceptance.sql manually as "
                         "doadmin, then run the relevant grants file."
+                    )
+                if "010_leaderboard_access_role" in missing_versions:
+                    raise RuntimeError(
+                        "Leaderboard access role column is missing.\n"
+                        "Run scripts/db/build/010_leaderboard_access_role.sql manually "
+                        "as doadmin (no new grants required)."
                     )
                 if len(missing_versions) == 1:
                     raise RuntimeError(

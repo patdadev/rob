@@ -107,7 +107,7 @@ rob() {
 }
 
 robctl() {
-  "\${ROB_GLOBAL_BIN}/rob" "\$@"
+  "\${ROB_GLOBAL_BIN}/robctl" "\$@"
 }
 ${MARKER_END}
 EOF

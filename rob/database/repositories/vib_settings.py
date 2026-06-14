@@ -20,6 +20,7 @@ ROLE_FIELD_NAMES = {
     "sub_role_id",
     "mod_role_id",
     "inactive_role_id",
+    "leaderboard_view_role_id",
 }
 
 
@@ -39,6 +40,7 @@ def _build_vib_settings(row: Record) -> VibSettings:
         carlbot_user_id=row["carlbot_user_id"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        leaderboard_view_role_id=row["leaderboard_view_role_id"],
     )
 
 

@@ -20,6 +20,10 @@ class VibSettings:
     carlbot_user_id: int | None
     created_at: datetime
     updated_at: datetime
+    # Role that gates leaderboard viewing in the test guild. Holding it grants
+    # the /leaderboard command and (via channel perms set on the role) read
+    # access to the #leaderboard channel. Inert outside the test guild.
+    leaderboard_view_role_id: int | None = None
 
 
 # Backward-compat alias during v2 transition.

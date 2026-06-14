@@ -23,7 +23,9 @@ from rob.ui.cards.dm_onboarding import (
     ID_MIGRATION_LEADERBOARD,
     ID_MIGRATION_NOTIFICATIONS,
     ID_PREFS_LEADERBOARD,
+    ID_PREFS_LEADERBOARD_ACCESS,
     ID_PREFS_NOTIFICATIONS,
+    LEADERBOARD_ACCESS_ON_VALUE,
     LEADERBOARD_HIDE_VALUE,
     NOTIFY_OFF_VALUE,
 )
@@ -680,7 +682,8 @@ def test_register_domme_uses_legacy_flow_outside_test_guild():
 
 def test_read_prefs_from_interaction_defaults_when_no_data():
     interaction = SimpleNamespace(view=None, message=None)
-    assert _read_prefs_from_interaction(interaction) == (True, True)
+    # (notifications_enabled, leaderboard_visible, leaderboard_access)
+    assert _read_prefs_from_interaction(interaction) == (True, True, False)
 
 
 def test_read_prefs_from_interaction_parses_components_when_view_missing():
@@ -690,13 +693,16 @@ def test_read_prefs_from_interaction_parses_components_when_view_missing():
     select_lb = SimpleNamespace(
         custom_id=ID_PREFS_LEADERBOARD, values=[LEADERBOARD_HIDE_VALUE]
     )
+    select_access = SimpleNamespace(
+        custom_id=ID_PREFS_LEADERBOARD_ACCESS, values=[LEADERBOARD_ACCESS_ON_VALUE]
+    )
     components = [
-        SimpleNamespace(children=[select_notify, select_lb]),
+        SimpleNamespace(children=[select_notify, select_lb, select_access]),
     ]
     interaction = SimpleNamespace(
         view=None, message=SimpleNamespace(components=components)
     )
-    assert _read_prefs_from_interaction(interaction) == (False, False)
+    assert _read_prefs_from_interaction(interaction) == (False, False, True)
 
 
 # ---------------------------------------------------------------------------
