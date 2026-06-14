@@ -72,62 +72,147 @@ fi
 
 usage() {
   cat <<'EOF'
-Rob Control
+Rob — operations CLI
 
-Usage:
-  rob dommes add <discord_user_id> <throne_input> --guild <guild_id>
-  rob dommes remove <domme_lookup> --guild <guild_id>
-  rob dommes list --guild <guild_id>
+USAGE
+  rob <command> [args] [--guild <id>]
+  rob <command> -h                      Detailed help + examples for a command
 
-  rob subs add <discord_user_id> <send_name_1> [send_name_2] [send_name_3] --guild <guild_id>
-  rob subs remove <sub_lookup> --guild <guild_id>
-  rob subs list --guild <guild_id>
+DOM/MES & SUBS
+  rob dommes  list | add | remove       Manage tracked Dom/mes
+  rob subs    list | add | remove       Manage Sub send-name claims
 
-  rob sends <domme_lookup> --guild <guild_id>
-  rob send add <domme_lookup> <amount> [sub_send_name] --guild <guild_id>
-  rob send remove <domme_lookup> <send_id> --guild <guild_id>
-  rob send update <throneuser> <sendid> <newamount> --message <messageid> --reason <reason> --guild <guild_id>
+SENDS
+  rob sends   <domme>                   Show a Dom/me's recent tracked sends
+  rob send    add | remove | update     Approval-gated send changes
+  rob webhook refresh <handle>          Re-issue a Dom/me's Throne webhook URL
 
-  rob count set <number> --guild <guild_id>
-  rob count status --guild <guild_id>
-  rob inactivity status --guild <guild_id>
-  rob inactivity on --guild <guild_id>
-  rob inactivity off --guild <guild_id>
-  rob scan --guild <guild_id>
-  rob auto-apply --guild <guild_id> [all|channels|roles|field_a,field_b]
-  rob migration audit --guild <guild_id>
-  rob webhook preview --guild <guild_id>
-  rob webhook send --guild <guild_id> --all [--limit <n>]
-  rob webhook send --guild <guild_id> --discord-user-id <id>
-  rob webhook refresh <thronehandle> [--guild <guild_id>]
-  rob clear rob_dev_v2
+COUNTING & MEMBERS
+  rob count   set | status              The Count
+  rob inactivity  status | on | off     Inactive-member sweep
+  rob block | unblock <user_id>         Global blacklist
 
-  rob block <discord_user_id>
-  rob unblock <discord_user_id>
-  rob restart [bot|webhook|all]
+SERVER SETUP
+  rob scan                              Suggest channel/role config from the guild
+  rob auto-apply [all|channels|roles]   Apply scan suggestions
+  rob fix-me  [--dry-run]               Wire bot + webhook on one host
+
+SERVICE & STATUS
+  rob status                            Health: ops URL, DB, guild, services
+  rob restart [bot|webhook|all]         Restart Rob's systemd services
+  rob logs    [bot|webhook|all]         Tail service logs
+  rob maintenance  on | off | status    Maintenance mode (queues sends)
+  rob offline      on | off | status    Rob-offline mode
+
+GUILD SELECTION
+  Guild-scoped commands take --guild <id> (or --guild-id). If omitted, Rob uses
+  ROB_DEFAULT_GUILD_ID / DISCORD_GUILD_ID, or auto-detects when exactly one
+  guild is configured — so on a single-guild server you can skip --guild.
+
+Run `rob <command> -h` for full options and examples.
+EOF
+}
+
+command_help() {
+  case "${1:-}" in
+    dommes) cat <<'EOF'
+rob dommes — manage tracked Dom/mes
+
+  rob dommes list                       List Dom/mes (reads the database)
+  rob dommes add <user_id> <throne>     Register a Dom/me by Throne username/URL
+  rob dommes remove <domme_lookup>      Remove a Dom/me (id, handle, or name)
+
+Examples:
+  rob dommes list
+  rob dommes add 123456789012345678 missadore
+  rob dommes remove missadore
+EOF
+;;
+    subs) cat <<'EOF'
+rob subs — manage Sub send-name claims
+
+  rob subs list                                       List Subs + their names
+  rob subs add <user_id> <name1> [name2] [name3]      Claim up to 3 send names
+  rob subs remove <sub_lookup>                        Remove a Sub
+EOF
+;;
+    sends) cat <<'EOF'
+rob sends — show a Dom/me's recent tracked sends
+
+  rob sends <domme_lookup>               Last 50 sends (id, handle, or name)
+EOF
+;;
+    send) cat <<'EOF'
+rob send — approval-gated send changes (the Dom/me must confirm in Discord)
+
+  rob send add <domme> <amount> [sub_name]
+  rob send remove <domme> <send_id>
+  rob send update <domme> <send_id> <amount> --message <id> --reason <text>
+EOF
+;;
+    webhook) cat <<'EOF'
+rob webhook — Throne webhook tools
+
+  rob webhook refresh <handle>          Re-issue one Dom/me's webhook URL
+EOF
+;;
+    count) cat <<'EOF'
+rob count — The Count
+
+  rob count status                      Show the current number
+  rob count set <number>                Set the current number
+EOF
+;;
+    inactivity) cat <<'EOF'
+rob inactivity — inactive-member sweep
+
+  rob inactivity status | on | off
+EOF
+;;
+    scan) cat <<'EOF'
+rob scan — suggest channel/role configuration detected from the guild
+EOF
+;;
+    auto-apply) cat <<'EOF'
+rob auto-apply — apply scan suggestions
+
+  rob auto-apply                        Apply everything (same as 'all')
+  rob auto-apply channels | roles       Apply one category
+  rob auto-apply field_a,field_b        Apply specific settings fields
+EOF
+;;
+    fix-me) exec bash "${APP_ROOT}/deploy/scripts/fix-me.sh" --help ;;
+    status) cat <<'EOF'
+rob status — health summary: ops URL, database, auto-detected guild, ops
+            /health, and local systemd service states.
+EOF
+;;
+    restart|logs) cat <<'EOF'
+rob restart [bot|webhook|all]          Restart Rob's systemd services
+rob logs    [bot|webhook|all]          Follow service logs (journalctl -f)
+EOF
+;;
+    maintenance) cat <<'EOF'
+rob maintenance — pause posting; sends queue until disabled
+
+  rob maintenance status
   rob maintenance on [reason...]
   rob maintenance off
-  rob maintenance status
-  rob offline on
-  rob offline off
-  rob offline status
-  rob logs [bot|webhook|all]
-  rob status
-  rob fix-me [--dry-run] [--rotate-secret] [--yes]
-
-Notes:
-  - Guild-scoped commands accept --guild or --guild-id.
-  - ROB_DEFAULT_GUILD_ID or DISCORD_GUILD_ID can be used as a fallback. If
-    neither is set and exactly one guild is configured, it is auto-detected,
-    so --guild can be omitted on a single-guild (e.g. test) server.
-  - rob status shows the ops URL, DB, auto-detected guild, ops health, and
-    local service states.
-  - rob fix-me prepares one host to run both the bot and webhook over loopback
-    (DB stays remote); see deploy/scripts/fix-me.sh --help.
-  - Send additions/removals are approval-gated: the target Dom/me must approve
-    them in Discord before Rob changes tracked totals.
-  - rob clear rob_dev_v2 only prints SQL. It does not execute it.
 EOF
+;;
+    offline) cat <<'EOF'
+rob offline — Rob-offline mode
+
+  rob offline status | on | off
+EOF
+;;
+    block|unblock) cat <<'EOF'
+rob block <user_id>                    Add a Discord user to the global blacklist
+rob unblock <user_id>                  Remove them from the blacklist
+EOF
+;;
+    *) usage ;;
+  esac
 }
 
 require_database_url() {
@@ -760,101 +845,11 @@ auto_apply_command() {
   ops_post_form "/guilds/${GUILD_ID}/scan/apply?format=text" "options=${options}"
 }
 
-migration_command() {
-  local action="${1:-}"
-  shift || true
-
-  case "${action}" in
-    audit)
-      collect_guild_option "$@"
-      if ((${#REMAINING_ARGS[@]})); then
-        set -- "${REMAINING_ARGS[@]}"
-      else
-        set --
-      fi
-      [[ $# -eq 0 ]] || die "usage: rob migration audit --guild <guild_id>"
-      ops_get "/guilds/${GUILD_ID}/migration/audit?format=text"
-      ;;
-    *)
-      die "usage: rob migration audit --guild <guild_id>"
-      ;;
-  esac
-}
-
 webhook_command() {
   local action="${1:-}"
   shift || true
 
   case "${action}" in
-    preview)
-      collect_guild_option "$@"
-      if ((${#REMAINING_ARGS[@]})); then
-        set -- "${REMAINING_ARGS[@]}"
-      else
-        set --
-      fi
-      [[ $# -eq 0 ]] || die "usage: rob webhook preview --guild <guild_id>"
-      ops_get "/guilds/${GUILD_ID}/webhook/reissue/preview?format=text"
-      ;;
-    send)
-      collect_guild_option "$@"
-      if ((${#REMAINING_ARGS[@]})); then
-        set -- "${REMAINING_ARGS[@]}"
-      else
-        set --
-      fi
-      local send_all="false"
-      local target_user_id=""
-      local limit=""
-      while (($#)); do
-        case "$1" in
-          --all)
-            send_all="true"
-            ;;
-          --discord-user-id)
-            shift
-            (($#)) || die "missing value for --discord-user-id"
-            target_user_id="$1"
-            ;;
-          --discord-user-id=*)
-            target_user_id="${1#*=}"
-            ;;
-          --limit)
-            shift
-            (($#)) || die "missing value for --limit"
-            limit="$1"
-            ;;
-          --limit=*)
-            limit="${1#*=}"
-            ;;
-          *)
-            die "usage: rob webhook send --guild <guild_id> --all [--limit <n>] | --discord-user-id <id>"
-            ;;
-        esac
-        shift || true
-      done
-      if [[ "${send_all}" != "true" && -z "${target_user_id}" ]]; then
-        die "usage: rob webhook send --guild <guild_id> --all [--limit <n>] | --discord-user-id <id>"
-      fi
-      if [[ -n "${target_user_id}" && ! "${target_user_id}" =~ ^[0-9]+$ ]]; then
-        die "discord user id must be numeric."
-      fi
-      if [[ -n "${limit}" && ! "${limit}" =~ ^[0-9]+$ ]]; then
-        die "limit must be numeric."
-      fi
-      local -a form_args
-      form_args=()
-      if [[ "${send_all}" == "true" ]]; then
-        form_args+=("all=true")
-      fi
-      if [[ -n "${target_user_id}" ]]; then
-        form_args+=("discord_user_id=${target_user_id}")
-      fi
-      if [[ -n "${limit}" ]]; then
-        form_args+=("limit=${limit}")
-      fi
-      ops_post_form "/guilds/${GUILD_ID}/webhook/reissue/send?format=text" "${form_args[@]}"
-      ;;
     refresh)
       collect_guild_option "$@"
       if ((${#REMAINING_ARGS[@]})); then
@@ -866,78 +861,9 @@ webhook_command() {
       ops_post_form "/guilds/${GUILD_ID}/webhook/reissue/refresh?format=text" "domme_lookup=$1"
       ;;
     *)
-      die "usage: rob webhook preview|send|refresh ..."
+      die "usage: rob webhook refresh <thronehandle> [--guild <guild_id>]"
       ;;
   esac
-}
-
-clear_command() {
-  [[ $# -eq 1 ]] || die "usage: rob clear rob_dev_v2"
-  [[ "$1" == "rob_dev_v2" ]] || die "usage: rob clear rob_dev_v2"
-  require_database_url
-
-  local current_db
-  current_db="$(database_name_from_url)"
-  local tables=(
-    send_change_requests
-    achievement_events
-    user_achievements
-    count_blocks
-    count_recovery_windows
-    sub_send_names
-    inactive_users
-    vib_leaderboard
-    sends
-    subs
-    dommes
-    bot_users
-    the_count
-    vib_settings
-    bot_settings
-  )
-
-  print_heading "Rehearsal DB Clear Preview"
-  printf 'Target Database: %s\n' "${current_db}"
-  printf 'Mode: SQL preview only (nothing will be executed)\n'
-  printf 'Schema: preserved\n'
-  printf 'Indexes: preserved\n'
-  printf 'db_build_version: preserved\n'
-  printf 'Intended Database: rob_dev_v2\n'
-  if [[ "${current_db}" != "rob_dev_v2" ]]; then
-    printf 'WARNING: DATABASE_URL currently points at %s, not rob_dev_v2.\n' "${current_db}"
-  fi
-  printf '\nRows that would be cleared\n'
-  printf '%s\n' '========================='
-  local table
-  for table in "${tables[@]}"; do
-    local count
-    count="$(psql_query "SELECT COUNT(*) FROM ${table}")"
-    printf -- '- %s: %s\n' "${table}" "${count:-0}"
-  done
-  printf '\nSQL to run manually as doadmin\n'
-  printf '%s\n' '============================='
-  cat <<'EOF'
--- Rehearsal DB only.
--- Preserves schema, indexes, and db_build_version.
--- Review before running. Do not use this on prod.
-TRUNCATE TABLE
-    send_change_requests,
-    achievement_events,
-    user_achievements,
-    count_blocks,
-    count_recovery_windows,
-    sub_send_names,
-    inactive_users,
-    vib_leaderboard,
-    sends,
-    subs,
-    dommes,
-    bot_users,
-    the_count,
-    vib_settings,
-    bot_settings
-RESTART IDENTITY CASCADE;
-EOF
 }
 
 maintenance_command() {
@@ -1080,69 +1006,37 @@ cmd="${1:-}"
 }
 shift || true
 
+# `rob help [command]`
+if [[ "${cmd}" == "help" || "${cmd}" == "--help" || "${cmd}" == "-h" ]]; then
+  command_help "${1:-}"
+  exit 0
+fi
+
+# `rob <command> -h|--help`
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  command_help "${cmd}"
+  exit 0
+fi
+
 case "${cmd}" in
-  help|--help|-h)
-    usage
-    ;;
-  dommes)
-    dommes_command "$@"
-    ;;
-  subs)
-    subs_command "$@"
-    ;;
-  sends)
-    sends_lookup_command "$@"
-    ;;
-  send)
-    send_command "$@"
-    ;;
-  count)
-    count_command "$@"
-    ;;
-  inactivity)
-    inactivity_command "$@"
-    ;;
-  scan)
-    scan_command "$@"
-    ;;
-  auto-apply)
-    auto_apply_command "$@"
-    ;;
-  migration)
-    migration_command "$@"
-    ;;
-  webhook)
-    webhook_command "$@"
-    ;;
-  clear)
-    clear_command "$@"
-    ;;
-  block)
-    block_command "$@"
-    ;;
-  unblock)
-    unblock_command "$@"
-    ;;
-  restart)
-    restart_command "$@"
-    ;;
-  maintenance)
-    maintenance_command "$@"
-    ;;
-  offline)
-    offline_command "$@"
-    ;;
-  logs)
-    logs_command "$@"
-    ;;
-  status)
-    status_command "$@"
-    ;;
-  fix-me)
-    fix_me_command "$@"
-    ;;
+  dommes)      dommes_command "$@" ;;
+  subs)        subs_command "$@" ;;
+  sends)       sends_lookup_command "$@" ;;
+  send)        send_command "$@" ;;
+  webhook)     webhook_command "$@" ;;
+  count)       count_command "$@" ;;
+  inactivity)  inactivity_command "$@" ;;
+  block)       block_command "$@" ;;
+  unblock)     unblock_command "$@" ;;
+  scan)        scan_command "$@" ;;
+  auto-apply)  auto_apply_command "$@" ;;
+  fix-me)      fix_me_command "$@" ;;
+  status)      status_command "$@" ;;
+  restart)     restart_command "$@" ;;
+  logs)        logs_command "$@" ;;
+  maintenance) maintenance_command "$@" ;;
+  offline)     offline_command "$@" ;;
   *)
-    usage
-    exit 1
+    die "unknown command: ${cmd} (run 'rob help')"
     ;;
 esac
